@@ -1,0 +1,45 @@
+import { describe, expect, it } from "vitest";
+import { getUiCopy } from "../../apps/renderer/src/i18n.js";
+import type { UiLanguage } from "../../apps/renderer/src/i18n.js";
+
+const languages: UiLanguage[] = ["zh-CN", "zh-TW", "ja", "ko", "en"];
+
+describe("renderer language copy", () => {
+  it("keeps all visible panels behind the selected language copy", () => {
+    const expectations: Record<UiLanguage, string[]> = {
+      "zh-CN": ["设置 Hermes", "文件", "助手", "个人设置", "运行时"],
+      "zh-TW": ["設定 Hermes", "檔案", "助手", "個人設定", "執行時"],
+      ja: ["Hermes を設定", "ファイル", "アシスタント", "個人設定", "ランタイム"],
+      ko: ["Hermes 설정", "파일", "도우미", "개인 설정", "런타임"],
+      en: ["Set up Hermes", "Files", "Assistants", "Personal setup", "Runtime"],
+    };
+
+    for (const language of languages) {
+      const copy = getUiCopy(language);
+      const visibleCopy = [
+        copy.runtime.action.setUp,
+        copy.files.title,
+        copy.assistant.drawerTitle,
+        copy.personalization.eyebrow,
+        copy.diagnostics.runtime,
+      ];
+
+      expect(visibleCopy).toEqual(expectations[language]);
+    }
+  });
+
+  it("localizes setup, files, assistants, keys, diagnostics, and feature descriptions outside English", () => {
+    const english = getUiCopy("en");
+
+    for (const language of languages.filter((item) => item !== "en")) {
+      const copy = getUiCopy(language);
+
+      expect(copy.runtime.action.setUp).not.toBe(english.runtime.action.setUp);
+      expect(copy.files.empty).not.toBe(english.files.empty);
+      expect(copy.assistant.noAssistants).not.toBe(english.assistant.noAssistants);
+      expect(copy.keys.noProviders).not.toBe(english.keys.noProviders);
+      expect(copy.diagnostics.localChatHistory).not.toBe(english.diagnostics.localChatHistory);
+      expect(copy.onboarding.features.files.detail).not.toBe(english.onboarding.features.files.detail);
+    }
+  });
+});

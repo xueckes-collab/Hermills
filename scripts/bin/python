@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+if [ -x /usr/bin/python3 ]; then
+  exec /usr/bin/python3 "$@"
+fi
+exec python3 "$@"

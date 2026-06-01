@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "paths": {
+      "@hermills/core": ["../../packages/core/dist/index.d.ts"],
+      "@hermills/runtime": ["../../packages/runtime/dist/index.d.ts"],
+      "@hermills/agent-builder": ["../../packages/agent-builder/dist/index.d.ts"]
+    }
+  }
+}

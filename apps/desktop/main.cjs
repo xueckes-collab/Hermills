@@ -1,0 +1,86 @@
+const { randomUUID } = require("node:crypto");
+const net = require("node:net");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+
+let mainWindow;
+let serverInstance;
+let apiBaseUrl = allowDevEndpoints() ? process.env.HERMILLS_SERVER_URL : undefined;
+const desktopToken = process.env.HERMILLS_DESKTOP_TOKEN || randomUUID();
+
+async function createWindow() {
+  await startServerIfNeeded();
+  mainWindow = new BrowserWindow({
+    width: 1380,
+    height: 900,
+    minWidth: 1120,
+    minHeight: 720,
+    title: "Hermills",
+    backgroundColor: "#f7f8fb",
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, "preload.cjs")
+    }
+  });
+  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  const rendererUrl = allowDevEndpoints() ? process.env.HERMILLS_RENDERER_URL : undefined;
+  if (rendererUrl) await mainWindow.loadURL(rendererUrl);
+  else await mainWindow.loadFile(path.join(app.getAppPath(), "apps", "renderer", "dist", "index.html"));
+}
+
+function allowDevEndpoints() {
+  return !app.isPackaged;
+}
+
+async function startServerIfNeeded() {
+  if (apiBaseUrl) return;
+  const port = await findOpenPort(47321);
+  const serverPath = pathToFileURL(path.join(app.getAppPath(), "apps", "server", "dist", "index.js")).href;
+  const { createServer } = await import(serverPath);
+  serverInstance = await createServer({ host: "127.0.0.1", port, baseDir: app.getPath("userData"), desktopToken });
+  await serverInstance.listen({ host: "127.0.0.1", port });
+  apiBaseUrl = `http://127.0.0.1:${port}`;
+}
+
+function findOpenPort(startPort) {
+  return new Promise((resolve, reject) => {
+    const tryPort = (port) => {
+      const server = net.createServer();
+      server.once("error", (error) => error.code === "EADDRINUSE" ? tryPort(port + 1) : reject(error));
+      server.once("listening", () => server.close(() => resolve(port)));
+      server.listen(port, "127.0.0.1");
+    };
+    tryPort(startPort);
+  });
+}
+
+ipcMain.handle("hermills:get-config", () => ({ apiBaseUrl, desktopToken, platform: process.platform, version: app.getVersion() }));
+ipcMain.handle("hermills:select-workspace-directory", async (event) => {
+  const ownerWindow = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  const result = await dialog.showOpenDialog(ownerWindow, {
+    title: "Select workspace directory",
+    properties: ["openDirectory", "createDirectory"]
+  });
+  const selectedPath = result.filePaths[0];
+  if (result.canceled || !selectedPath) return { canceled: true };
+  return { canceled: false, path: selectedPath };
+});
+
+app.whenReady().then(createWindow);
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+});
+app.on("before-quit", async () => {
+  if (serverInstance) await serverInstance.close();
+});

@@ -1,0 +1,45 @@
+appId: com.hermills.desktop
+productName: Hermills
+copyright: Copyright © 2026 Hermills. All rights reserved.
+directories:
+  output: release
+files:
+  - apps/desktop/**
+  - apps/renderer/dist/**
+  - apps/server/dist/**
+  - packages/core/dist/**
+  - packages/agent-builder/dist/**
+  - packages/runtime/dist/**
+  - from: packages/core
+    to: node_modules/@hermills/core
+    filter:
+      - package.json
+      - dist/**
+  - from: packages/agent-builder
+    to: node_modules/@hermills/agent-builder
+    filter:
+      - package.json
+      - dist/**
+  - from: packages/runtime
+    to: node_modules/@hermills/runtime
+    filter:
+      - package.json
+      - dist/**
+  - package.json
+asar: true
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  notarize: true
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.inherit.plist
+  gatekeeperAssess: false
+  extendInfo:
+    NSAppTransportSecurity:
+      NSAllowsArbitraryLoads: false
+      NSAllowsLocalNetworking: true
+  target:
+    - dmg
+    - zip
+dmg:
+  sign: true

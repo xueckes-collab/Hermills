@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "release", "dist", "**/dist"],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true
+  }
+}
