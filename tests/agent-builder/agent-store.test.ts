@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,7 +26,7 @@ describe("Agent Builder stores", () => {
     expect(await agents.list()).toHaveLength(1);
   });
 
-  it("seeds built-in public agents when enabled without duplicating them", async () => {
+  it("adds imported GPT built-in agents once", async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-agent-builtin-"));
     const agents = new AgentRepository(baseDir, { seedBuiltinAgents: true });
 
@@ -36,11 +36,55 @@ describe("Agent Builder stores", () => {
     expect(firstList).toHaveLength(builtinAgentSeeds.length);
     expect(secondList).toHaveLength(builtinAgentSeeds.length);
     expect(firstList.map((agent) => agent.id)).toEqual(builtinAgentSeeds.map((agent) => agent.id));
-    expect(firstList[0]).toMatchObject({
-      id: "builtin:eckes-blog-deep-custom",
-      displayName: "Eckes · Blog深度定制",
-      capabilities: { memory: true, files: true, tools: true }
-    });
+    expect(firstList.map((agent) => agent.displayName)).toEqual([
+      "SEO Blog写手",
+      "专业社交热点选题写作系统",
+      "Eckes智能开发信定制官"
+    ]);
+    expect(firstList.every((agent) => agent.capabilities.tools)).toBe(true);
+  });
+
+  it("removes deprecated built-in agents without deleting custom agents", async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-agent-deprecated-"));
+    const now = new Date().toISOString();
+    await mkdir(path.join(baseDir, "data"), { recursive: true });
+    await writeFile(path.join(baseDir, "data", "agents.json"), JSON.stringify({
+      agents: [
+        {
+          version: 1,
+          id: "builtin:eckes-blog-deep-custom",
+          slug: "eckes-blog-deep-custom",
+          displayName: "Eckes · Blog深度定制",
+          description: "Deprecated built-in agent.",
+          instructions: "Deprecated instructions.",
+          starters: [],
+          capabilities: { memory: true, files: true, tools: true, approvals: "on-demand" },
+          knowledge: [],
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          version: 1,
+          id: "custom-agent",
+          slug: "custom-agent",
+          displayName: "Custom Agent",
+          description: "User-created agent.",
+          instructions: "Keep this custom agent.",
+          starters: [],
+          capabilities: { memory: false, files: true, tools: false, approvals: "on-demand" },
+          knowledge: [],
+          createdAt: now,
+          updatedAt: now
+        }
+      ]
+    }, null, 2));
+
+    const agents = new AgentRepository(baseDir, { seedBuiltinAgents: true });
+
+    expect((await agents.list()).map((agent) => agent.id)).toEqual([
+      ...builtinAgentSeeds.map((agent) => agent.id),
+      "custom-agent"
+    ]);
   });
 
   it("keeps provider API keys out of provider metadata", async () => {

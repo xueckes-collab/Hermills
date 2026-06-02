@@ -10,7 +10,7 @@ import {
 } from "@hermills/core";
 import { JsonFileStore } from "./json-store.js";
 import { slugifyAgentName } from "./slug.js";
-import { builtinAgentSeeds, type BuiltinAgentSeed } from "./builtin-agents.js";
+import { builtinAgentSeeds, deprecatedBuiltinAgentIds, type BuiltinAgentSeed } from "./builtin-agents.js";
 
 interface AgentStoreDocument {
   agents: AgentDefinition[];
@@ -134,10 +134,12 @@ export class AgentRepository {
   }
 
   private async ensureBuiltinAgents(): Promise<void> {
-    if (this.seeded || this.builtinSeeds.length === 0) return;
+    if (this.seeded) return;
     const document = await this.store.read();
-    const existingIds = new Set(document.agents.map((agent) => agent.id));
-    const existingSlugs = new Set(document.agents.map((agent) => agent.slug));
+    const deprecatedIds = new Set(deprecatedBuiltinAgentIds);
+    const retainedAgents = document.agents.filter((agent) => !deprecatedIds.has(agent.id));
+    const existingIds = new Set(retainedAgents.map((agent) => agent.id));
+    const existingSlugs = new Set(retainedAgents.map((agent) => agent.slug));
     const now = new Date().toISOString();
     const missing = this.builtinSeeds
       .filter((seed) => !existingIds.has(seed.id) && !existingSlugs.has(seed.slug))
@@ -150,8 +152,8 @@ export class AgentRepository {
         createdAt: now,
         updatedAt: now
       }));
-    if (missing.length > 0) {
-      await this.store.write({ agents: [...missing, ...document.agents] });
+    if (missing.length > 0 || retainedAgents.length !== document.agents.length) {
+      await this.store.write({ agents: [...missing, ...retainedAgents] });
     }
     this.seeded = true;
   }
