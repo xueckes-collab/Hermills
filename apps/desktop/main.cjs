@@ -17,7 +17,9 @@ async function createWindow() {
     minWidth: 1120,
     minHeight: 720,
     title: "Hermills",
-    backgroundColor: "#f7f8fb",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 18, y: 18 },
+    backgroundColor: "#f3f1eb",
     show: false,
     webPreferences: {
       contextIsolation: true,

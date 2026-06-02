@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 380" width="540" height="380" role="img" aria-label="Hermills installer background">
+  <defs>
+    <pattern id="grid" width="18" height="18" patternUnits="userSpaceOnUse">
+      <path d="M18 0H0V18" fill="none" stroke="#0066ff" stroke-width="0.45" opacity="0.18"/>
+    </pattern>
+    <pattern id="paper" width="7" height="7" patternUnits="userSpaceOnUse">
+      <path d="M0 7L7 0M-2 2L2 -2M5 9L9 5" stroke="#7fb5ff" stroke-width="0.25" opacity="0.15"/>
+    </pattern>
+    <filter id="soft">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0066ff" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="540" height="380" fill="#f5fbff"/>
+  <rect width="540" height="380" fill="url(#paper)"/>
+  <rect x="0" y="0" width="540" height="380" fill="url(#grid)" opacity="0.9"/>
+
+  <circle cx="458" cy="56" r="76" fill="#0066ff" opacity="0.08"/>
+  <circle cx="62" cy="328" r="62" fill="#0066ff" opacity="0.08"/>
+  <circle cx="420" cy="342" r="88" fill="#0066ff" opacity="0.06"/>
+
+  <rect x="16" y="16" width="508" height="348" fill="none" stroke="#0066ff" stroke-width="1.1" opacity="0.56"/>
+  <rect x="20" y="20" width="500" height="340" fill="none" stroke="#0066ff" stroke-width="0.55" opacity="0.36"/>
+
+  <g font-family="Georgia, 'Times New Roman', serif" fill="#0066ff" text-anchor="middle">
+    <text x="270" y="74" font-size="32" font-weight="700" letter-spacing="1.5">HERMILLS</text>
+    <text x="270" y="96" font-size="7.5" font-weight="700" letter-spacing="3.2">LOCAL HERMES AGENT INSTALLER</text>
+  </g>
+
+  <g transform="translate(44 118)" filter="url(#soft)">
+    <rect width="168" height="54" fill="#f8fcff" stroke="#0066ff" stroke-width="1"/>
+    <rect x="0" y="0" width="168" height="14" fill="#edf7ff" stroke="#0066ff" stroke-width="1"/>
+    <circle cx="10" cy="7" r="2.2" fill="#ff6158"/>
+    <circle cx="21" cy="7" r="2.2" fill="#ffbd2e"/>
+    <circle cx="32" cy="7" r="2.2" fill="#29c840"/>
+    <text x="14" y="31" font-family="'Courier New', monospace" font-size="8" fill="#0066ff">$ drag Hermills.app</text>
+    <text x="14" y="43" font-family="'Courier New', monospace" font-size="8" fill="#0066ff">  to /Applications</text>
+  </g>
+
+  <path d="M224 235C251 190 315 190 342 235" fill="none" stroke="#0066ff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M342 235l-26-5 15 22z" fill="#0066ff"/>
+
+  <g font-family="'Courier New', monospace" fill="#0066ff" opacity="0.62" font-size="7" letter-spacing="2">
+    <text x="26" y="44">OPEN SOURCE PREVIEW</text>
+    <text x="205" y="352">MACOS PREVIEW INSTALLER</text>
+  </g>
+</svg>

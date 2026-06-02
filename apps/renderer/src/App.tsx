@@ -503,45 +503,6 @@ export default function App() {
 
   return (
     <div className={`client-shell client-theme-${onboarding.data.theme ?? 'warm'}`}>
-      <header className="client-topbar">
-        <div className="brand-block">
-          <div className="brand-mark">H</div>
-          <div>
-            <strong>Hermes</strong>
-            <span>{copy.common.brandSubtitle}</span>
-          </div>
-        </div>
-
-        <div className="topbar-center">
-          <span className={`status-dot ${runtime.data.state}`} />
-          <span>{runtimeStatusLabel(runtime.data, copy)}</span>
-          {runtime.data.updateAvailable ? (
-            <button className="update-chip" onClick={() => openAdvanced('setup')}>
-              <RefreshCw size={13} />
-              {copy.common.update}
-            </button>
-          ) : null}
-        </div>
-
-        <div className="topbar-actions">
-          <button className="soft-button mobile-only" onClick={() => setSessionsOpen(true)}>
-            <Menu size={16} />
-            <span className="button-label">{copy.topbar.chats}</span>
-          </button>
-          <button className="soft-button" onClick={() => setAssistantsDrawer(!assistantsOpen)}>
-            <Bot size={16} />
-            <span className="button-label">{copy.topbar.assistants}</span>
-          </button>
-          <button className="soft-button" onClick={() => setFilesDrawer(!sourcesOpen)}>
-            <PanelRightOpen size={16} />
-            <span className="button-label">{copy.topbar.files}</span>
-          </button>
-          <button className="icon-button" aria-label={copy.topbar.settingsAria} onClick={() => openAdvanced('setup')}>
-            <Settings size={17} />
-          </button>
-        </div>
-      </header>
-
       {serviceWarning ? <div className="service-warning">{copy.topbar.serviceWarning(serviceWarning)}</div> : null}
 
       <ClientWorkspace
@@ -928,6 +889,7 @@ function ClientWorkspace({
   return (
     <main className={`client-layout ${sourcesOpen ? 'sources-visible' : ''}`}>
       <SessionSidebar
+        runtime={runtime}
         sessions={visibleSessions}
         totalSessions={sessions.length}
         activeSession={activeSession}
@@ -937,12 +899,17 @@ function ClientWorkspace({
         onNew={newSession}
         onRename={renameSession}
         onDelete={deleteSession}
+        onOpenAssistants={() => setAssistantsOpen(true)}
+        onOpenFiles={() => setSourcesOpen(true)}
+        onOpenSettings={() => openAdvanced('setup')}
+        onOpenUpdate={() => openAdvanced('setup')}
         copy={copy}
       />
 
       {sessionsOpen ? (
         <div className="mobile-session-overlay" onClick={() => setSessionsOpen(false)}>
           <SessionSidebar
+            runtime={runtime}
             sessions={visibleSessions}
             totalSessions={sessions.length}
             activeSession={activeSession}
@@ -953,6 +920,10 @@ function ClientWorkspace({
             onRename={renameSession}
             onDelete={deleteSession}
             onClose={() => setSessionsOpen(false)}
+            onOpenAssistants={() => setAssistantsOpen(true)}
+            onOpenFiles={() => setSourcesOpen(true)}
+            onOpenSettings={() => openAdvanced('setup')}
+            onOpenUpdate={() => openAdvanced('setup')}
             className="mobile-session-panel"
             copy={copy}
           />
@@ -963,14 +934,19 @@ function ClientWorkspace({
         {!chatReady ? <GatewayBanner runtime={runtime} setRuntime={setRuntime} openAdvanced={openAdvanced} copy={copy} /> : null}
 
         <div className="conversation-title">
-          <div>
-            <span>{copy.chat.sectionLabel}</span>
-            <h1>{activeSession?.title || copy.chat.defaultTitle}</h1>
-            <div className="conversation-meta">
-              <button className="assistant-chip" onClick={() => setAssistantsOpen(true)}>
-                <Bot size={13} />
-                {activeAgent?.name || copy.chat.defaultAssistant}
-              </button>
+          <div className="conversation-heading">
+            <button className="icon-button mobile-session-trigger" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
+              <Menu size={17} />
+            </button>
+            <div>
+              <span>{copy.chat.sectionLabel}</span>
+              <h1>{activeSession?.title || copy.chat.defaultTitle}</h1>
+              <div className="conversation-meta">
+                <button className="assistant-chip" onClick={() => setAssistantsOpen(true)}>
+                  <Bot size={13} />
+                  {activeAgent?.name || copy.chat.defaultAssistant}
+                </button>
+              </div>
             </div>
           </div>
           <button className="soft-button compact" onClick={() => setSourcesOpen(true)}>
@@ -1646,6 +1622,7 @@ function KeySetupNudge({
 }
 
 function SessionSidebar({
+  runtime,
   sessions,
   totalSessions = sessions.length,
   activeSession,
@@ -1656,9 +1633,14 @@ function SessionSidebar({
   onRename,
   onDelete,
   onClose,
+  onOpenAssistants,
+  onOpenFiles,
+  onOpenSettings,
+  onOpenUpdate,
   className = '',
   copy,
 }: {
+  runtime: RuntimeStatus
   sessions: ChatSession[]
   totalSessions?: number
   activeSession?: ChatSession
@@ -1669,6 +1651,10 @@ function SessionSidebar({
   onRename: (id: string, title: string) => void | Promise<void>
   onDelete: (id: string) => void | Promise<void>
   onClose?: () => void
+  onOpenAssistants: () => void
+  onOpenFiles: () => void
+  onOpenSettings: () => void
+  onOpenUpdate: () => void
   className?: string
   copy: UiCopy
 }) {
@@ -1690,6 +1676,37 @@ function SessionSidebar({
 
   return (
     <aside className={`session-sidebar ${className}`} onClick={(event) => event.stopPropagation()}>
+      <div className="window-drag-zone" aria-hidden="true" />
+      <div className="sidebar-brand-panel">
+        <div className="brand-block sidebar-brand">
+          <div className="brand-mark">H</div>
+          <div>
+            <strong>Hermes</strong>
+            <span>{copy.common.brandSubtitle}</span>
+          </div>
+        </div>
+        <div className="sidebar-utility-actions">
+          <button className="icon-button" aria-label={copy.topbar.assistants} onClick={onOpenAssistants}>
+            <Bot size={16} />
+          </button>
+          <button className="icon-button" aria-label={copy.topbar.files} onClick={onOpenFiles}>
+            <PanelRightOpen size={16} />
+          </button>
+          <button className="icon-button" aria-label={copy.topbar.settingsAria} onClick={onOpenSettings}>
+            <Settings size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="sidebar-status-row">
+        <span className={`status-dot ${runtime.state}`} />
+        <span>{runtimeStatusLabel(runtime, copy)}</span>
+        {runtime.updateAvailable ? (
+          <button className="update-chip" onClick={onOpenUpdate}>
+            <RefreshCw size={13} />
+            {copy.common.update}
+          </button>
+        ) : null}
+      </div>
       <div className="sidebar-header">
         <span>{copy.session.count(totalSessions)}</span>
         <div className="sidebar-actions">
