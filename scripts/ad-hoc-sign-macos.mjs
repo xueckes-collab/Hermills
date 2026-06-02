@@ -10,6 +10,7 @@ const { signAsync } = require("@electron/osx-sign");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appPath = path.join(root, "release", "mac-arm64", "Hermills.app");
 const entitlementsPath = path.join(root, "entitlements.mac.plist");
+const inheritedEntitlementsPath = path.join(root, "entitlements.mac.inherit.plist");
 
 function runCapture(command, args, { check = true } = {}) {
   const result = spawnSync(command, args, {
@@ -46,9 +47,9 @@ await signAsync({
   platform: "darwin",
   type: "development",
   preAutoEntitlements: false,
-  optionsForFile: (filePath) => path.resolve(filePath) === appPath
-    ? { entitlements: entitlementsPath }
-    : null
+  optionsForFile: (filePath) => ({
+    entitlements: path.resolve(filePath) === appPath ? entitlementsPath : inheritedEntitlementsPath
+  })
 });
 
 runCapture("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
@@ -62,6 +63,17 @@ if (!signedDetails.includes("Runtime Version=")) {
 }
 if (!signedDetails.includes("com.apple.security.network.client")) {
   throw new Error("Expected com.apple.security.network.client entitlement after preview signing.");
+}
+
+const rendererHelperPath = path.join(
+  appPath,
+  "Contents",
+  "Frameworks",
+  "Hermills Helper (Renderer).app"
+);
+const rendererDetails = runCapture("codesign", ["-dvvv", "--entitlements", ":-", rendererHelperPath]);
+if (!rendererDetails.includes("com.apple.security.cs.disable-library-validation")) {
+  throw new Error("Expected renderer helper to disable library validation after preview signing.");
 }
 
 console.log("Ad-hoc signed release/mac-arm64/Hermills.app for unsigned GitHub preview packaging.");

@@ -24,6 +24,7 @@ A fully signed and notarized installer will be published after Developer ID cert
 - Removed the old 10 bundled agents from the built-in seed list.
 - Existing local installs prune those deprecated built-ins while preserving user-created agents.
 - Rebuilt the macOS Apple Silicon DMG and ZIP.
+- Fixed the unsigned preview package startup crash caused by Electron helper library validation.
 
 ## Files
 
