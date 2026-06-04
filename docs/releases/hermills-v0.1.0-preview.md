@@ -17,6 +17,13 @@ A fully signed and notarized installer will be published after Developer ID cert
 
 ## What Changed
 
+- Added the Hermills outbound sales letter workflow for foreign trade users:
+  - Company knowledge base input, so emails can use the user's company profile.
+  - Customer website + email one-step research.
+  - ICP, USP, first email, and 9 follow-up email sequence generation.
+  - A compact step-by-step quest UI for company data, customer input, research, draft review, mailbox setup, and sending.
+  - Mailbox provider presets, authorization-code helper links, SMTP login test, test email, and "I received it" confirmation.
+  - Server-side sending guard: real outreach cannot be sent until mailbox delivery is confirmed.
 - Bundled 3 imported GPT agents:
   - SEO Blog写手
   - 专业社交热点选题写作系统
@@ -37,6 +44,9 @@ A fully signed and notarized installer will be published after Developer ID cert
 - First-run local Hermes deployment flow.
 - Chat UI.
 - File attachment workflows.
+- Foreign trade company knowledge base.
+- Customer research and outbound email workflow.
+- SMTP sender mailbox testing and confirmed sending.
 - Custom assistant/agent configuration.
 - Bundled imported GPT agents.
 - First-run onboarding and settings screens.
