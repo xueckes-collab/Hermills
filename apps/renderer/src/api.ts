@@ -375,6 +375,143 @@ export type CompanyProfile = {
   updatedAt?: string;
 };
 
+export type OutreachLead = {
+  id: string;
+  profileId?: string;
+  companyName: string;
+  website?: string;
+  country?: string;
+  industry?: string;
+  contactName?: string;
+  contactTitle?: string;
+  email?: string;
+  need: string;
+  notes: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachLeadInput = {
+  companyName: string;
+  website?: string;
+  country?: string;
+  industry?: string;
+  contactName?: string;
+  contactTitle?: string;
+  email?: string;
+  need?: string;
+  notes?: string;
+  tags?: string[];
+};
+
+export type OutreachDraft = {
+  id: string;
+  profileId?: string;
+  leadId?: string;
+  status: "draft" | "sent" | "failed";
+  subject: string;
+  body: string;
+  language: string;
+  tone: string;
+  promptSnapshot: string;
+  providerId?: string;
+  model?: string;
+  usage?: ChatMessage["usage"];
+  sentAt?: string;
+  sendError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachSenderAccount = {
+  id: string;
+  profileId?: string;
+  label: string;
+  fromName?: string;
+  email: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username?: string;
+  passwordPreview?: string;
+  enabled: boolean;
+  lastTestedAt?: string;
+  lastTestEmailAt?: string;
+  deliveryConfirmedAt?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerResearchSnapshot = {
+  website: string;
+  companyName: string;
+  industry: string;
+  inferredNeed: string;
+  title: string;
+  description: string;
+  fetchedUrls: string[];
+  textPreview: string;
+  error?: string;
+  createdAt: string;
+};
+
+export type GeneratedIcp = {
+  id: string;
+  name: string;
+  industrySegment: string;
+  companyCharacteristics: string[];
+  buyerRoles: string[];
+  buyingBehavior: string[];
+  painPoints: string[];
+  triggerEvents: string[];
+  salesAngles: string[];
+};
+
+export type GeneratedUsp = {
+  id: string;
+  category: string;
+  headline: string;
+  buyerAngle: string;
+  proof: string;
+};
+
+export type EmailSequenceDraft = {
+  id: string;
+  draftId?: string;
+  step: number;
+  delayDays: number;
+  strategy: string;
+  subject: string;
+  body: string;
+  status: "draft" | "sent" | "failed";
+  sentAt?: string;
+  sendError?: string;
+};
+
+export type OutreachWorkflow = {
+  id: string;
+  profileId?: string;
+  leadId: string;
+  draftId: string;
+  website: string;
+  email: string;
+  language: string;
+  tone: string;
+  research: CustomerResearchSnapshot;
+  icps: GeneratedIcp[];
+  usps: GeneratedUsp[];
+  initialEmail: EmailSequenceDraft;
+  followUps: EmailSequenceDraft[];
+  promptSnapshot: string;
+  providerId?: string;
+  model?: string;
+  usage?: ChatMessage["usage"];
+  createdAt: string;
+  updatedAt: string;
+};
+
 type RawRuntimeStatus = {
   installed: boolean;
   localDeploymentComplete?: boolean;
@@ -835,6 +972,100 @@ export const api = {
   async deleteCompanyMaterial(id: string): Promise<void> {
     await request<void>(`/api/company/materials/${id}`, { method: "DELETE" });
   },
+  async outreachLeads(query = ""): Promise<OutreachLead[]> {
+    const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+    return request<OutreachLead[]>(`/api/outreach/leads${suffix}`);
+  },
+  async createOutreachLead(input: OutreachLeadInput): Promise<OutreachLead> {
+    return request<OutreachLead>("/api/outreach/leads", { method: "POST", body: JSON.stringify(input) });
+  },
+  async updateOutreachLead(id: string, input: Partial<Pick<OutreachLead, "companyName" | "website" | "country" | "industry" | "contactName" | "contactTitle" | "email" | "need" | "notes" | "tags">>): Promise<OutreachLead> {
+    return request<OutreachLead>(`/api/outreach/leads/${id}`, { method: "PUT", body: JSON.stringify(input) });
+  },
+  async importOutreachLeads(csvText: string): Promise<{ imported: OutreachLead[]; skipped: Array<{ row: number; reason: string }> }> {
+    return request<{ imported: OutreachLead[]; skipped: Array<{ row: number; reason: string }> }>("/api/outreach/leads/import", {
+      method: "POST",
+      body: JSON.stringify({ csvText })
+    });
+  },
+  async generateOutreachDraft(input: {
+    leadId?: string;
+    lead?: OutreachLeadInput;
+    language?: string;
+    tone?: string;
+    providerId?: string;
+    model?: string;
+  }): Promise<OutreachDraft> {
+    return request<OutreachDraft>("/api/outreach/drafts/generate", { method: "POST", body: JSON.stringify(input) });
+  },
+  async autoGenerateOutreachDraft(input: {
+    website: string;
+    email: string;
+    language?: string;
+    tone?: string;
+    providerId?: string;
+    model?: string;
+  }): Promise<OutreachDraft> {
+    return request<OutreachDraft>("/api/outreach/drafts/auto", { method: "POST", body: JSON.stringify(input) });
+  },
+  async autoGenerateOutreachWorkflow(input: {
+    website: string;
+    email: string;
+    language?: string;
+    tone?: string;
+    providerId?: string;
+    model?: string;
+  }): Promise<OutreachWorkflow> {
+    return request<OutreachWorkflow>("/api/outreach/workflows/auto", { method: "POST", body: JSON.stringify(input) });
+  },
+  async outreachWorkflows(q?: string): Promise<OutreachWorkflow[]> {
+    return request<OutreachWorkflow[]>(`/api/outreach/workflows${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  },
+  async outreachWorkflow(id: string): Promise<OutreachWorkflow> {
+    return request<OutreachWorkflow>(`/api/outreach/workflows/${id}`);
+  },
+  async updateOutreachDraft(id: string, input: Partial<Pick<OutreachDraft, "subject" | "body" | "language" | "tone">>): Promise<OutreachDraft> {
+    return request<OutreachDraft>(`/api/outreach/drafts/${id}`, { method: "PUT", body: JSON.stringify(input) });
+  },
+  async outreachSenderAccounts(): Promise<OutreachSenderAccount[]> {
+    return request<OutreachSenderAccount[]>("/api/outreach/sender-accounts");
+  },
+  async saveOutreachSenderAccount(input: {
+    id?: string;
+    label: string;
+    fromName?: string;
+    email: string;
+    host: string;
+    port: number;
+    secure: boolean;
+    username?: string;
+    password?: string;
+    enabled?: boolean;
+  }): Promise<OutreachSenderAccount> {
+    const { id, ...payload } = input;
+    return request<OutreachSenderAccount>(id ? `/api/outreach/sender-accounts/${id}` : "/api/outreach/sender-accounts", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async testOutreachSenderAccount(id: string): Promise<{ ok: boolean; message: string; sender: OutreachSenderAccount }> {
+    return request<{ ok: boolean; message: string; sender: OutreachSenderAccount }>(`/api/outreach/sender-accounts/${id}/test`, { method: "POST", body: "{}" });
+  },
+  async sendOutreachSenderTestEmail(id: string, to?: string): Promise<{ ok: boolean; message: string; sender: OutreachSenderAccount }> {
+    return request<{ ok: boolean; message: string; sender: OutreachSenderAccount }>(`/api/outreach/sender-accounts/${id}/test-email`, {
+      method: "POST",
+      body: JSON.stringify({ to })
+    });
+  },
+  async confirmOutreachSenderDelivery(id: string): Promise<{ ok: boolean; message: string; sender: OutreachSenderAccount }> {
+    return request<{ ok: boolean; message: string; sender: OutreachSenderAccount }>(`/api/outreach/sender-accounts/${id}/confirm-delivery`, { method: "POST", body: "{}" });
+  },
+  async sendOutreachDraft(id: string, input: { senderAccountId: string; to?: string }): Promise<OutreachDraft> {
+    return request<OutreachDraft>(`/api/outreach/drafts/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify({ ...input, confirm: true })
+    });
+  },
   async materials(): Promise<Material[]> {
     return request<Material[]>("/api/materials");
   },
@@ -949,5 +1180,7 @@ export const fallback = {
   logs: [] satisfies LogEntry[],
   sessions: [] satisfies ChatSession[],
   materials: [] satisfies Material[],
-  companyMaterials: [] satisfies Material[]
+  companyMaterials: [] satisfies Material[],
+  outreachLeads: [] satisfies OutreachLead[],
+  outreachSenderAccounts: [] satisfies OutreachSenderAccount[]
 };

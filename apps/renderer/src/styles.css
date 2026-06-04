@@ -1728,6 +1728,534 @@ textarea,
   padding: 16px;
 }
 
+.icon-button.active {
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.outreach-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 0 2px 8px;
+}
+
+.outreach-title {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.outreach-title p {
+  margin-top: 5px;
+  max-width: 680px;
+  font-size: 13px;
+}
+
+.outreach-title-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: var(--radius);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.outreach-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(360px, 1.08fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.outreach-panel,
+.outreach-quick-panel,
+.outreach-workflow-panel,
+.outreach-send-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.outreach-quick-panel {
+  border-color: rgba(15, 118, 110, 0.2);
+  background:
+    linear-gradient(135deg, rgba(239, 250, 246, 0.82), rgba(255, 252, 246, 0.9)),
+    rgba(255, 255, 255, 0.78);
+}
+
+.outreach-quick-panel p {
+  margin: 4px 0 0;
+  max-width: 560px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.outreach-quick-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1fr);
+  gap: 10px;
+}
+
+.outreach-quest-panel {
+  gap: 12px;
+  border-color: rgba(15, 118, 110, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(239, 250, 246, 0.7)),
+    rgba(255, 255, 255, 0.66);
+}
+
+.outreach-quest-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.quest-step-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.quest-step-card {
+  display: grid;
+  gap: 4px;
+  min-height: 86px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.quest-step-card strong,
+.quest-step-card small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-step-card strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.quest-step-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.quest-step-card.active {
+  border-color: rgba(196, 125, 28, 0.34);
+  background: rgba(255, 248, 232, 0.86);
+}
+
+.quest-step-card.done {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: var(--green-soft);
+}
+
+.quest-step-card.locked {
+  opacity: 0.72;
+}
+
+.quest-step-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--green);
+}
+
+.quest-step-card.active .quest-step-icon {
+  background: rgba(196, 125, 28, 0.13);
+  color: var(--accent);
+}
+
+.quest-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.quest-current span {
+  flex: 0 0 auto;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 840;
+  text-transform: uppercase;
+}
+
+.quest-current strong {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.quest-current p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outreach-workflow-panel {
+  border-color: rgba(15, 118, 110, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(249, 247, 239, 0.68)),
+    rgba(255, 255, 255, 0.72);
+}
+
+.outreach-workflow-panel h3 {
+  margin: 2px 0 0;
+}
+
+.outreach-workflow-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.outreach-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.outreach-insight-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 148px;
+  padding: 13px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.outreach-insight-card > span,
+.outreach-email-row span {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.outreach-insight-card strong,
+.outreach-mini-block strong,
+.outreach-email-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.outreach-insight-card small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outreach-mini-block {
+  display: grid;
+  gap: 3px;
+}
+
+.outreach-mini-block p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.outreach-email-sequence {
+  display: grid;
+  grid-auto-columns: minmax(148px, 0.58fr);
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.outreach-email-row {
+  display: grid;
+  gap: 5px;
+  min-height: 96px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--ink);
+  text-align: left;
+}
+
+.outreach-email-row.active {
+  border-color: rgba(15, 118, 110, 0.38);
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.08);
+}
+
+.outreach-email-row small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.panel-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-heading-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.lead-form-grid,
+.sender-form-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.lead-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sender-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mail-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mail-provider-card {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--ink);
+  text-align: left;
+}
+
+.mail-provider-card svg {
+  color: var(--green);
+}
+
+.mail-provider-card strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-provider-card.active {
+  border-color: rgba(15, 118, 110, 0.34);
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.08);
+}
+
+.mail-simple-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mail-auth-assistant,
+.mail-test-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mail-auth-assistant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(196, 125, 28, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 248, 232, 0.72);
+  color: #80611f;
+}
+
+.mail-auth-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.mail-auth-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-auth-copy svg {
+  flex: 0 0 auto;
+}
+
+.mail-auth-link {
+  flex: 0 0 auto;
+}
+
+.mail-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mail-advanced-details {
+  display: grid;
+  gap: 10px;
+}
+
+.mail-advanced-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.mail-advanced-details[open] summary {
+  margin-bottom: 10px;
+}
+
+.outreach-workspace label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.outreach-workspace input,
+.outreach-workspace textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.csv-import-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(15, 118, 110, 0.28);
+  border-radius: var(--radius);
+  background: rgba(239, 250, 246, 0.52);
+}
+
+.short-textarea {
+  min-height: 72px;
+}
+
+.outreach-draft-body {
+  min-height: 300px;
+  resize: vertical;
+}
+
+.lead-list-mini {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+  padding-top: 4px;
+}
+
+.lead-mini-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+  text-align: left;
+}
+
+.lead-mini-row.active,
+.sender-chip.active {
+  border-color: rgba(15, 118, 110, 0.34);
+  background: var(--green-soft);
+}
+
+.lead-mini-row span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outreach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sender-chip {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.outreach-secure-row {
+  align-self: end;
+  min-height: 40px;
+}
+
+.outreach-advanced-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.outreach-advanced-panel > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.outreach-advanced-panel[open] > summary {
+  margin-bottom: 10px;
+}
+
 .panel-header {
   justify-content: space-between;
   margin-bottom: 14px;
@@ -2359,6 +2887,10 @@ details[open] .complex-detail {
   display: none;
 }
 
+.mobile-workspace-toolbar {
+  display: none;
+}
+
 .icon-button:hover,
 .soft-button:hover {
   background: rgba(255, 255, 255, 0.84);
@@ -2378,7 +2910,8 @@ details[open] .complex-detail {
 .status-dot.ready,
 .status-pill.current,
 .status-pill.ready,
-.status-pill.connected {
+.status-pill.connected,
+.status-pill.sent {
   background: #dff7ec;
   color: #0d6b4d;
 }
@@ -2598,14 +3131,58 @@ details[open] .complex-detail {
   .empty-chat-actions,
   .chat-empty-actions,
   .assistant-role-grid,
-  .settings-section-grid {
+  .settings-section-grid,
+  .outreach-grid,
+  .outreach-quick-grid,
+  .outreach-result-grid,
+  .lead-form-grid,
+  .sender-form-grid,
+  .mail-simple-grid {
     grid-template-columns: 1fr;
   }
+
+  .quest-step-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
 }
 
 @media (max-width: 760px) {
   body {
     overflow: auto;
+  }
+
+  .mail-provider-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-heading-row,
+  .mail-auth-assistant,
+  .quest-current {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .panel-heading-row .primary-button,
+  .panel-heading-row .soft-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .quest-step-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quest-current p {
+    white-space: normal;
+  }
+
+  .mail-auth-copy span {
+    white-space: normal;
+  }
+
+  .mail-auth-link {
+    align-self: flex-start;
   }
 
   .onboarding-shell {
@@ -2693,6 +3270,23 @@ details[open] .complex-detail {
     flex: 0 0 auto;
   }
 
+  .mobile-workspace-toolbar {
+    position: fixed;
+    z-index: 24;
+    top: 10px;
+    left: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .mobile-workspace-toolbar .icon-button {
+    pointer-events: auto;
+    box-shadow: 0 8px 24px rgba(54, 45, 31, 0.08);
+  }
+
   .message {
     max-width: 92%;
   }
@@ -2755,7 +3349,12 @@ details[open] .complex-detail {
   }
 
   .company-form-grid,
-  .company-layout {
+  .company-layout,
+  .outreach-grid,
+  .outreach-quick-grid,
+  .outreach-result-grid,
+  .lead-form-grid,
+  .sender-form-grid {
     grid-template-columns: 1fr;
   }
 

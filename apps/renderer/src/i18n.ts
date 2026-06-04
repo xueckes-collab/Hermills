@@ -103,6 +103,7 @@ export type UiCopy = {
   }
   topbar: {
     chats: string
+    devLetter: string
     assistants: string
     files: string
     settingsAria: string
@@ -203,6 +204,137 @@ export type UiCopy = {
       notes: string
     }
     categories: Record<import('./api.js').CompanyMaterialCategory, string>
+  }
+  devLetter: {
+    sectionLabel: string
+    title: string
+    subtitle: string
+    quickTitle: string
+    quickSubtitle: string
+    navAria: string
+    steps: {
+      auto: string
+      leads: string
+      draft: string
+      send: string
+    }
+    quest: {
+      title: string
+      subtitle: string
+      nextLabel: string
+      progress: (done: number, total: number) => string
+      steps: Record<'company' | 'lead' | 'research' | 'draft' | 'mailbox' | 'send', {
+        label: string
+        hint: string
+        detail: string
+        action: string
+      }>
+    }
+    fields: {
+      companyName: string
+      website: string
+      country: string
+      industry: string
+      contactName: string
+      contactTitle: string
+      email: string
+      need: string
+      notes: string
+      language: string
+      tone: string
+      subject: string
+      body: string
+      senderLabel: string
+      fromName: string
+      senderEmail: string
+      host: string
+      port: string
+      secure: string
+      username: string
+      password: string
+    }
+    actions: {
+      openCompany: string
+      importCsv: string
+      saveLead: string
+      generate: string
+      generating: string
+      saveDraft: string
+      copyDraft: string
+      saveSender: string
+      testSender: string
+      testingSender: string
+      sendTestEmail: string
+      sendingTestEmail: string
+      confirmDelivery: string
+      getAuthCode: string
+      researchGenerate: string
+      researching: string
+      advancedLead: string
+      send: string
+      sending: string
+    }
+    placeholders: {
+      website: string
+      email: string
+      csv: string
+      need: string
+      notes: string
+      password: string
+    }
+    status: {
+      companyReady: (name: string, count: number) => string
+      companyMissing: string
+      noLeads: string
+      imported: (count: number, skipped: number) => string
+      draftSaved: string
+      copied: string
+      senderSaved: string
+      senderReady: string
+      testEmailSent: string
+      deliveryConfirmed: string
+      researched: string
+      workflowGenerated: string
+      sent: string
+    }
+    warnings: {
+      quickRequired: string
+      leadRequired: string
+      draftRequired: string
+      senderRequired: string
+      senderNotConfirmed: string
+      confirmSend: string
+    }
+    results: {
+      title: string
+      subtitle: string
+      customerResearch: string
+      icp: string
+      usp: string
+      emailSequence: string
+      firstEmail: string
+      followUp: (step: number) => string
+      day0: string
+      daysLater: (days: number) => string
+      noDetails: string
+      status: Record<'draft' | 'sent' | 'failed', string>
+    }
+    mailSetup: {
+      title: string
+      subtitle: string
+      chooseProvider: string
+      fillAuth: string
+      testLogin: string
+      sendTest: string
+      confirmInbox: string
+      ready: string
+      advanced: string
+      authHint: string
+      authHelperHint: (provider: string, smtp: string) => string
+      customAuthHint: string
+      testEmailHint: string
+      providerDescriptions: Record<'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom', string>
+    }
   }
   keyNudge: {
     pasteOneKey: string
@@ -545,6 +677,7 @@ const en: UiCopy = {
   },
   topbar: {
     chats: 'Chats',
+    devLetter: 'Outreach',
     assistants: 'Assistants',
     files: 'Files',
     settingsAria: 'Advanced settings',
@@ -662,6 +795,171 @@ const en: UiCopy = {
       faq: 'FAQ',
       'case-study': 'Case study',
       other: 'Other',
+    },
+  },
+  devLetter: {
+    sectionLabel: 'Outreach',
+    title: 'Write a cold email',
+    subtitle: 'Enter a customer website and email. Hermes researches the company, writes the draft, then you confirm before sending.',
+    quickTitle: 'Website + email is enough',
+    quickSubtitle: 'Hermes checks the customer website, finds useful context, and writes the first email for you.',
+    navAria: 'Open outreach writer',
+    steps: { auto: 'One-step flow', leads: 'Lead', draft: 'Draft', send: 'Send' },
+    quest: {
+      title: 'Outreach quest',
+      subtitle: 'Finish one small step at a time. Hermes keeps the next action visible.',
+      nextLabel: 'Next step',
+      progress: (done, total) => `${done}/${total} ready`,
+      steps: {
+        company: {
+          label: 'Company brain',
+          hint: 'Your products and proof',
+          detail: 'Add your company profile or files once, so every email sounds like your business.',
+          action: 'Open company docs',
+        },
+        lead: {
+          label: 'Customer',
+          hint: 'Website and email',
+          detail: 'Paste the customer website and buyer email. That is enough to start the research.',
+          action: 'Fill customer',
+        },
+        research: {
+          label: 'Research',
+          hint: 'Buyer context',
+          detail: 'Let Hermes research the customer, build ICP and USP angles, then write the sequence.',
+          action: 'Research and write',
+        },
+        draft: {
+          label: 'Draft',
+          hint: 'Review the email',
+          detail: 'Read the subject and body, edit anything you want, then save or copy the draft.',
+          action: 'Review draft',
+        },
+        mailbox: {
+          label: 'Mailbox',
+          hint: 'Safe sending',
+          detail: 'Connect a sender mailbox, run the login test, send a test email, then confirm it arrived.',
+          action: 'Connect mailbox',
+        },
+        send: {
+          label: 'Send',
+          hint: 'Final confirmation',
+          detail: 'When the draft and mailbox are ready, Hermes will ask once more before sending the real email.',
+          action: 'Send email',
+        },
+      },
+    },
+    fields: {
+      companyName: 'Company',
+      website: 'Website',
+      country: 'Country / market',
+      industry: 'Industry',
+      contactName: 'Contact',
+      contactTitle: 'Title',
+      email: 'Email',
+      need: 'Need or pain point',
+      notes: 'Notes',
+      language: 'Email language',
+      tone: 'Tone',
+      subject: 'Subject',
+      body: 'Email body',
+      senderLabel: 'Mailbox name',
+      fromName: 'From name',
+      senderEmail: 'From email',
+      host: 'SMTP host',
+      port: 'Port',
+      secure: 'Use SSL',
+      username: 'SMTP username',
+      password: 'SMTP password',
+    },
+    actions: {
+      openCompany: 'Company docs',
+      importCsv: 'Import CSV',
+      saveLead: 'Save lead',
+      generate: 'Generate draft',
+      generating: 'Generating...',
+      saveDraft: 'Save draft',
+      copyDraft: 'Copy draft',
+      saveSender: 'Save mailbox',
+      testSender: 'Test',
+      testingSender: 'Testing...',
+      sendTestEmail: 'Send test email',
+      sendingTestEmail: 'Sending test...',
+      confirmDelivery: 'I received it',
+      getAuthCode: 'Get key',
+      researchGenerate: 'Research and write',
+      researching: 'Researching...',
+      advancedLead: 'Advanced lead details and CSV',
+      send: 'Confirm send',
+      sending: 'Sending...',
+    },
+    placeholders: {
+      website: 'https://customer.com',
+      email: 'buyer@customer.com',
+      csv: 'Paste CSV here. Headers can include company, email, contact, website, country, notes.',
+      need: 'What might this customer care about?',
+      notes: 'Add anything Hermes should know before writing.',
+      password: 'App password or SMTP password',
+    },
+    status: {
+      companyReady: (name, count) => `${name || 'Company profile'} ready · ${count} doc${count === 1 ? '' : 's'}`,
+      companyMissing: 'Add company docs so this reads like your company.',
+      noLeads: 'No leads yet. Save one lead or paste a CSV.',
+      imported: (count, skipped) => `Imported ${count}. Skipped ${skipped}.`,
+      draftSaved: 'Draft saved.',
+      copied: 'Draft copied.',
+      senderSaved: 'Mailbox saved.',
+      senderReady: 'SMTP connection is ready.',
+      testEmailSent: 'Test email sent. Check your inbox.',
+      deliveryConfirmed: 'Mailbox confirmed. You can send outreach now.',
+      researched: 'Customer researched and draft generated.',
+      workflowGenerated: 'Customer research, ICP, USP, and 10-email sequence are ready.',
+      sent: 'Email sent and recorded.',
+    },
+    warnings: {
+      quickRequired: 'Enter the customer website and email first.',
+      leadRequired: 'Save or select a lead first.',
+      draftRequired: 'Generate a draft first.',
+      senderRequired: 'Save a mailbox before sending.',
+      senderNotConfirmed: 'Finish the mailbox test first. Send one test email and confirm it arrived.',
+      confirmSend: 'This sends a real email. Read it once, then confirm.',
+    },
+    results: {
+      title: 'Research result',
+      subtitle: 'Review the buyer context, sales angles, and email sequence before sending.',
+      customerResearch: 'Customer research',
+      icp: 'Buyer profile',
+      usp: 'Matched USP',
+      emailSequence: 'emails',
+      firstEmail: 'First email',
+      followUp: (step) => `Follow-up ${step}`,
+      day0: 'Send when ready',
+      daysLater: (days) => `${days} day${days === 1 ? '' : 's'} later`,
+      noDetails: 'No clear detail yet.',
+      status: { draft: 'Draft', sent: 'Sent', failed: 'Failed' },
+    },
+    mailSetup: {
+      title: 'Connect your sending mailbox',
+      subtitle: 'Pick a mailbox, paste the app password, then pass the small tests before sending real emails.',
+      chooseProvider: 'Choose mailbox',
+      fillAuth: 'Add email key',
+      testLogin: 'Login test',
+      sendTest: 'Send test',
+      confirmInbox: 'Confirm received',
+      ready: 'Ready to send',
+      advanced: 'Advanced SMTP details',
+      authHint: 'Use an app password or SMTP authorization code, not your normal login password when your provider requires it.',
+      authHelperHint: (provider, smtp) => `${provider} detected · ${smtp}. Open the official page, create an app password, then paste it here.`,
+      customAuthHint: 'For a custom mailbox, ask your mail admin for the SMTP host and app password.',
+      testEmailHint: 'Hermills sends one test email to your sender mailbox. Click “I received it” when it arrives.',
+      providerDescriptions: {
+        gmail: 'Gmail app password',
+        outlook: 'Microsoft 365 SMTP',
+        tencent: 'Tencent enterprise mail',
+        aliyun: 'Alibaba enterprise mail',
+        zoho: 'Zoho Mail SMTP',
+        custom: 'Any SMTP mailbox',
+      },
     },
   },
   keyNudge: { pasteOneKey: 'Paste one API key. New chats will use it automatically.', pasteKeyFirst: 'Paste an API key first.', saving: 'Saving...', savedCanSend: 'Saved. You can send now.', save: 'Save' },
@@ -893,7 +1191,7 @@ const zhCN = withOverrides(en, {
     startChatting: '开始聊天',
   },
   firstRun: { setupEyebrow: 'Hermes 设置', checkingTitle: '正在准备 Hermes。', checkingDescription: '这里只需要做一次。准备好后会直接进入聊天。', oneTimeSetup: '设置 Hermes', packageCheckFallback: 'Hermes 会帮你完成本地设置。' },
-  topbar: { chats: '对话', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
+  topbar: { chats: '对话', devLetter: '开发信', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
   mode: { label: '模式', ariaLabel: '选择界面模式', options: { simple: { label: '简单', description: '只显示日常聊天、文件、助手和基础设置。', switchLabel: '使用简单模式', currentLabel: '已开启简单模式' }, expert: { label: '专家', description: '显示供应商、运行时、隐私和诊断控制。', switchLabel: '使用专家模式', currentLabel: '已开启专家模式' } } },
   chat: { sectionLabel: '聊天', defaultTitle: '问 Hermes', defaultAssistant: '默认助手', addFile: '添加文件', addCompanyMaterial: '添加公司资料', openCompanyKnowledgeAria: '打开公司知识库', selectedFiles: (count) => `${count} 个文件`, selectedCompanyMaterials: (count) => `${count} 份公司资料`, you: '你', emptyTitle: '在这台 Mac 上问 Hermes。', emptyDescription: '需要基于本地内容回答时，可以添加文件。', openSetup: '打开设置', addApiKey: '添加 API Key', openSourcesAria: '打开文件', messageAria: '消息', placeholderReady: '问 Hermes...', placeholderNotReady: '先启动 Hermes', startBeforeSend: '请先启动 Hermes 再发送消息。', newConversation: '新的 Hermes 对话', newAssistantConversation: (name) => `${name} 对话`, emptyActions: { quickChat: { title: '直接提问', description: '开始普通对话，让 Hermes 基于这台 Mac 回答。', action: '开始聊天', prompt: '帮我梳理这件事。' }, companyKnowledge: { title: '完善公司资料', description: '把产品、价格、认证、物流和付款条款教给 Hermes。', action: '打开公司资料', prompt: '基于我们的公司资料回答这个问题。' }, addFiles: { title: '带文件聊天', description: '添加本地文件，让回答使用你的上下文。', action: '添加文件', prompt: '总结我添加的文件。' }, createAssistant: { title: '创建助手', description: '为经常做的任务做一个可复用助手。', action: '创建助手', prompt: '为这个工作流创建一个助手。' } } },
   session: { count: (count) => `${count} 个对话`, newSessionAria: '新建对话', closeAria: '关闭对话列表', searchAria: '搜索对话', searchPlaceholder: '搜索', titleAria: '对话标题', saveTitleAria: '保存标题', renameAria: (title) => `重命名 ${title}`, deleteAria: (title) => `删除 ${title}`, messages: (count) => `${count} 条消息`, noMatch: '没有匹配的对话', tryAnother: '换个词试试', newConversation: '新对话', startWithHermes: '从 Hermes 开始' },
@@ -912,6 +1210,171 @@ const zhCN = withOverrides(en, {
     categoryForNewFiles: '新文件类型',
     fields: { name: '公司名称', website: '官网', markets: '目标市场', mainProducts: '主营产品', certifications: '认证资质', paymentTerms: '付款条款', shippingTerms: '物流条款', brandVoice: '品牌语气', notes: '重要备注' },
     categories: { 'company-profile': '公司档案', 'product-catalog': '产品目录', 'price-list': '价目表', certification: '认证资质', 'shipping-logistics': '物流与运输', 'payment-terms': '付款条款', faq: '常见问题', 'case-study': '案例', other: '其他' },
+  },
+  devLetter: {
+    sectionLabel: '开发信',
+    title: '写一封开发信',
+    subtitle: '输入客户官网和邮箱，Hermes 会先背调客户公司，再写开发信，最后由你确认发送。',
+    quickTitle: '只填官网和邮箱',
+    quickSubtitle: 'Hermes 会读取客户官网，整理客户背景和可能需求，然后按你的公司资料写第一封邮件。',
+    navAria: '打开开发信工具',
+    steps: { auto: '一键流程', leads: '客户', draft: '草稿', send: '发送' },
+    quest: {
+      title: '开发信闯关',
+      subtitle: '一次只做一小步。下一步永远放在最显眼的位置。',
+      nextLabel: '下一步',
+      progress: (done, total) => `${done}/${total} 已完成`,
+      steps: {
+        company: {
+          label: '公司大脑',
+          hint: '产品和优势',
+          detail: '先放入你的公司资料，之后每封开发信都会更像你公司的人写的。',
+          action: '打开公司资料',
+        },
+        lead: {
+          label: '客户',
+          hint: '官网和邮箱',
+          detail: '填客户官网和邮箱就够了。Hermes 会自己去背调客户公司。',
+          action: '填写客户',
+        },
+        research: {
+          label: '背调',
+          hint: '客户背景',
+          detail: '让 Hermes 查客户、整理 ICP 和 USP，然后生成首封邮件和跟进邮件。',
+          action: '背调并生成',
+        },
+        draft: {
+          label: '草稿',
+          hint: '读一遍',
+          detail: '看主题和正文，不合适就直接改，满意后保存或复制。',
+          action: '检查草稿',
+        },
+        mailbox: {
+          label: '邮箱',
+          hint: '安全发信',
+          detail: '连接发件邮箱，完成小测试，并确认测试邮件已经收到。',
+          action: '连接邮箱',
+        },
+        send: {
+          label: '发送',
+          hint: '最后确认',
+          detail: '草稿和邮箱都准备好后，Hermes 会再问一次，再发送真实邮件。',
+          action: '发送邮件',
+        },
+      },
+    },
+    fields: {
+      companyName: '客户公司',
+      website: '客户网站',
+      country: '国家 / 市场',
+      industry: '行业',
+      contactName: '联系人',
+      contactTitle: '职位',
+      email: '邮箱',
+      need: '需求或痛点',
+      notes: '备注',
+      language: '邮件语言',
+      tone: '语气',
+      subject: '主题',
+      body: '正文',
+      senderLabel: '邮箱名称',
+      fromName: '发件人名称',
+      senderEmail: '发件邮箱',
+      host: 'SMTP 服务器',
+      port: '端口',
+      secure: '使用 SSL',
+      username: 'SMTP 用户名',
+      password: 'SMTP 密码',
+    },
+    actions: {
+      openCompany: '公司资料',
+      importCsv: '导入 CSV',
+      saveLead: '保存客户',
+      generate: '生成草稿',
+      generating: '生成中...',
+      saveDraft: '保存草稿',
+      copyDraft: '复制草稿',
+      saveSender: '保存邮箱',
+      testSender: '测试',
+      testingSender: '测试中...',
+      sendTestEmail: '发测试邮件',
+      sendingTestEmail: '发送测试中...',
+      confirmDelivery: '我收到了',
+      getAuthCode: '获取授权码',
+      researchGenerate: '背调并生成',
+      researching: '背调中...',
+      advancedLead: '高级客户资料和 CSV',
+      send: '确认发送',
+      sending: '发送中...',
+    },
+    placeholders: {
+      website: 'https://customer.com',
+      email: 'buyer@customer.com',
+      csv: '把 CSV 粘贴到这里。表头可以写 company、email、contact、website、country、notes，也可以写中文表头。',
+      need: '这个客户可能关心什么？',
+      notes: '写下 Hermes 写信前需要知道的信息。',
+      password: '邮箱授权码或 SMTP 密码',
+    },
+    status: {
+      companyReady: (name, count) => `${name || '公司档案'} 已准备 · ${count} 份资料`,
+      companyMissing: '先添加公司资料，开发信才会像你公司的人写出来。',
+      noLeads: '还没有客户。保存一个客户，或粘贴 CSV 导入。',
+      imported: (count, skipped) => `已导入 ${count} 个，跳过 ${skipped} 个。`,
+      draftSaved: '草稿已保存。',
+      copied: '草稿已复制。',
+      senderSaved: '邮箱已保存。',
+      senderReady: 'SMTP 连接可用。',
+      testEmailSent: '测试邮件已发送。去邮箱里看一下。',
+      deliveryConfirmed: '邮箱已确认。现在可以发送开发信。',
+      researched: '已完成客户背调，并生成开发信草稿。',
+      workflowGenerated: '客户背调、ICP、USP 和 10 封邮件序列都准备好了。',
+      sent: '邮件已发送并记录。',
+    },
+    warnings: {
+      quickRequired: '请先填写客户官网和邮箱。',
+      leadRequired: '请先保存或选择一个客户。',
+      draftRequired: '请先生成开发信草稿。',
+      senderRequired: '发送前请先保存一个发件邮箱。',
+      senderNotConfirmed: '请先完成邮箱测试：发一封测试邮件，并确认已经收到。',
+      confirmSend: '这里会发送真实邮件。请先读一遍，再确认发送。',
+    },
+    results: {
+      title: '背调结果',
+      subtitle: '先看客户背景、销售角度和邮件序列，再决定发哪一封。',
+      customerResearch: '客户背调',
+      icp: '客户画像',
+      usp: '匹配卖点',
+      emailSequence: '封邮件',
+      firstEmail: '首封邮件',
+      followUp: (step) => `第 ${step} 封跟进`,
+      day0: '确认后发送',
+      daysLater: (days) => `${days} 天后`,
+      noDetails: '暂时没有明确细节。',
+      status: { draft: '草稿', sent: '已发送', failed: '失败' },
+    },
+    mailSetup: {
+      title: '连接你的发件邮箱',
+      subtitle: '先选邮箱，再填授权码，完成小测试后就能安全发送。',
+      chooseProvider: '选择邮箱',
+      fillAuth: '填写授权',
+      testLogin: '登录测试',
+      sendTest: '测试邮件',
+      confirmInbox: '确认收到',
+      ready: '可以发送',
+      advanced: '高级 SMTP 细节',
+      authHint: '很多邮箱不能填网页登录密码，要填“邮箱授权码”或“应用专用密码”。',
+      authHelperHint: (provider, smtp) => `已按 ${provider} 准备好 ${smtp}。去官方页面生成授权码，再粘贴回来。`,
+      customAuthHint: '自定义邮箱需要向邮箱管理员确认 SMTP 地址和授权码。',
+      testEmailHint: '测试邮件会发到你的发件邮箱。收到后点“我收到了”。',
+      providerDescriptions: {
+        gmail: 'Gmail 应用专用密码',
+        outlook: 'Microsoft 365 发信',
+        tencent: '腾讯企业邮箱',
+        aliyun: '阿里企业邮箱',
+        zoho: 'Zoho Mail',
+        custom: '任意 SMTP 邮箱',
+      },
+    },
   },
   keyNudge: { pasteOneKey: '粘贴一个 API Key。新对话会自动使用它。', pasteKeyFirst: '请先粘贴 API Key。', saving: '保存中...', savedCanSend: '已保存。现在可以发送。', save: '保存' },
   gateway: { restartTitle: 'Hermes 需要重启。', notReadyTitle: 'Hermes 还没准备好。', startHermes: '启动 Hermes', tryAgain: '重试', details: '详情', setup: '设置', starting: 'Hermes 正在启动，通常只需要一小会儿。', failed: '请重试。如果还是失败，打开设置查看更多选项。', notInstalled: '先设置 Hermes，才能开启本地私有聊天。', paused: '启动 Hermes 后才能发送消息。' },

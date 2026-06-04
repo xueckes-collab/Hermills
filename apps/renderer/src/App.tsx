@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import {
   AlertCircle,
   Bot,
@@ -11,6 +11,7 @@ import {
   Copy,
   Cpu,
   Download,
+  ExternalLink,
   Eye,
   FileText,
   FolderOpen,
@@ -18,6 +19,7 @@ import {
   KeyRound,
   Languages,
   ListChecks,
+  Mail,
   Menu,
   MessageCircle,
   PanelRightOpen,
@@ -31,17 +33,19 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
+  Upload,
   UserRound,
   Wrench,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, InstallEvent, Material, MaterialPreview, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
 
 type AdvancedPanel = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
+type WorkspaceView = 'chat' | 'outreach'
 
 const advancedItems: Array<{ id: AdvancedPanel; icon: LucideIcon }> = [
   { id: 'setup', icon: Cpu },
@@ -104,12 +108,31 @@ const providerPresets = [
 ] as const
 
 type ProviderPresetId = (typeof providerPresets)[number]['id']
+type SenderProviderId = 'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom'
 
 type ProviderForm = {
   displayName: string
   baseUrl: string
   defaultModel: string
   apiKey: string
+}
+
+const senderProviderPresets: Array<{ id: SenderProviderId; label: string; host: string; port: string; secure: boolean }> = [
+  { id: 'gmail', label: 'Gmail', host: 'smtp.gmail.com', port: '587', secure: false },
+  { id: 'outlook', label: 'Outlook', host: 'smtp.office365.com', port: '587', secure: false },
+  { id: 'tencent', label: 'Tencent', host: 'smtp.exmail.qq.com', port: '465', secure: true },
+  { id: 'aliyun', label: 'Aliyun', host: 'smtp.mxhichina.com', port: '465', secure: true },
+  { id: 'zoho', label: 'Zoho', host: 'smtp.zoho.com', port: '465', secure: true },
+  { id: 'custom', label: 'Custom', host: '', port: '587', secure: false },
+]
+
+const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: string }> = {
+  gmail: { url: 'https://myaccount.google.com/apppasswords', smtpLabel: 'smtp.gmail.com:587' },
+  outlook: { url: 'https://support.microsoft.com/account-billing/create-app-passwords-from-the-security-info-preview-page-d2bc744a-f33d-483c-923d-9715699958cc', smtpLabel: 'smtp.office365.com:587' },
+  tencent: { url: 'https://exmail.qq.com/', smtpLabel: 'smtp.exmail.qq.com:465' },
+  aliyun: { url: 'https://qiye.aliyun.com/alimail/', smtpLabel: 'smtp.mxhichina.com:465' },
+  zoho: { url: 'https://accounts.zoho.com/userdetails#security/app_password', smtpLabel: 'smtp.zoho.com:465' },
+  custom: { smtpLabel: 'SMTP' },
 }
 
 type OnboardingStepId = 'language' | 'identity' | 'provider' | 'theme' | 'workspace' | 'features'
@@ -417,10 +440,12 @@ export default function App() {
   const materials = useEndpoint(api.materials, fallback.materials, chatEnabled)
   const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, chatEnabled)
   const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, chatEnabled)
+  const outreachLeads = useEndpoint(api.outreachLeads, fallback.outreachLeads, chatEnabled)
+  const outreachSenders = useEndpoint(api.outreachSenderAccounts, fallback.outreachSenderAccounts, chatEnabled)
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
-  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error
+  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachSenders.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
 
   async function refreshAfterDeploy() {
@@ -516,6 +541,12 @@ export default function App() {
         setSessions={sessions.setData}
         materials={materials.data}
         setMaterials={materials.setData}
+        companyProfile={companyProfile.data}
+        companyMaterials={companyMaterials.data}
+        outreachLeads={outreachLeads.data}
+        setOutreachLeads={outreachLeads.setData}
+        outreachSenders={outreachSenders.data}
+        setOutreachSenders={outreachSenders.setData}
         setRuntime={runtime.setData}
         agents={agents.data}
         setAgents={agents.setData}
@@ -574,6 +605,12 @@ function ClientWorkspace({
   setSessions,
   materials,
   setMaterials,
+  companyProfile,
+  companyMaterials,
+  outreachLeads,
+  setOutreachLeads,
+  outreachSenders,
+  setOutreachSenders,
   setRuntime,
   agents,
   setAgents,
@@ -596,6 +633,12 @@ function ClientWorkspace({
   setSessions: (sessions: ChatSession[]) => void
   materials: Material[]
   setMaterials: (materials: Material[]) => void
+  companyProfile: CompanyProfile
+  companyMaterials: Material[]
+  outreachLeads: OutreachLead[]
+  setOutreachLeads: (leads: OutreachLead[]) => void
+  outreachSenders: OutreachSenderAccount[]
+  setOutreachSenders: (senders: OutreachSenderAccount[]) => void
   setRuntime: (runtime: RuntimeStatus) => void
   agents: Agent[]
   setAgents: (agents: Agent[]) => void
@@ -613,6 +656,7 @@ function ClientWorkspace({
   copy: UiCopy
   openCompanyKnowledge: () => void
 }) {
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat')
   const [activeSessionId, setActiveSessionId] = useState('')
   const [preferredAgentId, setPreferredAgentId] = useState('')
   const [sessionQuery, setSessionQuery] = useState('')
@@ -701,6 +745,7 @@ function ClientWorkspace({
     const session = await api.createChatSession(agent ? copy.chat.newAssistantConversation(agent.name) : copy.chat.newConversation, getChatSessionDefaults(agent, defaultChatProvider))
     setSessions([session, ...sessions])
     setActiveSessionId(session.id)
+    setWorkspaceView('chat')
     setSessionsOpen(false)
   }
 
@@ -733,6 +778,7 @@ function ClientWorkspace({
       const session = await api.createChatSession(copy.chat.newAssistantConversation(agent.name), getChatSessionDefaults(agent, defaultChatProvider))
       setSessions([session, ...sessions])
       setActiveSessionId(session.id)
+      setWorkspaceView('chat')
       setAssistantsOpen(false)
     } catch (err) {
       setSendError(humanizeErrorMessage(err, copy, 'message'))
@@ -742,6 +788,7 @@ function ClientWorkspace({
   function selectSession(id: string) {
     setSendError('')
     setActiveSessionId(id)
+    setWorkspaceView('chat')
     setSessionsOpen(false)
   }
 
@@ -917,6 +964,8 @@ function ClientWorkspace({
         onDelete={deleteSession}
         onOpenAssistants={() => setAssistantsOpen(true)}
         onOpenFiles={() => setSourcesOpen(true)}
+        onOpenOutreach={() => setWorkspaceView('outreach')}
+        activeWorkspaceView={workspaceView}
         onOpenSettings={() => openAdvanced('setup')}
         onOpenUpdate={() => openAdvanced('setup')}
         copy={copy}
@@ -938,6 +987,8 @@ function ClientWorkspace({
             onClose={() => setSessionsOpen(false)}
             onOpenAssistants={() => setAssistantsOpen(true)}
             onOpenFiles={() => setSourcesOpen(true)}
+            onOpenOutreach={() => setWorkspaceView('outreach')}
+            activeWorkspaceView={workspaceView}
             onOpenSettings={() => openAdvanced('setup')}
             onOpenUpdate={() => openAdvanced('setup')}
             className="mobile-session-panel"
@@ -947,6 +998,34 @@ function ClientWorkspace({
       ) : null}
 
       <section className="conversation-surface">
+        <div className="mobile-workspace-toolbar">
+          <button className="icon-button" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
+            <Menu size={17} />
+          </button>
+          <button className={`icon-button ${workspaceView === 'outreach' ? 'active' : ''}`} aria-label={copy.devLetter.navAria} onClick={() => setWorkspaceView('outreach')}>
+            <Mail size={17} />
+          </button>
+          <button className="icon-button" aria-label={copy.topbar.files} onClick={() => setSourcesOpen(true)}>
+            <PanelRightOpen size={17} />
+          </button>
+          <button className="icon-button" aria-label={copy.topbar.settingsAria} onClick={() => openAdvanced('setup')}>
+            <Settings size={17} />
+          </button>
+        </div>
+        {workspaceView === 'outreach' ? (
+          <DevelopmentLetterPage
+            companyProfile={companyProfile}
+            companyMaterials={companyMaterials}
+            leads={outreachLeads}
+            setLeads={setOutreachLeads}
+            senderAccounts={outreachSenders}
+            setSenderAccounts={setOutreachSenders}
+            providers={providers}
+            onOpenCompanyKnowledge={openCompanyKnowledge}
+            copy={copy}
+          />
+        ) : (
+          <>
         {!chatReady ? <GatewayBanner runtime={runtime} setRuntime={setRuntime} openAdvanced={openAdvanced} copy={copy} /> : null}
 
         <div className="conversation-title">
@@ -1048,6 +1127,8 @@ function ClientWorkspace({
             {sending ? copy.common.sending : copy.common.send}
           </button>
         </form>
+          </>
+        )}
       </section>
 
       <SourcesDrawer
@@ -1084,6 +1165,849 @@ function ClientWorkspace({
       />
     </main>
   )
+}
+
+type LeadFormDraft = Required<Pick<OutreachLeadInput, 'companyName' | 'website' | 'country' | 'industry' | 'contactName' | 'contactTitle' | 'email' | 'need' | 'notes'>> & {
+  tags: string
+}
+
+type SenderFormDraft = {
+  id?: string
+  label: string
+  fromName: string
+  email: string
+  host: string
+  port: string
+  secure: boolean
+  username: string
+  password: string
+}
+
+type OutreachQuestStepId = 'company' | 'lead' | 'research' | 'draft' | 'mailbox' | 'send'
+
+function DevelopmentLetterPage({
+  companyProfile,
+  companyMaterials,
+  leads,
+  setLeads,
+  senderAccounts,
+  setSenderAccounts,
+  providers,
+  onOpenCompanyKnowledge,
+  copy,
+}: {
+  companyProfile: CompanyProfile
+  companyMaterials: Material[]
+  leads: OutreachLead[]
+  setLeads: (leads: OutreachLead[]) => void
+  senderAccounts: OutreachSenderAccount[]
+  setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
+  providers: Provider[]
+  onOpenCompanyKnowledge: () => void
+  copy: UiCopy
+}) {
+  const [leadDraft, setLeadDraft] = useState<LeadFormDraft>(() => emptyLeadDraft())
+  const [quickWebsite, setQuickWebsite] = useState('')
+  const [quickEmail, setQuickEmail] = useState('')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [selectedLeadId, setSelectedLeadId] = useState('')
+  const [csvText, setCsvText] = useState('')
+  const [csvOpen, setCsvOpen] = useState(false)
+  const [draft, setDraft] = useState<OutreachDraft>()
+  const [workflow, setWorkflow] = useState<OutreachWorkflow>()
+  const [selectedEmailId, setSelectedEmailId] = useState('')
+  const [draftSubject, setDraftSubject] = useState('')
+  const [draftBody, setDraftBody] = useState('')
+  const [language, setLanguage] = useState('English')
+  const [tone, setTone] = useState('professional, warm, concise')
+  const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile))
+  const [senderProviderId, setSenderProviderId] = useState<SenderProviderId>('gmail')
+  const [selectedSenderId, setSelectedSenderId] = useState('')
+  const [busy, setBusy] = useState('')
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const quickWebsiteRef = useRef<HTMLInputElement>(null)
+  const draftBodyRef = useRef<HTMLTextAreaElement>(null)
+  const senderEmailRef = useRef<HTMLInputElement>(null)
+  const selectedLead = selectedLeadId ? leads.find((lead) => lead.id === selectedLeadId) : undefined
+  const selectedSender = selectedSenderId ? senderAccounts.find((account) => account.id === selectedSenderId) : undefined
+  const defaultProvider = providers.find((provider) => provider.status === 'connected')
+  const workflowEmails = useMemo<EmailSequenceDraft[]>(() => workflow ? [workflow.initialEmail, ...workflow.followUps] : [], [workflow])
+  const selectedWorkflowEmail = workflowEmails.find((email) => email.id === selectedEmailId) ?? workflowEmails[0]
+  const activeDraftId = selectedWorkflowEmail?.draftId ?? draft?.id
+  const activeDraftStatus = selectedWorkflowEmail?.status ?? draft?.status
+  const senderLoginReady = Boolean(selectedSender?.lastTestedAt && !selectedSender.lastError)
+  const senderTestEmailReady = Boolean(selectedSender?.lastTestEmailAt && !selectedSender.lastError)
+  const senderDeliveryReady = Boolean(selectedSender?.deliveryConfirmedAt)
+  const senderProvider = senderProviderPresets.find((provider) => provider.id === senderProviderId) ?? senderProviderPresets[0]
+  const senderAuthGuide = senderAuthGuides[senderProviderId]
+  const quickLeadReady = Boolean(quickWebsite.trim() && quickEmail.trim())
+  const companyReady = Boolean(companyProfile.name || companyMaterials.length)
+  const researchReady = Boolean(workflow)
+  const draftReady = Boolean(activeDraftId && draftSubject.trim() && draftBody.trim())
+  const sendReady = Boolean(draftReady && senderDeliveryReady && activeDraftStatus !== 'sent')
+  const questSteps: Array<{
+    id: OutreachQuestStepId
+    icon: LucideIcon
+    done: boolean
+    action?: () => void | Promise<void>
+    disabled?: boolean
+  }> = [
+    { id: 'company', icon: Building2, done: companyReady, action: onOpenCompanyKnowledge },
+    { id: 'lead', icon: Mail, done: quickLeadReady, action: focusQuickLead },
+    { id: 'research', icon: Search, done: researchReady, action: autoGenerateDraft, disabled: !quickLeadReady || busy === 'auto' },
+    { id: 'draft', icon: Pencil, done: draftReady, action: focusDraft },
+    { id: 'mailbox', icon: KeyRound, done: senderDeliveryReady, action: focusSender },
+    { id: 'send', icon: Send, done: activeDraftStatus === 'sent', action: sendDraft, disabled: !sendReady || busy === 'send' },
+  ]
+  const currentQuestStep = (questSteps.find((step) => !step.done) ?? questSteps[questSteps.length - 1])!
+  const CurrentQuestIcon = currentQuestStep.icon
+  const completedQuestSteps = questSteps.filter((step) => step.done).length
+
+  useEffect(() => {
+    if (!selectedLead) return
+    setLeadDraft(leadFormFromLead(selectedLead))
+  }, [selectedLead?.id])
+
+  useEffect(() => {
+    if (!selectedSender) return
+    setSenderDraft(senderFormFromAccount(selectedSender))
+    setSenderProviderId(senderProviderFromHost(selectedSender.host))
+  }, [selectedSender?.id])
+
+  useEffect(() => {
+    if (!selectedSenderId && senderAccounts[0]) setSelectedSenderId(senderAccounts[0].id)
+  }, [selectedSenderId, senderAccounts])
+
+  function selectWorkflowEmail(email: EmailSequenceDraft) {
+    setSelectedEmailId(email.id)
+    setDraftSubject(email.subject)
+    setDraftBody(email.body)
+  }
+
+  function updateWorkflowEmail(emailId: string, updates: Partial<EmailSequenceDraft>) {
+    setWorkflow((current) => {
+      if (!current) return current
+      const updatedAt = new Date().toISOString()
+      if (current.initialEmail.id === emailId) {
+        return { ...current, initialEmail: { ...current.initialEmail, ...updates }, updatedAt }
+      }
+      return {
+        ...current,
+        followUps: current.followUps.map((email) => email.id === emailId ? { ...email, ...updates } : email),
+        updatedAt
+      }
+    })
+  }
+
+  function updateLead(field: keyof LeadFormDraft, value: string) {
+    setLeadDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function updateSender(field: keyof SenderFormDraft, value: string | boolean) {
+    setSenderDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function applySenderProviderToDraft(current: SenderFormDraft, id: SenderProviderId): SenderFormDraft {
+    const preset = senderProviderPresets.find((item) => item.id === id)
+    if (!preset || id === 'custom') return current
+    return {
+      ...current,
+      label: current.label && current.label !== 'Company mailbox' ? current.label : `${preset.label} mailbox`,
+      host: preset.host,
+      port: preset.port,
+      secure: preset.secure,
+      username: current.username || current.email,
+    }
+  }
+
+  function chooseSenderProvider(id: SenderProviderId) {
+    setSenderProviderId(id)
+    setSenderDraft((current) => applySenderProviderToDraft(current, id))
+  }
+
+  function updateSenderEmail(email: string) {
+    const detected = senderProviderFromEmail(email)
+    if (detected) setSenderProviderId(detected)
+    setSenderDraft((current) => {
+      const next = {
+        ...current,
+        email,
+        username: current.username && current.username !== current.email ? current.username : email,
+      }
+      return detected ? applySenderProviderToDraft(next, detected) : next
+    })
+  }
+
+  function focusQuickLead() {
+    quickWebsiteRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    quickWebsiteRef.current?.focus()
+  }
+
+  function focusDraft() {
+    draftBodyRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    draftBodyRef.current?.focus()
+  }
+
+  function focusSender() {
+    senderEmailRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    senderEmailRef.current?.focus()
+  }
+
+  function replaceSenderAccount(sender: OutreachSenderAccount) {
+    setSenderAccounts(senderAccounts.some((account) => account.id === sender.id)
+      ? senderAccounts.map((account) => account.id === sender.id ? sender : account)
+      : [sender, ...senderAccounts])
+    setSelectedSenderId(sender.id)
+    setSenderDraft(senderFormFromAccount(sender))
+    setSenderProviderId(senderProviderFromHost(sender.host))
+  }
+
+  async function saveLead() {
+    const input = leadInputFromForm(leadDraft)
+    if (!input.companyName) {
+      setError(copy.devLetter.warnings.leadRequired)
+      return undefined
+    }
+    setBusy('lead')
+    setError('')
+    setNotice('')
+    try {
+      const saved = selectedLead
+        ? await api.updateOutreachLead(selectedLead.id, input)
+        : await api.createOutreachLead(input)
+      setLeads(selectedLead ? leads.map((lead) => lead.id === saved.id ? saved : lead) : [saved, ...leads])
+      setSelectedLeadId(saved.id)
+      return saved
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function importCsv() {
+    if (!csvText.trim()) return
+    setBusy('csv')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.importOutreachLeads(csvText)
+      setLeads([...result.imported, ...leads])
+      if (result.imported[0]) setSelectedLeadId(result.imported[0].id)
+      setNotice(copy.devLetter.status.imported(result.imported.length, result.skipped.length))
+      setCsvText('')
+      setCsvOpen(false)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function generateDraft() {
+    let lead = selectedLead
+    if (!lead) lead = await saveLead()
+    if (!lead) return
+    setBusy('generate')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.generateOutreachDraft({
+        leadId: lead.id,
+        language,
+        tone,
+        providerId: defaultProvider?.id,
+        model: defaultProvider?.defaultModel
+      })
+      setWorkflow(undefined)
+      setSelectedEmailId('')
+      setDraft(next)
+      setDraftSubject(next.subject)
+      setDraftBody(next.body)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function autoGenerateDraft() {
+    if (!quickWebsite.trim() || !quickEmail.trim()) {
+      setError(copy.devLetter.warnings.quickRequired)
+      return
+    }
+    setBusy('auto')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.autoGenerateOutreachWorkflow({
+        website: quickWebsite.trim(),
+        email: quickEmail.trim(),
+        language,
+        tone,
+        providerId: defaultProvider?.id,
+        model: defaultProvider?.defaultModel
+      })
+      const nextLeads = await api.outreachLeads()
+      setLeads(nextLeads)
+      if (next.leadId) {
+        setSelectedLeadId(next.leadId)
+        const researchedLead = nextLeads.find((lead) => lead.id === next.leadId)
+        if (researchedLead) setLeadDraft(leadFormFromLead(researchedLead))
+      }
+      setDraft(undefined)
+      setWorkflow(next)
+      setSelectedEmailId(next.initialEmail.id)
+      setDraftSubject(next.initialEmail.subject)
+      setDraftBody(next.initialEmail.body)
+      setNotice(copy.devLetter.status.workflowGenerated)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveDraftEdits() {
+    if (!activeDraftId) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return undefined
+    }
+    setBusy('draft')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.updateOutreachDraft(activeDraftId, { subject: draftSubject, body: draftBody, language, tone })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError })
+      else setDraft(next)
+      setNotice(copy.devLetter.status.draftSaved)
+      return next
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function copyDraft() {
+    if (!draftSubject.trim() || !draftBody.trim()) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return
+    }
+    await navigator.clipboard?.writeText(`Subject: ${draftSubject.trim()}\n\n${draftBody.trim()}`)
+    setNotice(copy.devLetter.status.copied)
+  }
+
+  async function saveSender() {
+    if (!senderDraft.label.trim() || !senderDraft.email.trim() || !senderDraft.host.trim()) {
+      setError(copy.devLetter.warnings.senderRequired)
+      return undefined
+    }
+    setBusy('sender')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachSenderAccount({
+        id: senderDraft.id,
+        label: senderDraft.label.trim(),
+        fromName: senderDraft.fromName.trim() || undefined,
+        email: senderDraft.email.trim(),
+        host: senderDraft.host.trim(),
+        port: Number(senderDraft.port || 587),
+        secure: senderDraft.secure,
+        username: senderDraft.username.trim() || undefined,
+        password: senderDraft.password.trim() || undefined,
+        enabled: true
+      })
+      replaceSenderAccount(saved)
+      setNotice(copy.devLetter.status.senderSaved)
+      return saved
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function testSender() {
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) return
+    setBusy('testSender')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.testOutreachSenderAccount(sender.id)
+      replaceSenderAccount(result.sender)
+      if (result.ok) setNotice(copy.devLetter.status.senderReady)
+      else setError(result.message)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function sendSenderTestEmail() {
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) return
+    setBusy('testEmail')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.sendOutreachSenderTestEmail(sender.id)
+      replaceSenderAccount(result.sender)
+      if (result.ok) setNotice(copy.devLetter.status.testEmailSent)
+      else setError(result.message)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function confirmSenderDelivery() {
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) return
+    setBusy('confirmDelivery')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.confirmOutreachSenderDelivery(sender.id)
+      replaceSenderAccount(result.sender)
+      setNotice(copy.devLetter.status.deliveryConfirmed)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function sendDraft() {
+    if (!activeDraftId) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return
+    }
+    const hasChanges = selectedWorkflowEmail
+      ? selectedWorkflowEmail.subject !== draftSubject || selectedWorkflowEmail.body !== draftBody
+      : Boolean(draft && (draft.subject !== draftSubject || draft.body !== draftBody))
+    const savedDraft = hasChanges ? await saveDraftEdits() : undefined
+    if (hasChanges && !savedDraft) return
+    const draftId = savedDraft?.id ?? activeDraftId
+    const sender = selectedSender ?? await saveSender()
+    const to = selectedLead?.email || leadDraft.email
+    if (!sender) {
+      setError(copy.devLetter.warnings.senderRequired)
+      return
+    }
+    if (!sender.deliveryConfirmedAt) {
+      setError(copy.devLetter.warnings.senderNotConfirmed)
+      return
+    }
+    if (!window.confirm(copy.devLetter.warnings.confirmSend)) return
+    setBusy('send')
+    setError('')
+    setNotice('')
+    try {
+      const sent = await api.sendOutreachDraft(draftId, { senderAccountId: sender.id, to })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError })
+      else setDraft(sent)
+      setNotice(copy.devLetter.status.sent)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="outreach-workspace">
+      <header className="conversation-title outreach-title">
+        <div className="conversation-heading">
+          <div className="outreach-title-icon"><Mail size={22} /></div>
+          <div>
+            <span>{copy.devLetter.sectionLabel}</span>
+            <h1>{copy.devLetter.title}</h1>
+            <p>{copy.devLetter.subtitle}</p>
+          </div>
+        </div>
+        <button className="soft-button compact" type="button" onClick={onOpenCompanyKnowledge}>
+          <Building2 size={15} />
+          {copy.devLetter.actions.openCompany}
+        </button>
+      </header>
+
+      <div className={`status-hint ${companyProfile.name || companyMaterials.length ? 'success' : 'warning'}`}>
+        <Building2 size={15} />
+        {companyProfile.name || companyMaterials.length
+          ? copy.devLetter.status.companyReady(companyProfile.name, companyMaterials.length)
+          : copy.devLetter.status.companyMissing}
+      </div>
+
+      <section className="quiet-panel outreach-quest-panel" aria-label={copy.devLetter.quest.title}>
+        <div className="panel-heading-row">
+          <div>
+            <span>{copy.devLetter.quest.progress(completedQuestSteps, questSteps.length)}</span>
+            <h3>{copy.devLetter.quest.title}</h3>
+            <p>{copy.devLetter.quest.subtitle}</p>
+          </div>
+          {currentQuestStep.action ? (
+            <button className="primary-button compact" type="button" disabled={currentQuestStep.disabled} onClick={currentQuestStep.action}>
+              <CurrentQuestIcon size={14} />
+              {copy.devLetter.quest.steps[currentQuestStep.id].action}
+            </button>
+          ) : null}
+        </div>
+        <div className="quest-step-grid">
+          {questSteps.map((step) => {
+            const StepIcon = step.icon
+            const state = step.done ? 'done' : step.id === currentQuestStep.id ? 'active' : 'locked'
+            return (
+              <div className={`quest-step-card ${state}`} key={step.id}>
+                <span className="quest-step-icon">{step.done ? <CheckCircle2 size={15} /> : <StepIcon size={15} />}</span>
+                <strong>{copy.devLetter.quest.steps[step.id].label}</strong>
+                <small>{copy.devLetter.quest.steps[step.id].hint}</small>
+              </div>
+            )
+          })}
+        </div>
+        <div className="quest-current">
+          <span>{copy.devLetter.quest.nextLabel}</span>
+          <strong>{copy.devLetter.quest.steps[currentQuestStep.id].label}</strong>
+          <p>{copy.devLetter.quest.steps[currentQuestStep.id].detail}</p>
+        </div>
+      </section>
+
+      <section className="quiet-panel outreach-quick-panel">
+        <div className="panel-heading-row">
+          <div>
+            <span>{copy.devLetter.steps.auto}</span>
+            <h3>{copy.devLetter.quickTitle}</h3>
+            <p>{copy.devLetter.quickSubtitle}</p>
+          </div>
+          <button className="primary-button compact" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
+            <Mail size={14} />
+            {busy === 'auto' ? copy.devLetter.actions.researching : copy.devLetter.actions.researchGenerate}
+          </button>
+        </div>
+        <div className="outreach-quick-grid">
+          <Field label={copy.devLetter.fields.website}><input ref={quickWebsiteRef} value={quickWebsite} onChange={(event) => setQuickWebsite(event.target.value)} placeholder={copy.devLetter.placeholders.website} /></Field>
+          <Field label={copy.devLetter.fields.email}><input value={quickEmail} onChange={(event) => setQuickEmail(event.target.value)} placeholder={copy.devLetter.placeholders.email} /></Field>
+        </div>
+      </section>
+
+      {workflow ? (
+        <section className="quiet-panel outreach-workflow-panel">
+          <div className="panel-heading-row">
+            <div>
+              <span>{copy.devLetter.results.title}</span>
+              <h3>{workflow.research.companyName}</h3>
+              <p>{copy.devLetter.results.subtitle}</p>
+            </div>
+            <span className="status-pill connected">{workflow.followUps.length + 1} {copy.devLetter.results.emailSequence}</span>
+          </div>
+
+          <div className="outreach-result-grid">
+            <article className="outreach-insight-card">
+              <span>{copy.devLetter.results.customerResearch}</span>
+              <strong>{workflow.research.title || workflow.research.industry || workflow.research.companyName}</strong>
+              <p>{workflow.research.inferredNeed || workflow.research.description || copy.devLetter.results.noDetails}</p>
+              {workflow.research.fetchedUrls[0] ? <small>{workflow.research.fetchedUrls[0]}</small> : null}
+            </article>
+            <article className="outreach-insight-card">
+              <span>{copy.devLetter.results.icp}</span>
+              {workflow.icps.slice(0, 2).map((icp) => (
+                <div className="outreach-mini-block" key={icp.id}>
+                  <strong>{icp.name}</strong>
+                  <p>{icp.painPoints[0] || icp.salesAngles[0] || icp.industrySegment || copy.devLetter.results.noDetails}</p>
+                </div>
+              ))}
+            </article>
+            <article className="outreach-insight-card">
+              <span>{copy.devLetter.results.usp}</span>
+              {workflow.usps.slice(0, 3).map((usp) => (
+                <div className="outreach-mini-block" key={usp.id}>
+                  <strong>{usp.headline}</strong>
+                  <p>{usp.buyerAngle || usp.proof || copy.devLetter.results.noDetails}</p>
+                </div>
+              ))}
+            </article>
+          </div>
+
+          <div className="outreach-email-sequence" aria-label={copy.devLetter.results.emailSequence}>
+            {workflowEmails.map((email) => (
+              <button
+                className={`outreach-email-row ${selectedWorkflowEmail?.id === email.id ? 'active' : ''}`}
+                type="button"
+                key={email.id}
+                onClick={() => selectWorkflowEmail(email)}
+              >
+                <span>{email.step === 0 ? copy.devLetter.results.firstEmail : copy.devLetter.results.followUp(email.step)}</span>
+                <strong>{email.subject}</strong>
+                <small>{email.step === 0 ? copy.devLetter.results.day0 : copy.devLetter.results.daysLater(email.delayDays)} · {email.strategy} · {copy.devLetter.results.status[email.status]}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="outreach-grid">
+        <section className="quiet-panel outreach-panel">
+          <div className="panel-heading-row">
+            <div>
+              <span>{copy.devLetter.steps.draft}</span>
+              <h3>{selectedWorkflowEmail ? selectedWorkflowEmail.strategy : copy.devLetter.fields.body}</h3>
+            </div>
+            <button className="soft-button compact" type="button" disabled={busy === 'generate'} onClick={generateDraft}>
+              {busy === 'generate' ? copy.devLetter.actions.generating : copy.devLetter.actions.generate}
+            </button>
+          </div>
+          <div className="lead-form-grid">
+            <Field label={copy.devLetter.fields.language}><input value={language} onChange={(event) => setLanguage(event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.tone}><input value={tone} onChange={(event) => setTone(event.target.value)} /></Field>
+          </div>
+          <Field label={copy.devLetter.fields.subject}><input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></Field>
+          <Field label={copy.devLetter.fields.body}><textarea ref={draftBodyRef} className="outreach-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></Field>
+          <div className="outreach-actions">
+            {activeDraftStatus ? <span className={`status-pill ${activeDraftStatus}`}>{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+            <button className="soft-button compact" type="button" disabled={!activeDraftId} onClick={saveDraftEdits}>{copy.devLetter.actions.saveDraft}</button>
+            <button className="soft-button compact" type="button" disabled={!draftSubject || !draftBody} onClick={copyDraft}>
+              <Copy size={14} />
+              {copy.devLetter.actions.copyDraft}
+            </button>
+          </div>
+        </section>
+
+        <section className="quiet-panel outreach-send-panel">
+          <div className="panel-heading-row">
+            <div>
+              <span>{copy.devLetter.steps.send}</span>
+              <h3>{copy.devLetter.mailSetup.title}</h3>
+              <p>{copy.devLetter.mailSetup.subtitle}</p>
+            </div>
+            <div className="outreach-actions">
+              <button className="primary-button compact" type="button" disabled={busy === 'send' || activeDraftStatus === 'sent' || !senderDeliveryReady} onClick={sendDraft}>
+                <Send size={14} />
+                {busy === 'send' ? copy.devLetter.actions.sending : copy.devLetter.actions.send}
+              </button>
+            </div>
+          </div>
+          <div className="mail-provider-grid">
+            {senderProviderPresets.map((provider) => (
+              <button
+                className={`mail-provider-card ${senderProviderId === provider.id ? 'active' : ''}`}
+                type="button"
+                key={provider.id}
+                onClick={() => chooseSenderProvider(provider.id)}
+              >
+                <Mail size={15} />
+                <strong>{provider.label}</strong>
+              </button>
+            ))}
+          </div>
+          <div className="mail-simple-grid">
+            <Field label={copy.devLetter.fields.senderEmail}>
+              <input ref={senderEmailRef} value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" />
+            </Field>
+            <Field label={copy.devLetter.fields.password}>
+              <input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || copy.devLetter.placeholders.password : copy.devLetter.placeholders.password} />
+            </Field>
+          </div>
+          <div className="mail-auth-assistant">
+            <div className="mail-auth-copy">
+              <KeyRound size={15} />
+              <span>{senderAuthGuide.url ? copy.devLetter.mailSetup.authHelperHint(senderProvider.label, senderAuthGuide.smtpLabel) : copy.devLetter.mailSetup.customAuthHint}</span>
+            </div>
+            {senderAuthGuide.url ? (
+              <a className="soft-button compact mail-auth-link" href={senderAuthGuide.url} target="_blank" rel="noreferrer">
+                <ExternalLink size={13} />
+                {copy.devLetter.actions.getAuthCode}
+              </a>
+            ) : null}
+          </div>
+          <div className="mail-action-row">
+            <button className="soft-button compact" type="button" disabled={busy === 'sender'} onClick={saveSender}>{copy.devLetter.actions.saveSender}</button>
+            <button className="soft-button compact" type="button" disabled={busy === 'testSender'} onClick={testSender}>{busy === 'testSender' ? copy.devLetter.actions.testingSender : copy.devLetter.actions.testSender}</button>
+            <button className="soft-button compact" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>
+              {busy === 'testEmail' ? copy.devLetter.actions.sendingTestEmail : copy.devLetter.actions.sendTestEmail}
+            </button>
+            <button className="primary-button compact" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>
+              {copy.devLetter.actions.confirmDelivery}
+            </button>
+          </div>
+          <p className="mail-test-hint">{copy.devLetter.mailSetup.testEmailHint}</p>
+          {selectedSender?.lastError ? <div className="inline-alert compact">{selectedSender.lastError}</div> : null}
+          {senderDeliveryReady ? <div className="status-hint success"><CheckCircle2 size={15} />{copy.devLetter.mailSetup.ready}</div> : null}
+          <details className="mail-advanced-details">
+            <summary>{copy.devLetter.mailSetup.advanced}</summary>
+            <div className="sender-form-grid">
+              <Field label={copy.devLetter.fields.senderLabel}><input value={senderDraft.label} onChange={(event) => updateSender('label', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.fromName}><input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.host}><input value={senderDraft.host} onChange={(event) => {
+                updateSender('host', event.target.value)
+                setSenderProviderId(senderProviderFromHost(event.target.value))
+              }} /></Field>
+              <Field label={copy.devLetter.fields.port}><input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.username}><input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></Field>
+              <label className="check-row outreach-secure-row">
+                <input type="checkbox" checked={senderDraft.secure} onChange={(event) => updateSender('secure', event.target.checked)} />
+                {copy.devLetter.fields.secure}
+              </label>
+            </div>
+          </details>
+          <div className="outreach-actions">
+            {senderAccounts.map((account) => (
+              <button className={`sender-chip ${selectedSenderId === account.id ? 'active' : ''}`} type="button" key={account.id} onClick={() => setSelectedSenderId(account.id)}>
+                {account.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <details className="outreach-advanced-panel" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
+        <summary>{copy.devLetter.actions.advancedLead}</summary>
+        <section className="quiet-panel outreach-panel">
+          <div className="panel-heading-row">
+            <div>
+              <span>{copy.devLetter.steps.leads}</span>
+              <h3>{copy.devLetter.fields.companyName}</h3>
+            </div>
+            <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
+              <Upload size={14} />
+              {copy.devLetter.actions.importCsv}
+            </button>
+          </div>
+
+          {csvOpen ? (
+            <div className="csv-import-box">
+              <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder={copy.devLetter.placeholders.csv} rows={4} />
+              <button className="primary-button compact" type="button" disabled={busy === 'csv'} onClick={importCsv}>{busy === 'csv' ? copy.common.saving : copy.devLetter.actions.importCsv}</button>
+            </div>
+          ) : null}
+
+          <div className="lead-form-grid">
+            <Field label={copy.devLetter.fields.companyName}><input value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.email}><input value={leadDraft.email} onChange={(event) => updateLead('email', event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.contactName}><input value={leadDraft.contactName} onChange={(event) => updateLead('contactName', event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.contactTitle}><input value={leadDraft.contactTitle} onChange={(event) => updateLead('contactTitle', event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.website}><input value={leadDraft.website} onChange={(event) => updateLead('website', event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.country}><input value={leadDraft.country} onChange={(event) => updateLead('country', event.target.value)} /></Field>
+          </div>
+          <Field label={copy.devLetter.fields.need}><textarea className="short-textarea" value={leadDraft.need} onChange={(event) => updateLead('need', event.target.value)} placeholder={copy.devLetter.placeholders.need} /></Field>
+          <Field label={copy.devLetter.fields.notes}><textarea className="short-textarea" value={leadDraft.notes} onChange={(event) => updateLead('notes', event.target.value)} placeholder={copy.devLetter.placeholders.notes} /></Field>
+          <button className="primary-button icon-label" type="button" disabled={busy === 'lead'} onClick={saveLead}>
+            <CheckCircle2 size={15} />
+            {copy.devLetter.actions.saveLead}
+          </button>
+
+          <div className="lead-list-mini">
+            {leads.length ? leads.slice(0, 8).map((lead) => (
+              <button className={`lead-mini-row ${selectedLeadId === lead.id ? 'active' : ''}`} type="button" key={lead.id} onClick={() => setSelectedLeadId(lead.id)}>
+                <strong>{lead.companyName}</strong>
+                <span>{lead.email || lead.website || lead.country || '-'}</span>
+              </button>
+            )) : <div className="empty-state">{copy.devLetter.status.noLeads}</div>}
+          </div>
+        </section>
+      </details>
+
+      {notice ? <div className="status-hint success"><CheckCircle2 size={15} />{notice}</div> : null}
+      {error ? <div className="status-hint error"><AlertCircle size={15} />{error}</div> : null}
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label>
+      <span>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function emptyLeadDraft(): LeadFormDraft {
+  return { companyName: '', website: '', country: '', industry: '', contactName: '', contactTitle: '', email: '', need: '', notes: '', tags: '' }
+}
+
+function leadFormFromLead(lead: OutreachLead): LeadFormDraft {
+  return {
+    companyName: lead.companyName,
+    website: lead.website ?? '',
+    country: lead.country ?? '',
+    industry: lead.industry ?? '',
+    contactName: lead.contactName ?? '',
+    contactTitle: lead.contactTitle ?? '',
+    email: lead.email ?? '',
+    need: lead.need ?? '',
+    notes: lead.notes ?? '',
+    tags: lead.tags.join(', '),
+  }
+}
+
+function leadInputFromForm(form: LeadFormDraft): OutreachLeadInput {
+  return {
+    companyName: form.companyName.trim(),
+    website: optionalText(form.website),
+    country: optionalText(form.country),
+    industry: optionalText(form.industry),
+    contactName: optionalText(form.contactName),
+    contactTitle: optionalText(form.contactTitle),
+    email: optionalText(form.email),
+    need: form.need.trim(),
+    notes: form.notes.trim(),
+    tags: form.tags.split(/[;,，、]/).map((tag) => tag.trim()).filter(Boolean),
+  }
+}
+
+function emptySenderDraft(companyProfile: CompanyProfile): SenderFormDraft {
+  return {
+    label: 'Company mailbox',
+    fromName: companyProfile.name || 'Sales team',
+    email: '',
+    host: 'smtp.gmail.com',
+    port: '587',
+    secure: false,
+    username: '',
+    password: '',
+  }
+}
+
+function senderFormFromAccount(account: OutreachSenderAccount): SenderFormDraft {
+  return {
+    id: account.id,
+    label: account.label,
+    fromName: account.fromName ?? '',
+    email: account.email,
+    host: account.host,
+    port: String(account.port),
+    secure: account.secure,
+    username: account.username ?? '',
+    password: '',
+  }
+}
+
+function senderProviderFromHost(host: string | undefined): SenderProviderId {
+  const normalized = host?.trim().toLowerCase() ?? ''
+  return senderProviderPresets.find((provider) => provider.id !== 'custom' && provider.host === normalized)?.id ?? 'custom'
+}
+
+function senderProviderFromEmail(email: string): SenderProviderId | undefined {
+  const domain = email.trim().toLowerCase().split('@')[1] ?? ''
+  if (!domain) return undefined
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return 'gmail'
+  if (['outlook.com', 'hotmail.com', 'live.com', 'msn.com'].includes(domain) || domain.endsWith('.onmicrosoft.com')) return 'outlook'
+  if (domain === 'zoho.com' || domain === 'zohomail.com' || domain.endsWith('.zoho.com')) return 'zoho'
+  return undefined
+}
+
+function optionalText(value: string): string | undefined {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
 }
 
 function FirstRunDeployPage({
@@ -1651,6 +2575,8 @@ function SessionSidebar({
   onClose,
   onOpenAssistants,
   onOpenFiles,
+  onOpenOutreach,
+  activeWorkspaceView,
   onOpenSettings,
   onOpenUpdate,
   className = '',
@@ -1669,6 +2595,8 @@ function SessionSidebar({
   onClose?: () => void
   onOpenAssistants: () => void
   onOpenFiles: () => void
+  onOpenOutreach: () => void
+  activeWorkspaceView: WorkspaceView
   onOpenSettings: () => void
   onOpenUpdate: () => void
   className?: string
@@ -1707,6 +2635,9 @@ function SessionSidebar({
           </button>
           <button className="icon-button" aria-label={copy.topbar.files} onClick={onOpenFiles}>
             <PanelRightOpen size={16} />
+          </button>
+          <button className={`icon-button ${activeWorkspaceView === 'outreach' ? 'active' : ''}`} aria-label={copy.devLetter.navAria} onClick={onOpenOutreach}>
+            <Mail size={16} />
           </button>
           <button className="icon-button" aria-label={copy.topbar.settingsAria} onClick={onOpenSettings}>
             <Settings size={16} />

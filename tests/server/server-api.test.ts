@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createServer, type RuntimeAdapter } from "../../apps/server/src/index.js";
 import { builtinAgentSeeds } from "@hermills/agent-builder";
@@ -22,6 +22,7 @@ describe("Hermills local API", () => {
 
   afterEach(async () => {
     await server.close();
+    vi.restoreAllMocks();
   });
 
   it("requires desktop token for protected routes", async () => {
@@ -290,6 +291,279 @@ describe("Hermills local API", () => {
     expect(deleteResponse.statusCode).toBe(204);
     const listResponse = await server.inject({ method: "GET", url: "/api/company/materials", headers });
     expect(listResponse.json().map((item: { id: string }) => item.id)).not.toContain(id);
+  });
+
+  it("imports outreach leads, generates company-aware drafts, and stores sender passwords privately", async () => {
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        subject: "LED work light supply",
+        body: "Hello Taylor, I saw your team handles industrial lighting. We make LED work lights with CE certification. Would it make sense to send details?"
+      });
+    };
+
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"],
+      shippingTerms: ["FOB Ningbo"]
+    } });
+
+    const importResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/import",
+      headers,
+      payload: {
+        csvText: "公司,email,联系人,国家,需求\nBright LLC,taylor@example.com,Taylor,US,industrial lighting\n,missing@example.com,,,"
+      }
+    });
+    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.json().imported).toHaveLength(1);
+    expect(importResponse.json().skipped).toHaveLength(1);
+
+    const leadId = importResponse.json().imported[0].id;
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/generate",
+      headers,
+      payload: { leadId, language: "English", tone: "short and direct" }
+    });
+    expect(draftResponse.statusCode).toBe(200);
+    expect(draftResponse.json()).toMatchObject({
+      leadId,
+      subject: "LED work light supply",
+      status: "draft"
+    });
+    const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
+    expect(runtimeContent).toContain("Bright LLC");
+    expect(runtimeContent).toContain("Eckes Export");
+    expect(runtimeContent).toContain("Return JSON only");
+
+    const senderResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Sales mailbox",
+        fromName: "Sales",
+        email: "sales@example.com",
+        host: "smtp.example.com",
+        port: 587,
+        secure: false,
+        username: "sales@example.com",
+        password: "super-secret-password"
+      }
+    });
+    expect(senderResponse.statusCode).toBe(200);
+    expect(senderResponse.json()).toMatchObject({ label: "Sales mailbox", passwordPreview: expect.any(String) });
+    expect(senderResponse.json()).not.toHaveProperty("passwordRef");
+    expect(JSON.stringify(senderResponse.json())).not.toContain("super-secret-password");
+
+    const listResponse = await server.inject({ method: "GET", url: "/api/outreach/sender-accounts", headers });
+    expect(JSON.stringify(listResponse.json())).not.toContain("super-secret-password");
+
+    const confirmResponse = await server.inject({ method: "POST", url: `/api/outreach/sender-accounts/${senderResponse.json().id}/confirm-delivery`, headers });
+    expect(confirmResponse.statusCode, confirmResponse.body).toBe(200);
+    expect(confirmResponse.json().sender.deliveryConfirmedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("refuses to send outreach until the sender mailbox delivery is confirmed", async () => {
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        subject: "Work light sourcing",
+        body: "Hello, I saw your team sources work lights. Would it help if I sent a concise option list?"
+      });
+    };
+
+    const leadResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads",
+      headers,
+      payload: {
+        companyName: "Unconfirmed Buyer",
+        email: "buyer@unconfirmed.example",
+        website: "https://unconfirmed.example"
+      }
+    });
+    expect(leadResponse.statusCode).toBe(200);
+
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/generate",
+      headers,
+      payload: { leadId: leadResponse.json().id, language: "English", tone: "short" }
+    });
+    expect(draftResponse.statusCode).toBe(200);
+
+    const senderResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Unconfirmed mailbox",
+        email: "sales@example.com",
+        host: "smtp.example.com",
+        port: 587,
+        secure: false,
+        username: "sales@example.com",
+        password: "super-secret-password"
+      }
+    });
+    expect(senderResponse.statusCode).toBe(200);
+    expect(senderResponse.json().deliveryConfirmedAt).toBeUndefined();
+
+    const sendResponse = await server.inject({
+      method: "POST",
+      url: `/api/outreach/drafts/${draftResponse.json().id}/send`,
+      headers,
+      payload: { senderAccountId: senderResponse.json().id, confirm: true }
+    });
+    expect(sendResponse.statusCode).toBe(400);
+    expect(sendResponse.json().error.message).toContain("Confirm the sender mailbox");
+  });
+
+  it("auto researches a customer website before generating an outreach draft", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/about")
+        ? "<html><body><h1>About Preview Buyer</h1><p>We are an industrial lighting distributor and importer.</p></body></html>"
+        : "<html><head><title>Preview Buyer - Industrial Lighting Distributor</title><meta name=\"description\" content=\"Preview Buyer imports and distributes work lights.\"></head><body><a href=\"/about\">About</a><p>We wholesale industrial lighting products.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        subject: "Work light supply",
+        body: "Hello, I saw Preview Buyer imports industrial lighting. We can support work light supply. Would you like details?"
+      });
+    };
+
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/auto",
+      headers,
+      payload: {
+        website: "preview-buyer.example",
+        email: "buyer@preview-buyer.example",
+        language: "English",
+        tone: "short"
+      }
+    });
+
+    expect(draftResponse.statusCode).toBe(200);
+    expect(draftResponse.json()).toMatchObject({ subject: "Work light supply", status: "draft" });
+    const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
+    expect(runtimeContent).toContain("--- Customer website research ---");
+    expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
+    expect(runtimeContent).toContain("industrial lighting distributor");
+    const leadsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads?q=Preview", headers });
+    expect(leadsResponse.json()[0]).toMatchObject({
+      email: "buyer@preview-buyer.example",
+      website: "https://preview-buyer.example/",
+      tags: ["auto-researched"]
+    });
+  });
+
+  it("builds a full outreach workflow with ICPs, USPs, and nine follow-ups", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/about")
+        ? "<html><body><h1>About Atlas Buyer</h1><p>Atlas Buyer imports industrial lighting and sells to regional contractors.</p></body></html>"
+        : "<html><head><title>Atlas Buyer - Lighting Importer</title><meta name=\"description\" content=\"Atlas Buyer sources rugged work lights for contractor channels.\"></head><body><a href=\"/about\">About</a><p>We distribute work lights to contractors.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        icps: [
+          {
+            name: "Contractor-channel lighting importer",
+            industrySegment: "Industrial lighting distributors serving contractor buyers.",
+            companyCharacteristics: ["Imports repeat batches", "Needs fast comparison material"],
+            buyerRoles: ["Procurement manager", "Category owner"],
+            buyingBehavior: ["Reviews proof before sampling"],
+            painPoints: ["Supplier delays hurt contractor availability"],
+            triggerEvents: ["New seasonal stock planning"],
+            salesAngles: ["Lead with rugged SKU comparison"]
+          }
+        ],
+        usps: [
+          {
+            category: "Operational",
+            headline: "Fast sample comparison",
+            buyerAngle: "Helps Atlas Buyer compare rugged work light options before a larger order.",
+            proof: "Share MOQ, lead time, and certifications in one small table."
+          }
+        ],
+        initialEmail: {
+          subject: "Rugged work light options",
+          body: "Hi, I saw Atlas Buyer serves contractor channels. If rugged work lights are still in your sourcing plan, I can send two sample-ready options with MOQ and lead time side by side. Would option A for fast sampling or option B for repeat supply be more useful?"
+        },
+        followUps: Array.from({ length: 9 }, (_, index) => ({
+          step: index + 1,
+          delayDays: [2, 4, 7, 7, 10, 10, 14, 21, 28][index],
+          strategy: [
+            "Friendly reminder",
+            "Additional value",
+            "Quick yes/no",
+            "Social proof",
+            "Limited incentive",
+            "Feedback request",
+            "Prior interaction",
+            "Breakup email",
+            "New angle"
+          ][index],
+          subject: `Atlas follow-up ${index + 1}`,
+          body: `Hi, follow-up ${index + 1} with a useful contractor lighting angle.`
+        }))
+      });
+    };
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "atlas-buyer.example",
+        email: "sourcing@atlas-buyer.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode).toBe(200);
+    const workflow = workflowResponse.json();
+    expect(workflow).toMatchObject({
+      email: "sourcing@atlas-buyer.example",
+      website: "https://atlas-buyer.example/",
+      language: "English",
+      initialEmail: { subject: "Rugged work light options", status: "draft" }
+    });
+    expect(workflow.icps).toHaveLength(1);
+    expect(workflow.usps).toHaveLength(1);
+    expect(workflow.followUps).toHaveLength(9);
+    expect(workflow.initialEmail.draftId).toBe(workflow.draftId);
+    expect(workflow.followUps.every((email: { draftId?: string }) => Boolean(email.draftId))).toBe(true);
+    expect(workflow.research.textPreview).toContain("contractor");
+
+    const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
+    expect(runtimeContent).toContain("Generate exactly 9 follow-up emails");
+    expect(runtimeContent).toContain("Customer website research");
+    expect(runtimeContent).toContain("Return JSON only");
+
+    const listResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Atlas", headers });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toHaveLength(1);
+    expect(listResponse.json()[0].id).toBe(workflow.id);
+
+    const fetchedResponse = await server.inject({ method: "GET", url: `/api/outreach/workflows/${workflow.id}`, headers });
+    expect(fetchedResponse.statusCode).toBe(200);
+    expect(fetchedResponse.json().followUps).toHaveLength(9);
+
+    const draftsResponse = await server.inject({ method: "GET", url: "/api/outreach/drafts?q=Atlas", headers });
+    expect(draftsResponse.statusCode).toBe(200);
+    expect(draftsResponse.json()).toHaveLength(10);
   });
 
   it("searches, renames, deletes chat sessions, and reports estimated usage", async () => {

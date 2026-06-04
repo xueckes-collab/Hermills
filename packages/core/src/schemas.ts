@@ -229,6 +229,135 @@ export const UsageEstimateSchema = z.object({
   estimatedCostUsd: z.number().nonnegative().optional()
 }).strict();
 
+export const OutreachLeadSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1).optional(),
+  companyName: z.string().trim().min(1).max(180),
+  website: OptionalTrimmedString(500),
+  country: OptionalTrimmedString(120),
+  industry: OptionalTrimmedString(160),
+  contactName: OptionalTrimmedString(160),
+  contactTitle: OptionalTrimmedString(160),
+  email: OptionalTrimmedString(320),
+  need: z.string().trim().max(2000).default(""),
+  notes: z.string().trim().max(4000).default(""),
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
+export const OutreachDraftStatusSchema = z.enum(["draft", "sent", "failed"]);
+
+export const OutreachDraftSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1).optional(),
+  leadId: z.string().min(1).optional(),
+  status: OutreachDraftStatusSchema.default("draft"),
+  subject: z.string().trim().min(1).max(240),
+  body: z.string().trim().min(1).max(20000),
+  language: z.string().trim().min(1).max(80).default("English"),
+  tone: z.string().trim().min(1).max(120).default("professional"),
+  promptSnapshot: z.string().trim().max(30000).default(""),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).max(100).optional(),
+  usage: UsageEstimateSchema.optional(),
+  sentAt: z.string().datetime().optional(),
+  sendError: z.string().max(1000).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
+export const OutreachSenderAccountSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1).optional(),
+  label: z.string().trim().min(1).max(120),
+  fromName: OptionalTrimmedString(160),
+  email: z.string().trim().min(3).max(320),
+  host: z.string().trim().min(1).max(240),
+  port: z.number().int().min(1).max(65535).default(587),
+  secure: z.boolean().default(false),
+  username: OptionalTrimmedString(320),
+  passwordRef: z.string().min(1).optional(),
+  passwordPreview: z.string().optional(),
+  enabled: z.boolean().default(true),
+  lastTestedAt: z.string().datetime().optional(),
+  lastTestEmailAt: z.string().datetime().optional(),
+  deliveryConfirmedAt: z.string().datetime().optional(),
+  lastError: z.string().max(1000).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
+export const CustomerResearchSnapshotSchema = z.object({
+  website: z.string().min(1).max(500),
+  companyName: z.string().trim().min(1).max(180),
+  industry: z.string().trim().max(160).default(""),
+  inferredNeed: z.string().trim().max(2000).default(""),
+  title: z.string().trim().max(240).default(""),
+  description: z.string().trim().max(1000).default(""),
+  fetchedUrls: z.array(z.string().min(1).max(1000)).max(12).default([]),
+  textPreview: z.string().trim().max(12000).default(""),
+  error: z.string().max(1000).optional(),
+  createdAt: z.string().datetime()
+}).strict();
+
+export const GeneratedIcpSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(160),
+  industrySegment: z.string().trim().max(500).default(""),
+  companyCharacteristics: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
+  buyerRoles: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
+  buyingBehavior: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
+  painPoints: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
+  triggerEvents: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
+  salesAngles: z.array(z.string().trim().min(1).max(500)).max(8).default([])
+}).strict();
+
+export const GeneratedUspSchema = z.object({
+  id: z.string().min(1),
+  category: z.string().trim().max(80).default("Strategic value"),
+  headline: z.string().trim().min(1).max(180),
+  buyerAngle: z.string().trim().max(800).default(""),
+  proof: z.string().trim().max(800).default("")
+}).strict();
+
+export const EmailSequenceDraftStatusSchema = z.enum(["draft", "sent", "failed"]);
+
+export const EmailSequenceDraftSchema = z.object({
+  id: z.string().min(1),
+  draftId: z.string().min(1).optional(),
+  step: z.number().int().min(0).max(9),
+  delayDays: z.number().int().min(0).max(60).default(0),
+  strategy: z.string().trim().min(1).max(180),
+  subject: z.string().trim().min(1).max(240),
+  body: z.string().trim().min(1).max(20000),
+  status: EmailSequenceDraftStatusSchema.default("draft"),
+  sentAt: z.string().datetime().optional(),
+  sendError: z.string().max(1000).optional()
+}).strict();
+
+export const OutreachWorkflowSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1).optional(),
+  leadId: z.string().min(1),
+  draftId: z.string().min(1),
+  website: z.string().min(1).max(500),
+  email: z.string().min(3).max(320),
+  language: z.string().trim().min(1).max(80).default("English"),
+  tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  research: CustomerResearchSnapshotSchema,
+  icps: z.array(GeneratedIcpSchema).max(3).default([]),
+  usps: z.array(GeneratedUspSchema).max(6).default([]),
+  initialEmail: EmailSequenceDraftSchema,
+  followUps: z.array(EmailSequenceDraftSchema).max(9).default([]),
+  promptSnapshot: z.string().trim().max(30000).default(""),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).max(100).optional(),
+  usage: UsageEstimateSchema.optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
 export const JobStatusSchema = z.enum(["active", "paused"]);
 export const JobRunStatusSchema = z.enum(["queued", "running", "succeeded", "failed", "skipped"]);
 export const JobRunTriggerSchema = z.enum(["manual", "schedule"]);

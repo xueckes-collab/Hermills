@@ -67,4 +67,49 @@ describe("renderer language copy", () => {
       }
     }
   });
+
+  it("keeps outreach writer copy available in every supported language", () => {
+    const english = getUiCopy("en");
+
+    for (const language of languages) {
+      const copy = getUiCopy(language);
+      const visibleCopy = [
+        copy.topbar.devLetter,
+        copy.devLetter.title,
+        copy.devLetter.quickTitle,
+        copy.devLetter.quest.title,
+        copy.devLetter.quest.subtitle,
+        copy.devLetter.quest.progress(1, 6),
+        copy.devLetter.quest.steps.company.label,
+        copy.devLetter.quest.steps.lead.detail,
+        copy.devLetter.quest.steps.research.action,
+        copy.devLetter.quest.steps.mailbox.hint,
+        copy.devLetter.quest.steps.send.detail,
+        copy.devLetter.fields.companyName,
+        copy.devLetter.fields.website,
+        copy.devLetter.fields.email,
+        copy.devLetter.fields.senderEmail,
+        copy.devLetter.actions.researchGenerate,
+        copy.devLetter.actions.generate,
+        copy.devLetter.actions.send,
+        copy.devLetter.status.researched,
+        copy.devLetter.status.workflowGenerated,
+        copy.devLetter.status.noLeads,
+        copy.devLetter.results.title,
+        copy.devLetter.results.customerResearch,
+        copy.devLetter.results.icp,
+        copy.devLetter.results.usp,
+        copy.devLetter.results.firstEmail,
+        copy.devLetter.results.followUp(1),
+        copy.devLetter.results.daysLater(2),
+        copy.devLetter.results.status.draft,
+        copy.devLetter.warnings.quickRequired,
+        copy.devLetter.warnings.confirmSend,
+      ];
+
+      expect(visibleCopy.every((item) => typeof item === "string" && item.trim().length > 0), `${language} outreach copy should not be blank`).toBe(true);
+    }
+
+    expect(getUiCopy("zh-CN").devLetter.title).not.toBe(english.devLetter.title);
+  });
 });

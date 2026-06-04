@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
+import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachDraftSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
 export type AgentCapabilities = z.infer<typeof CapabilitySchema>;
 export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
@@ -16,6 +16,14 @@ export type JobRecord = z.infer<typeof JobRecordSchema>;
 export type JobRunRecord = z.infer<typeof JobRunRecordSchema>;
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>;
 export type LogEntry = z.infer<typeof LogEntrySchema>;
+export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
+export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
+export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
+export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
+export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
+export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;
+export type EmailSequenceDraft = z.infer<typeof EmailSequenceDraftSchema>;
+export type OutreachWorkflow = z.infer<typeof OutreachWorkflowSchema>;
 export interface InstallEvent {
     jobId: string;
     level: "info" | "warn" | "error" | "done";
