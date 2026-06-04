@@ -1,12 +1,12 @@
 export type UiLanguage = 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'en'
-export type AdvancedPanelId = 'setup' | 'personalize' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
+export type AdvancedPanelId = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
 export type OnboardingStepId = 'language' | 'identity' | 'provider' | 'theme' | 'workspace' | 'features'
 export type OnboardingThemeId = 'warm' | 'night' | 'plain' | 'system'
 export type OnboardingFeatureId = 'chat' | 'files' | 'memory' | 'assistants' | 'diagnostics'
 export type RuntimeStepId = 'not-installed' | 'ready' | 'failed' | 'needs-user-action' | 'checking' | 'downloading' | 'installing' | 'configuring' | 'starting' | 'verifying'
 export type ProviderStatusId = 'connected' | 'missing' | 'invalid'
 export type UiModeId = 'simple' | 'expert'
-export type ChatEmptyEntryId = 'quickChat' | 'addFiles' | 'createAssistant'
+export type ChatEmptyEntryId = 'quickChat' | 'companyKnowledge' | 'addFiles' | 'createAssistant'
 export type FileActionId = 'summarize' | 'keyPoints' | 'askFile' | 'actionPlan'
 export type AssistantRoleCardId = 'study' | 'writing' | 'code' | 'files'
 export type NormalSettingsSectionId = 'general' | 'appearance' | 'workspace' | 'assistants'
@@ -43,6 +43,8 @@ export type UiCopy = {
     unknown: string
     notChecked: string
     localHermes: string
+    companyKnowledge: string
+    companyMaterials: string
     apiKey: string
     provider: string
     providerName: string
@@ -116,6 +118,9 @@ export type UiCopy = {
     defaultTitle: string
     defaultAssistant: string
     addFile: string
+    addCompanyMaterial: string
+    openCompanyKnowledgeAria: string
+    selectedCompanyMaterials: (count: number) => string
     selectedFiles: (count: number) => string
     you: string
     emptyTitle: string
@@ -173,6 +178,31 @@ export type UiCopy = {
       gettingReady: string
       added: string
     }
+  }
+  companyKnowledge: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    profileTitle: string
+    materialsTitle: string
+    addFiles: string
+    uploading: string
+    supportedTypes: string
+    empty: string
+    noPreview: string
+    categoryForNewFiles: string
+    fields: {
+      name: string
+      website: string
+      markets: string
+      mainProducts: string
+      certifications: string
+      paymentTerms: string
+      shippingTerms: string
+      brandVoice: string
+      notes: string
+    }
+    categories: Record<import('./api.js').CompanyMaterialCategory, string>
   }
   keyNudge: {
     pasteOneKey: string
@@ -367,6 +397,7 @@ export type UiCopy = {
     runtime: string
     conversations: string
     sources: string
+    companyKnowledge: string
     keys: string
     agents: string
     tokens: string
@@ -376,10 +407,12 @@ export type UiCopy = {
     logs: string
     localChatHistory: string
     uploadedLocalContext: string
+    uploadedCompanyContext: string
     storedProviderEntries: string
     savedInstructionProfiles: string
     tokenDetail: (input: string, output: string) => string
     localFiles: (count: number) => string
+    companyMaterials: (count: number) => string
     jobDetail: (runs: number, failed: number) => string
     channelDetail: (count: number) => string
     logDetail: (count: number) => string
@@ -441,6 +474,8 @@ const en: UiCopy = {
     unknown: 'Unknown',
     notChecked: 'Not checked',
     localHermes: 'Local Hermes',
+    companyKnowledge: 'Company knowledge base',
+    companyMaterials: 'Company docs',
     apiKey: 'API key',
     provider: 'Provider',
     providerName: 'Provider name',
@@ -453,7 +488,7 @@ const en: UiCopy = {
     title: 'Hermes settings',
     closeAria: 'Close advanced settings',
     navAria: 'Advanced settings',
-    tabs: { setup: 'Hermes', personalize: 'Personalize', agents: 'Assistants', profiles: 'Profiles', keys: 'Keys', diagnostics: 'Diagnostics' },
+    tabs: { setup: 'Hermes', personalize: 'Personalize', company: 'Company docs', agents: 'Assistants', profiles: 'Profiles', keys: 'Keys', diagnostics: 'Diagnostics' },
   },
   onboarding: {
     loadingEyebrow: 'First run',
@@ -528,7 +563,10 @@ const en: UiCopy = {
     defaultTitle: 'Ask Hermes',
     defaultAssistant: 'Default assistant',
     addFile: 'Add file',
+    addCompanyMaterial: 'Add company docs',
+    openCompanyKnowledgeAria: 'Open company knowledge base',
     selectedFiles: (count) => `${count} file${count === 1 ? '' : 's'}`,
+    selectedCompanyMaterials: (count) => `${count} company doc${count === 1 ? '' : 's'}`,
     you: 'You',
     emptyTitle: 'Ask Hermes anything on this Mac.',
     emptyDescription: 'Attach files when you want answers grounded in local context.',
@@ -543,6 +581,7 @@ const en: UiCopy = {
     newAssistantConversation: (name) => `${name} chat`,
     emptyActions: {
       quickChat: { title: 'Ask a question', description: 'Start a normal chat and let Hermes answer from this Mac.', action: 'Start chat', prompt: 'Help me think through this.' },
+      companyKnowledge: { title: 'Add company docs', description: 'Teach Hermes your products, terms, customers, and export rules.', action: 'Open company docs', prompt: 'Use our company knowledge to answer this.' },
       addFiles: { title: 'Chat with files', description: 'Add local files so answers can use your own context.', action: 'Add files', prompt: 'Summarize the files I added.' },
       createAssistant: { title: 'Create an assistant', description: 'Make a reusable helper for a task you do often.', action: 'Create assistant', prompt: 'Create an assistant for this workflow.' },
     },
@@ -589,6 +628,41 @@ const en: UiCopy = {
       actionPlan: { label: 'Action plan', description: 'Convert the file into next steps and owners.', prompt: 'Turn this file into a practical action plan.' },
     },
     status: { ready: 'ready', needsRetry: 'needs retry', gettingReady: 'getting ready', added: 'added' },
+  },
+  companyKnowledge: {
+    eyebrow: 'Company AI',
+    title: 'Company knowledge base',
+    subtitle: 'Manage company docs Hermes can cite in answers.',
+    profileTitle: 'Company profile',
+    materialsTitle: 'Company docs',
+    addFiles: 'Add company docs',
+    uploading: 'Uploading...',
+    supportedTypes: 'PDF, docs, notes, web text, images',
+    empty: 'No company docs yet. Add them so Hermes can answer with company context.',
+    noPreview: 'Saved. Image and binary files need a vision or extraction model before readable notes appear.',
+    categoryForNewFiles: 'New file type',
+    fields: {
+      name: 'Company name',
+      website: 'Website',
+      markets: 'Target markets',
+      mainProducts: 'Main products',
+      certifications: 'Certifications',
+      paymentTerms: 'Payment terms',
+      shippingTerms: 'Shipping terms',
+      brandVoice: 'Brand voice',
+      notes: 'Important notes',
+    },
+    categories: {
+      'company-profile': 'Company profile',
+      'product-catalog': 'Product catalog',
+      'price-list': 'Price list',
+      certification: 'Certification',
+      'shipping-logistics': 'Shipping and logistics',
+      'payment-terms': 'Payment terms',
+      faq: 'FAQ',
+      'case-study': 'Case study',
+      other: 'Other',
+    },
   },
   keyNudge: { pasteOneKey: 'Paste one API key. New chats will use it automatically.', pasteKeyFirst: 'Paste an API key first.', saving: 'Saving...', savedCanSend: 'Saved. You can send now.', save: 'Save' },
   gateway: {
@@ -730,6 +804,7 @@ const en: UiCopy = {
     runtime: 'Runtime',
     conversations: 'Conversations',
     sources: 'Sources',
+    companyKnowledge: 'Company knowledge',
     keys: 'Keys',
     agents: 'Agents',
     tokens: 'Tokens',
@@ -739,10 +814,12 @@ const en: UiCopy = {
     logs: 'Logs',
     localChatHistory: 'Local chat history',
     uploadedLocalContext: 'Uploaded local context',
+    uploadedCompanyContext: 'Uploaded company context',
     storedProviderEntries: 'Stored provider entries',
     savedInstructionProfiles: 'Saved instruction profiles',
     tokenDetail: (input, output) => `${input} in / ${output} out`,
     localFiles: (count) => `${count} local files`,
+    companyMaterials: (count) => `${count} company doc${count === 1 ? '' : 's'}`,
     jobDetail: (runs, failed) => `${runs} runs / ${failed} failed`,
     channelDetail: (count) => `${count} configured`,
     logDetail: (count) => `${count} errors`,
@@ -793,9 +870,9 @@ const en: UiCopy = {
 
 const zhCN = withOverrides(en, {
   common: {
-    brandSubtitle: '本地 AI 伙伴', back: '上一步', continue: '继续', save: '保存', saving: '保存中', saved: '已保存', create: '创建', creating: '创建中', edit: '编辑', new: '新建', add: '添加', use: '使用', chat: '聊天', files: '文件', assistants: '助手', settings: '设置', update: '更新', details: '详情', hideDetails: '收起详情', openSettings: '打开设置', setup: '设置', search: '搜索', send: '发送', sending: '发送中', ready: '就绪', unknown: '未知', notChecked: '尚未检查', localHermes: '本地 Hermes', apiKey: 'API Key', provider: '供应商', providerName: '供应商名称', baseUrl: 'Base URL', defaultModel: '默认模型', model: '模型',
+    brandSubtitle: '本地 AI 伙伴', back: '上一步', continue: '继续', save: '保存', saving: '保存中', saved: '已保存', create: '创建', creating: '创建中', edit: '编辑', new: '新建', add: '添加', use: '使用', chat: '聊天', files: '文件', assistants: '助手', settings: '设置', update: '更新', details: '详情', hideDetails: '收起详情', openSettings: '打开设置', setup: '设置', search: '搜索', send: '发送', sending: '发送中', ready: '就绪', unknown: '未知', notChecked: '尚未检查', localHermes: '本地 Hermes', companyKnowledge: '公司知识库', companyMaterials: '公司资料', apiKey: 'API Key', provider: '供应商', providerName: '供应商名称', baseUrl: 'Base URL', defaultModel: '默认模型', model: '模型',
   },
-  advanced: { eyebrow: '高级', title: 'Hermes 设置', closeAria: '关闭高级设置', navAria: '高级设置', tabs: { setup: 'Hermes', personalize: '个性化', agents: '助手', profiles: '用户', keys: '密钥', diagnostics: '诊断' } },
+  advanced: { eyebrow: '高级', title: 'Hermes 设置', closeAria: '关闭高级设置', navAria: '高级设置', tabs: { setup: 'Hermes', personalize: '个性化', company: '公司资料', agents: '助手', profiles: '用户', keys: '密钥', diagnostics: '诊断' } },
   onboarding: {
     loadingEyebrow: '首次使用', loadingTitle: '正在准备你的工作区。', loadingDescription: '本地部署准备好后，Hermes 会打开设置向导。', stepsAria: '首次设置步骤', stepProgress: (current, total) => `第 ${current} 步，共 ${total} 步`,
     steps: {
@@ -818,9 +895,24 @@ const zhCN = withOverrides(en, {
   firstRun: { setupEyebrow: 'Hermes 设置', checkingTitle: '正在准备 Hermes。', checkingDescription: '这里只需要做一次。准备好后会直接进入聊天。', oneTimeSetup: '设置 Hermes', packageCheckFallback: 'Hermes 会帮你完成本地设置。' },
   topbar: { chats: '对话', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
   mode: { label: '模式', ariaLabel: '选择界面模式', options: { simple: { label: '简单', description: '只显示日常聊天、文件、助手和基础设置。', switchLabel: '使用简单模式', currentLabel: '已开启简单模式' }, expert: { label: '专家', description: '显示供应商、运行时、隐私和诊断控制。', switchLabel: '使用专家模式', currentLabel: '已开启专家模式' } } },
-  chat: { sectionLabel: '聊天', defaultTitle: '问 Hermes', defaultAssistant: '默认助手', addFile: '添加文件', selectedFiles: (count) => `${count} 个文件`, you: '你', emptyTitle: '在这台 Mac 上问 Hermes。', emptyDescription: '需要基于本地内容回答时，可以添加文件。', openSetup: '打开设置', addApiKey: '添加 API Key', openSourcesAria: '打开文件', messageAria: '消息', placeholderReady: '问 Hermes...', placeholderNotReady: '先启动 Hermes', startBeforeSend: '请先启动 Hermes 再发送消息。', newConversation: '新的 Hermes 对话', newAssistantConversation: (name) => `${name} 对话`, emptyActions: { quickChat: { title: '直接提问', description: '开始普通对话，让 Hermes 基于这台 Mac 回答。', action: '开始聊天', prompt: '帮我梳理这件事。' }, addFiles: { title: '带文件聊天', description: '添加本地文件，让回答使用你的上下文。', action: '添加文件', prompt: '总结我添加的文件。' }, createAssistant: { title: '创建助手', description: '为经常做的任务做一个可复用助手。', action: '创建助手', prompt: '为这个工作流创建一个助手。' } } },
+  chat: { sectionLabel: '聊天', defaultTitle: '问 Hermes', defaultAssistant: '默认助手', addFile: '添加文件', addCompanyMaterial: '添加公司资料', openCompanyKnowledgeAria: '打开公司知识库', selectedFiles: (count) => `${count} 个文件`, selectedCompanyMaterials: (count) => `${count} 份公司资料`, you: '你', emptyTitle: '在这台 Mac 上问 Hermes。', emptyDescription: '需要基于本地内容回答时，可以添加文件。', openSetup: '打开设置', addApiKey: '添加 API Key', openSourcesAria: '打开文件', messageAria: '消息', placeholderReady: '问 Hermes...', placeholderNotReady: '先启动 Hermes', startBeforeSend: '请先启动 Hermes 再发送消息。', newConversation: '新的 Hermes 对话', newAssistantConversation: (name) => `${name} 对话`, emptyActions: { quickChat: { title: '直接提问', description: '开始普通对话，让 Hermes 基于这台 Mac 回答。', action: '开始聊天', prompt: '帮我梳理这件事。' }, companyKnowledge: { title: '完善公司资料', description: '把产品、价格、认证、物流和付款条款教给 Hermes。', action: '打开公司资料', prompt: '基于我们的公司资料回答这个问题。' }, addFiles: { title: '带文件聊天', description: '添加本地文件，让回答使用你的上下文。', action: '添加文件', prompt: '总结我添加的文件。' }, createAssistant: { title: '创建助手', description: '为经常做的任务做一个可复用助手。', action: '创建助手', prompt: '为这个工作流创建一个助手。' } } },
   session: { count: (count) => `${count} 个对话`, newSessionAria: '新建对话', closeAria: '关闭对话列表', searchAria: '搜索对话', searchPlaceholder: '搜索', titleAria: '对话标题', saveTitleAria: '保存标题', renameAria: (title) => `重命名 ${title}`, deleteAria: (title) => `删除 ${title}`, messages: (count) => `${count} 条消息`, noMatch: '没有匹配的对话', tryAnother: '换个词试试', newConversation: '新对话', startWithHermes: '从 Hermes 开始' },
   files: { title: '文件', attachLocalFiles: '添加本地文件', attached: (count) => `已添加 ${count} 个`, closeAria: '关闭文件面板', addFiles: '添加文件', uploading: '上传中...', supportedTypes: 'PDF、文档、笔记、代码、图片', preview: '预览', closePreviewAria: '关闭预览', noPreview: '暂时没有可读预览。', fileNameAria: '文件名', saveFileNameAria: '保存文件名', previewAria: (name) => `预览 ${name}`, downloadAria: (name) => `下载 ${name}`, copyAria: (name) => `复制 ${name}`, renameAria: (name) => `重命名 ${name}`, deleteAria: (name) => `删除 ${name}`, empty: '还没有文件。添加文件后，回答会更贴近本地内容。', actions: { summarize: { label: '总结', description: '把选中文件变成简短概览。', prompt: '用大白话总结这个文件。' }, keyPoints: { label: '找重点', description: '提取重要事实、决定和风险。', prompt: '找出这个文件的重点。' }, askFile: { label: '问文件', description: '围绕选中文件提出具体问题。', prompt: '优先根据这个文件回答我的问题。' }, actionPlan: { label: '行动计划', description: '把文件转成下一步和负责人。', prompt: '把这个文件整理成可执行行动计划。' } }, status: { ready: '已就绪', needsRetry: '需要重试', gettingReady: '准备中', added: '已添加' } },
+  companyKnowledge: {
+    eyebrow: '公司 AI',
+    title: '公司知识库',
+    subtitle: '管理 Hermes 回答时可引用的公司资料。',
+    profileTitle: '公司档案',
+    materialsTitle: '公司资料',
+    addFiles: '添加公司资料',
+    uploading: '上传中...',
+    supportedTypes: 'PDF、文档、笔记、网页文本、图片',
+    empty: '还没有公司资料。添加后，Hermes 会用公司上下文回答。',
+    noPreview: '已保存。图片和二进制文件需要视觉或提取模型后才会出现可读笔记。',
+    categoryForNewFiles: '新文件类型',
+    fields: { name: '公司名称', website: '官网', markets: '目标市场', mainProducts: '主营产品', certifications: '认证资质', paymentTerms: '付款条款', shippingTerms: '物流条款', brandVoice: '品牌语气', notes: '重要备注' },
+    categories: { 'company-profile': '公司档案', 'product-catalog': '产品目录', 'price-list': '价目表', certification: '认证资质', 'shipping-logistics': '物流与运输', 'payment-terms': '付款条款', faq: '常见问题', 'case-study': '案例', other: '其他' },
+  },
   keyNudge: { pasteOneKey: '粘贴一个 API Key。新对话会自动使用它。', pasteKeyFirst: '请先粘贴 API Key。', saving: '保存中...', savedCanSend: '已保存。现在可以发送。', save: '保存' },
   gateway: { restartTitle: 'Hermes 需要重启。', notReadyTitle: 'Hermes 还没准备好。', startHermes: '启动 Hermes', tryAgain: '重试', details: '详情', setup: '设置', starting: 'Hermes 正在启动，通常只需要一小会儿。', failed: '请重试。如果还是失败，打开设置查看更多选项。', notInstalled: '先设置 Hermes，才能开启本地私有聊天。', paused: '启动 Hermes 后才能发送消息。' },
   runtime: {
@@ -850,7 +942,7 @@ const zhCN = withOverrides(en, {
   },
   profile: { eyebrow: '独立本地工作区', title: '用户配置', newNamePlaceholder: '新的配置名称', newNameAria: '新的配置名称', add: '添加', profileNameAria: '配置名称', saveProfileAria: '保存配置', activeNow: '当前使用', clickToUse: '点击使用', renameAria: (name) => `重命名 ${name}`, deleteAria: (name) => `删除 ${name}`, rulesTitle: '本地配置规则', keepChatsLocal: '聊天保存在本地', keepFilesLocal: '文件保存在本地', shareWithTeam: '与团队共享配置' },
   keys: { readySummary: (providers, agents) => `${providers} 个供应商已连接，可用于 ${agents} 个助手`, title: 'API Key', saveKey: '保存 Key', advancedDetails: '高级详情', hideDetails: '收起详情', savedHelp: '保存的 Key 会在本地加密。第一个保存的供应商会自动用于新对话。', noModels: '还没有同步模型', noKeySaved: '没有保存 Key', noProviders: '还没有保存供应商 Key。', test: '测试', models: '模型', defaults: '默认设置', maskKeys: '隐藏 Key', confirmDestructiveTools: '危险工具需要确认', allowExternalTools: '允许外部工具', form: { pasteKeyFirst: '请先粘贴 API Key。', saving: '正在保存 Key...', saved: '已保存。新对话会使用这个 Key。', testing: '测试中...', connected: '已连接', checkingModels: '正在检查模型...' } },
-  diagnostics: { runtime: '运行时', conversations: '对话', sources: '来源', keys: '密钥', agents: '助手', tokens: 'Token', storage: '存储', jobs: '任务', channels: '频道', logs: '日志', localChatHistory: '本地聊天记录', uploadedLocalContext: '上传的本地上下文', storedProviderEntries: '已保存的供应商', savedInstructionProfiles: '已保存的指令配置', tokenDetail: (input, output) => `${input} 输入 / ${output} 输出`, localFiles: (count) => `${count} 个本地文件`, jobDetail: (runs, failed) => `${runs} 次运行 / ${failed} 次失败`, channelDetail: (count) => `${count} 个已配置`, logDetail: (count) => `${count} 个错误` },
+  diagnostics: { runtime: '运行时', conversations: '对话', sources: '来源', companyKnowledge: '公司知识库', keys: '密钥', agents: '助手', tokens: 'Token', storage: '存储', jobs: '任务', channels: '频道', logs: '日志', localChatHistory: '本地聊天记录', uploadedLocalContext: '上传的本地上下文', uploadedCompanyContext: '已上传的公司上下文', storedProviderEntries: '已保存的供应商', savedInstructionProfiles: '已保存的指令配置', tokenDetail: (input, output) => `${input} 输入 / ${output} 输出`, localFiles: (count) => `${count} 个本地文件`, companyMaterials: (count) => `${count} 份公司资料`, jobDetail: (runs, failed) => `${runs} 次运行 / ${failed} 次失败`, channelDetail: (count) => `${count} 个已配置`, logDetail: (count) => `${count} 个错误` },
   settings: { normal: { title: '设置', description: '让日常控制更容易浏览。', sections: { general: { title: '通用', description: '名字、语言和基础工作区行为。' }, appearance: { title: '外观', description: '主题和显示偏好。' }, workspace: { title: '工作区', description: '本地文件夹和文件默认设置。' }, assistants: { title: '助手', description: '默认助手和快速创建选项。' } } }, expert: { title: '专家设置', description: '本地运行时、供应商、隐私和诊断控制。', warning: '修改这些设置可能影响启动、模型访问或本地数据。', sections: { providers: { title: '供应商', description: 'API Key、Base URL、模型和连接测试。' }, runtime: { title: '运行时', description: '本地 Hermes 安装、更新、修复和启动状态。' }, privacy: { title: '隐私', description: '本地存储、记忆、文件和工具权限。' }, diagnostics: { title: '诊断', description: '健康检查、日志、Token 用量和排障数据。' } } } },
   errors: { title: '有件事需要处理', retry: '重试', copyDetails: '复制详情', openSettings: '打开设置', withDetail: (message) => `详情：${message}`, friendly: { runtimeUnavailable: { title: 'Hermes 没有运行', message: '本地聊天需要先启动 Hermes。', recovery: '重新启动 Hermes。如果还是失败，打开专家设置并复制报告。' }, providerMissing: { title: '还没有模型供应商', message: 'Hermes 需要保存供应商后才能使用云端模型。', recovery: '在设置里添加 API Key，或使用已就绪的本地 Hermes。' }, apiKeyInvalid: { title: '这个 API Key 不能用', message: '供应商拒绝了这个 Key，或 Base URL 不正确。', recovery: '检查 Key、Base URL 和默认模型，然后再测试。' }, messageFailed: { title: '消息没有发出去', message: 'Hermes 没能完成这次请求。', recovery: '先重试一次。如果一直失败，复制详情用于诊断。' }, fileUploadFailed: { title: '文件没有添加成功', message: 'Hermes 不能读取或保存这个文件。', recovery: '换一个文件试试，或先把它移到本地文件夹。' }, fileTooLarge: { title: '文件太大', message: '这个文件超过了 Hermes 现在能处理的大小。', recovery: '把它拆成更小的文件，只添加需要的部分。' }, assistantCreateFailed: { title: '助手没有创建成功', message: 'Hermes 不能保存这个助手。', recovery: '检查名称和指令，然后再试。' }, unknown: { title: '出现了意外问题', message: 'Hermes 遇到了没能识别的问题。', recovery: '再试一次；如果反复出现，请复制详情。' } } },
   format: { usage: (input, output, total) => `约 ${input} 输入 / ${output} 输出 / ${total} tokens` },
@@ -858,8 +950,8 @@ const zhCN = withOverrides(en, {
 })
 
 const zhTW = withOverrides(zhCN, {
-  common: { brandSubtitle: '本地 AI 夥伴', back: '上一步', continue: '繼續', save: '儲存', saving: '儲存中', saved: '已儲存', create: '建立', creating: '建立中', edit: '編輯', new: '新增', add: '加入', use: '使用', chat: '聊天', files: '檔案', assistants: '助手', settings: '設定', update: '更新', details: '詳細資料', hideDetails: '收起詳細資料', openSettings: '開啟設定', setup: '設定', search: '搜尋', send: '傳送', sending: '傳送中', ready: '就緒', unknown: '未知', notChecked: '尚未檢查', localHermes: '本地 Hermes', apiKey: 'API Key', provider: '供應商', providerName: '供應商名稱', baseUrl: 'Base URL', defaultModel: '預設模型', model: '模型' },
-  advanced: { eyebrow: '進階', title: 'Hermes 設定', closeAria: '關閉進階設定', navAria: '進階設定', tabs: { setup: 'Hermes', personalize: '個人化', agents: '助手', profiles: '使用者', keys: '金鑰', diagnostics: '診斷' } },
+  common: { brandSubtitle: '本地 AI 夥伴', back: '上一步', continue: '繼續', save: '儲存', saving: '儲存中', saved: '已儲存', create: '建立', creating: '建立中', edit: '編輯', new: '新增', add: '加入', use: '使用', chat: '聊天', files: '檔案', assistants: '助手', settings: '設定', update: '更新', details: '詳細資料', hideDetails: '收起詳細資料', openSettings: '開啟設定', setup: '設定', search: '搜尋', send: '傳送', sending: '傳送中', ready: '就緒', unknown: '未知', notChecked: '尚未檢查', localHermes: '本地 Hermes', companyKnowledge: '公司知識庫', companyMaterials: '公司資料', apiKey: 'API Key', provider: '供應商', providerName: '供應商名稱', baseUrl: 'Base URL', defaultModel: '預設模型', model: '模型' },
+  advanced: { eyebrow: '進階', title: 'Hermes 設定', closeAria: '關閉進階設定', navAria: '進階設定', tabs: { setup: 'Hermes', personalize: '個人化', company: '公司資料', agents: '助手', profiles: '使用者', keys: '金鑰', diagnostics: '診斷' } },
   onboarding: {
     loadingEyebrow: '首次使用', loadingTitle: '正在準備你的工作區。', loadingDescription: '本地部署準備好後，Hermes 會開啟設定精靈。', stepsAria: '首次設定步驟', stepProgress: (current, total) => `第 ${current} 步，共 ${total} 步`,
     steps: {
@@ -882,9 +974,24 @@ const zhTW = withOverrides(zhCN, {
   firstRun: { setupEyebrow: '設定', checkingTitle: '正在檢查這台 Mac。', checkingDescription: '設定完成後 Hermes 會進入聊天。', oneTimeSetup: '一次性設定', packageCheckFallback: 'Hermes 會先檢查官方安裝包。' },
   topbar: { chats: '對話', assistants: '助手', files: '檔案', settingsAria: '進階設定', serviceWarning: (message) => `本地服務提醒：${message}` },
   mode: { label: '模式', ariaLabel: '選擇介面模式', options: { simple: { label: '簡單', description: '只顯示日常聊天、檔案、助手和基本設定。', switchLabel: '使用簡單模式', currentLabel: '已開啟簡單模式' }, expert: { label: '專家', description: '顯示供應商、執行時、隱私和診斷控制。', switchLabel: '使用專家模式', currentLabel: '已開啟專家模式' } } },
-  chat: { ...zhCN.chat, addFile: '加入檔案', selectedFiles: (count) => `${count} 個檔案`, you: '你', emptyTitle: '在這台 Mac 上問 Hermes。', emptyDescription: '需要根據本地內容回答時，可以加入檔案。', openSetup: '開啟設定', addApiKey: '加入 API Key', openSourcesAria: '開啟檔案', placeholderNotReady: '先啟動 Hermes', startBeforeSend: '請先啟動 Hermes 再傳送訊息。', newConversation: '新的 Hermes 對話', newAssistantConversation: (name) => `${name} 對話`, emptyActions: { quickChat: { title: '直接提問', description: '開始一般對話，讓 Hermes 根據這台 Mac 回答。', action: '開始聊天', prompt: '幫我梳理這件事。' }, addFiles: { title: '帶檔案聊天', description: '加入本地檔案，讓回答使用你的上下文。', action: '加入檔案', prompt: '總結我加入的檔案。' }, createAssistant: { title: '建立助手', description: '為經常做的任務建立一個可重複使用的助手。', action: '建立助手', prompt: '為這個工作流程建立一個助手。' } } },
+  chat: { ...zhCN.chat, addFile: '加入檔案', addCompanyMaterial: '加入公司資料', openCompanyKnowledgeAria: '開啟公司知識庫', selectedFiles: (count) => `${count} 個檔案`, selectedCompanyMaterials: (count) => `${count} 份公司資料`, you: '你', emptyTitle: '在這台 Mac 上問 Hermes。', emptyDescription: '需要根據本地內容回答時，可以加入檔案。', openSetup: '開啟設定', addApiKey: '加入 API Key', openSourcesAria: '開啟檔案', placeholderNotReady: '先啟動 Hermes', startBeforeSend: '請先啟動 Hermes 再傳送訊息。', newConversation: '新的 Hermes 對話', newAssistantConversation: (name) => `${name} 對話`, emptyActions: { quickChat: { title: '直接提問', description: '開始一般對話，讓 Hermes 根據這台 Mac 回答。', action: '開始聊天', prompt: '幫我梳理這件事。' }, companyKnowledge: { title: '完善公司資料', description: '把產品、價格、認證、物流和付款條款教給 Hermes。', action: '開啟公司資料', prompt: '根據我們的公司資料回答這個問題。' }, addFiles: { title: '帶檔案聊天', description: '加入本地檔案，讓回答使用你的上下文。', action: '加入檔案', prompt: '總結我加入的檔案。' }, createAssistant: { title: '建立助手', description: '為經常做的任務建立一個可重複使用的助手。', action: '建立助手', prompt: '為這個工作流程建立一個助手。' } } },
   session: { count: (count) => `${count} 個對話`, newSessionAria: '新增對話', closeAria: '關閉對話列表', searchAria: '搜尋對話', searchPlaceholder: '搜尋', titleAria: '對話標題', saveTitleAria: '儲存標題', renameAria: (title) => `重新命名 ${title}`, deleteAria: (title) => `刪除 ${title}`, messages: (count) => `${count} 則訊息`, noMatch: '沒有符合的對話', tryAnother: '換個詞試試', newConversation: '新對話', startWithHermes: '從 Hermes 開始' },
   files: { title: '檔案', attachLocalFiles: '加入本地檔案', attached: (count) => `已加入 ${count} 個`, closeAria: '關閉檔案面板', addFiles: '加入檔案', uploading: '上傳中...', supportedTypes: 'PDF、文件、筆記、程式碼、圖片', preview: '預覽', closePreviewAria: '關閉預覽', noPreview: '暫時沒有可讀預覽。', fileNameAria: '檔案名稱', saveFileNameAria: '儲存檔案名稱', previewAria: (name) => `預覽 ${name}`, downloadAria: (name) => `下載 ${name}`, copyAria: (name) => `複製 ${name}`, renameAria: (name) => `重新命名 ${name}`, deleteAria: (name) => `刪除 ${name}`, empty: '還沒有檔案。加入檔案後，回答會更貼近本地內容。', actions: { summarize: { label: '總結', description: '把選取檔案變成簡短概覽。', prompt: '用大白話總結這個檔案。' }, keyPoints: { label: '找重點', description: '提取重要事實、決定和風險。', prompt: '找出這個檔案的重點。' }, askFile: { label: '問檔案', description: '圍繞選取檔案提出具體問題。', prompt: '優先根據這個檔案回答我的問題。' }, actionPlan: { label: '行動計畫', description: '把檔案轉成下一步和負責人。', prompt: '把這個檔案整理成可執行行動計畫。' } }, status: { ready: '已就緒', needsRetry: '需要重試', gettingReady: '準備中', added: '已加入' } },
+  companyKnowledge: {
+    eyebrow: '公司 AI',
+    title: '公司知識庫',
+    subtitle: '管理 Hermes 回答時可引用的公司資料。',
+    profileTitle: '公司檔案',
+    materialsTitle: '公司資料',
+    addFiles: '加入公司資料',
+    uploading: '上傳中...',
+    supportedTypes: 'PDF、文件、筆記、網頁文字、圖片',
+    empty: '還沒有公司資料。加入後，Hermes 會用公司上下文回答。',
+    noPreview: '已儲存。圖片和二進位檔案需要視覺或提取模型後才會出現可讀筆記。',
+    categoryForNewFiles: '新檔案類型',
+    fields: { name: '公司名稱', website: '官網', markets: '目標市場', mainProducts: '主營產品', certifications: '認證資質', paymentTerms: '付款條款', shippingTerms: '物流條款', brandVoice: '品牌語氣', notes: '重要備註' },
+    categories: { 'company-profile': '公司檔案', 'product-catalog': '產品目錄', 'price-list': '價目表', certification: '認證資質', 'shipping-logistics': '物流與運輸', 'payment-terms': '付款條款', faq: '常見問題', 'case-study': '案例', other: '其他' },
+  },
   keyNudge: { pasteOneKey: '貼上一個 API Key。新對話會自動使用它。', pasteKeyFirst: '請先貼上 API Key。', saving: '儲存中...', savedCanSend: '已儲存。現在可以傳送。', save: '儲存' },
   gateway: { restartTitle: 'Hermes 需要重新啟動。', notReadyTitle: 'Hermes 還沒準備好。', startHermes: '啟動 Hermes', tryAgain: '重試', details: '詳細資料', setup: '設定', starting: 'Hermes 正在啟動，通常只需要一小會兒。', failed: '請重試。如果還是失敗，開啟設定查看更多選項。', notInstalled: '先設定 Hermes，才能開啟本地私有聊天。', paused: '啟動 Hermes 後才能傳送訊息。' },
   runtime: {
@@ -914,7 +1021,7 @@ const zhTW = withOverrides(zhCN, {
   },
   profile: { eyebrow: '獨立本地工作區', title: '使用者設定', newNamePlaceholder: '新的設定名稱', newNameAria: '新的設定名稱', add: '加入', profileNameAria: '設定名稱', saveProfileAria: '儲存設定', activeNow: '目前使用', clickToUse: '點擊使用', renameAria: (name) => `重新命名 ${name}`, deleteAria: (name) => `刪除 ${name}`, rulesTitle: '本地設定規則', keepChatsLocal: '聊天保存在本地', keepFilesLocal: '檔案保存在本地', shareWithTeam: '與團隊共享設定' },
   keys: { readySummary: (providers, agents) => `${providers} 個供應商已連線，可用於 ${agents} 個助手`, title: 'API Key', saveKey: '儲存 Key', advancedDetails: '進階詳細資料', hideDetails: '收起詳細資料', savedHelp: '儲存的 Key 會在本地加密。第一個儲存的供應商會自動用於新對話。', noModels: '還沒有同步模型', noKeySaved: '沒有儲存 Key', noProviders: '還沒有儲存供應商 Key。', test: '測試', models: '模型', defaults: '預設值', maskKeys: '隱藏 Key', confirmDestructiveTools: '危險工具需要確認', allowExternalTools: '允許外部工具', form: { pasteKeyFirst: '請先貼上 API Key。', saving: '正在儲存 Key...', saved: '已儲存。新對話會使用這個 Key。', testing: '測試中...', connected: '已連線', checkingModels: '正在檢查模型...' } },
-  diagnostics: { runtime: '執行時', conversations: '對話', sources: '來源', keys: '金鑰', agents: '助手', tokens: 'Token', storage: '儲存', jobs: '任務', channels: '頻道', logs: '日誌', localChatHistory: '本地聊天記錄', uploadedLocalContext: '上傳的本地上下文', storedProviderEntries: '已儲存的供應商', savedInstructionProfiles: '已儲存的指令設定', tokenDetail: (input, output) => `${input} 輸入 / ${output} 輸出`, localFiles: (count) => `${count} 個本地檔案`, jobDetail: (runs, failed) => `${runs} 次執行 / ${failed} 次失敗`, channelDetail: (count) => `${count} 個已設定`, logDetail: (count) => `${count} 個錯誤` },
+  diagnostics: { runtime: '執行時', conversations: '對話', sources: '來源', companyKnowledge: '公司知識庫', keys: '金鑰', agents: '助手', tokens: 'Token', storage: '儲存', jobs: '任務', channels: '頻道', logs: '日誌', localChatHistory: '本地聊天記錄', uploadedLocalContext: '上傳的本地上下文', uploadedCompanyContext: '已上傳的公司上下文', storedProviderEntries: '已儲存的供應商', savedInstructionProfiles: '已儲存的指令設定', tokenDetail: (input, output) => `${input} 輸入 / ${output} 輸出`, localFiles: (count) => `${count} 個本地檔案`, companyMaterials: (count) => `${count} 份公司資料`, jobDetail: (runs, failed) => `${runs} 次執行 / ${failed} 次失敗`, channelDetail: (count) => `${count} 個已設定`, logDetail: (count) => `${count} 個錯誤` },
   settings: { normal: { title: '設定', description: '讓日常控制更容易瀏覽。', sections: { general: { title: '通用', description: '名字、語言和基本工作區行為。' }, appearance: { title: '外觀', description: '主題和顯示偏好。' }, workspace: { title: '工作區', description: '本地資料夾和檔案預設設定。' }, assistants: { title: '助手', description: '預設助手和快速建立選項。' } } }, expert: { title: '專家設定', description: '本地執行時、供應商、隱私和診斷控制。', warning: '修改這些設定可能影響啟動、模型存取或本地資料。', sections: { providers: { title: '供應商', description: 'API Key、Base URL、模型和連線測試。' }, runtime: { title: '執行時', description: '本地 Hermes 安裝、更新、修復和啟動狀態。' }, privacy: { title: '隱私', description: '本地儲存、記憶、檔案和工具權限。' }, diagnostics: { title: '診斷', description: '健康檢查、日誌、Token 用量和排障資料。' } } } },
   errors: { title: '有件事需要處理', retry: '重試', copyDetails: '複製詳細資料', openSettings: '開啟設定', withDetail: (message) => `詳細資料：${message}`, friendly: { runtimeUnavailable: { title: 'Hermes 沒有執行', message: '本地聊天需要先啟動 Hermes。', recovery: '重新啟動 Hermes。如果還是失敗，開啟專家設定並複製報告。' }, providerMissing: { title: '還沒有模型供應商', message: 'Hermes 需要儲存供應商後才能使用雲端模型。', recovery: '在設定裡加入 API Key，或使用已就緒的本地 Hermes。' }, apiKeyInvalid: { title: '這個 API Key 不能用', message: '供應商拒絕了這個 Key，或 Base URL 不正確。', recovery: '檢查 Key、Base URL 和預設模型，然後再測試。' }, messageFailed: { title: '訊息沒有傳送出去', message: 'Hermes 沒能完成這次請求。', recovery: '先重試一次。如果一直失敗，複製詳細資料用於診斷。' }, fileUploadFailed: { title: '檔案沒有加入成功', message: 'Hermes 不能讀取或儲存這個檔案。', recovery: '換一個檔案試試，或先把它移到本地資料夾。' }, fileTooLarge: { title: '檔案太大', message: '這個檔案超過了 Hermes 現在能處理的大小。', recovery: '把它拆成更小的檔案，只加入需要的部分。' }, assistantCreateFailed: { title: '助手沒有建立成功', message: 'Hermes 不能儲存這個助手。', recovery: '檢查名稱和指令，然後再試。' }, unknown: { title: '出現了意外問題', message: 'Hermes 遇到了沒能識別的問題。', recovery: '再試一次；如果反覆出現，請複製詳細資料。' } } },
   format: { usage: (input, output, total) => `約 ${input} 輸入 / ${output} 輸出 / ${total} tokens` },
@@ -922,15 +1029,30 @@ const zhTW = withOverrides(zhCN, {
 })
 
 const ja = withOverrides(en, {
-  common: { brandSubtitle: 'ローカル AI パートナー', back: '戻る', continue: '続ける', save: '保存', saving: '保存中', saved: '保存済み', create: '作成', creating: '作成中', edit: '編集', new: '新規', add: '追加', use: '使う', chat: 'チャット', files: 'ファイル', assistants: 'アシスタント', settings: '設定', update: '更新', details: '詳細', hideDetails: '詳細を隠す', openSettings: '設定を開く', setup: '設定', search: '検索', send: '送信', sending: '送信中', ready: '準備完了', unknown: '不明', notChecked: '未確認', localHermes: 'ローカル Hermes', apiKey: 'API Key', provider: 'プロバイダー', providerName: 'プロバイダー名', baseUrl: 'Base URL', defaultModel: '既定モデル', model: 'モデル' },
-  advanced: { eyebrow: '詳細', title: 'Hermes 設定', closeAria: '詳細設定を閉じる', navAria: '詳細設定', tabs: { setup: 'Hermes', personalize: '個人設定', agents: 'アシスタント', profiles: 'プロファイル', keys: 'キー', diagnostics: '診断' } },
+  common: { brandSubtitle: 'ローカル AI パートナー', back: '戻る', continue: '続ける', save: '保存', saving: '保存中', saved: '保存済み', create: '作成', creating: '作成中', edit: '編集', new: '新規', add: '追加', use: '使う', chat: 'チャット', files: 'ファイル', assistants: 'アシスタント', settings: '設定', update: '更新', details: '詳細', hideDetails: '詳細を隠す', openSettings: '設定を開く', setup: '設定', search: '検索', send: '送信', sending: '送信中', ready: '準備完了', unknown: '不明', notChecked: '未確認', localHermes: 'ローカル Hermes', companyKnowledge: '会社ナレッジベース', companyMaterials: '会社資料', apiKey: 'API Key', provider: 'プロバイダー', providerName: 'プロバイダー名', baseUrl: 'Base URL', defaultModel: '既定モデル', model: 'モデル' },
+  advanced: { eyebrow: '詳細', title: 'Hermes 設定', closeAria: '詳細設定を閉じる', navAria: '詳細設定', tabs: { setup: 'Hermes', personalize: '個人設定', company: '会社資料', agents: 'アシスタント', profiles: 'プロファイル', keys: 'キー', diagnostics: '診断' } },
   onboarding: { ...en.onboarding, loadingEyebrow: '初回起動', loadingTitle: 'ワークスペースを準備しています。', loadingDescription: 'ローカル展開が準備できたら、Hermes が設定ガイドを開きます。', stepsAria: '初期設定ステップ', stepProgress: (current, total) => `${total} ステップ中 ${current}`, steps: { language: { label: '言語', title: '言語を選択します。', description: 'Hermes は初回設定でこの言語を使います。' }, identity: { label: '名前', title: 'このワークスペースに名前を付けます。', description: 'チャットで使う名前と、記憶を有効にするかを決めます。' }, provider: { label: 'プロバイダー', title: 'モデルプロバイダーを接続します。', description: 'OpenAI 互換プロバイダーを追加するか、あとで設定します。' }, theme: { label: 'テーマ', title: 'シンプルなテーマを選びます。', description: 'このローカルワークスペースの見た目を選びます。' }, workspace: { label: 'パス', title: '作業パスを選択します。', description: 'Hermes はローカル資料をこのディレクトリに保存します。' }, features: { label: '機能', title: '基本機能をオンにします。', description: 'チャットを開いたときに表示するツールを選びます。' } }, languageDetails: { 'zh-CN': '簡体字中国語で開始します。', 'zh-TW': '繁体字中国語で開始します。', ja: '日本語で開始します。', ko: '韓国語で開始します。', en: '英語で Hermills と Hermes を使います。' }, identity: { userName: 'あなたの名前', agentName: 'アシスタント名', memoryTitle: '記憶をオンにして開始', memoryDescription: 'Hermes はこのワークスペースの設定を記憶できます。' }, provider: { skip: 'スキップ', skipDetail: 'あとで設定', setupLater: 'あとで設定からプロバイダーを追加できます。' }, themeOptions: { warm: { label: '暖かい紙', detail: '柔らかな紙面と青緑のアクセント。' }, night: { label: '青い夜', detail: '夜作業向けの暗い表示。' }, plain: { label: '白', detail: '高コントラストでシンプル。' }, system: { label: '自動', detail: 'Mac の外観に合わせます。' } }, workspace: { path: 'ワークスペースのパス', chooseFolder: 'フォルダを選択', choosingFolder: '選択中...' }, features: { chat: { label: 'チャット', detail: 'ローカルチャットを直接開きます。' }, files: { label: 'ファイル', detail: 'ファイルを添付してローカル文脈に使います。' }, memory: { label: '記憶', detail: '選択した設定を Hermes に記憶させます。' }, assistants: { label: 'アシスタント', detail: 'タスク別の Agent をあとで作成できます。' }, diagnostics: { label: '診断', detail: '実行状態とヘルスチェックを表示します。' } }, validation: { missingNames: '2つの名前を入力してください。', missingProvider: 'プロバイダー名、Base URL、既定モデルが必要です。', missingWorkspace: 'ワークスペースのパスを選択または入力してください。', missingFeature: '少なくとも1つの機能を選択してください。', noDirectoryPicker: 'このビルドではフォルダ選択を使えません。パスを入力してください。' }, startChatting: 'チャットを開始' },
   firstRun: { setupEyebrow: '設定', checkingTitle: 'この Mac を確認しています。', checkingDescription: '設定が完了すると Hermes がチャットを開きます。', oneTimeSetup: '初回設定', packageCheckFallback: 'Hermes はまず公式セットアップパッケージを確認します。' },
   topbar: { chats: 'チャット', assistants: 'アシスタント', files: 'ファイル', settingsAria: '詳細設定', serviceWarning: (message) => `ローカルサービス警告: ${message}` },
   mode: { label: 'モード', ariaLabel: '画面モードを選択', options: { simple: { label: 'シンプル', description: '日常のチャット、ファイル、アシスタント、基本設定だけを表示します。', switchLabel: 'シンプルモードに切り替え', currentLabel: 'シンプルモード中' }, expert: { label: 'エキスパート', description: 'プロバイダー、ランタイム、プライバシー、診断の設定を表示します。', switchLabel: 'エキスパートモードに切り替え', currentLabel: 'エキスパートモード中' } } },
-  chat: { sectionLabel: 'チャット', defaultTitle: 'Hermes に質問', defaultAssistant: '既定アシスタント', addFile: 'ファイル追加', selectedFiles: (count) => `${count} 件のファイル`, you: 'あなた', emptyTitle: 'この Mac 上で Hermes に何でも聞けます。', emptyDescription: 'ローカル内容に基づく回答が必要なときはファイルを添付します。', openSetup: '設定を開く', addApiKey: 'API Key を追加', openSourcesAria: 'ファイルを開く', messageAria: 'メッセージ', placeholderReady: 'Hermes に質問...', placeholderNotReady: '先に Hermes を開始', startBeforeSend: '送信する前に Hermes を開始してください。', newConversation: '新しい Hermes 会話', newAssistantConversation: (name) => `${name} チャット`, emptyActions: { quickChat: { title: '質問する', description: '通常のチャットを始め、この Mac の内容から Hermes に答えてもらいます。', action: 'チャット開始', prompt: 'この件を整理するのを手伝ってください。' }, addFiles: { title: 'ファイルとチャット', description: 'ローカルファイルを追加して、回答に自分の文脈を使います。', action: 'ファイル追加', prompt: '追加したファイルを要約してください。' }, createAssistant: { title: 'アシスタントを作成', description: 'よく行う作業向けの再利用できる助手を作ります。', action: 'アシスタント作成', prompt: 'このワークフロー用のアシスタントを作成してください。' } } },
+  chat: { sectionLabel: 'チャット', defaultTitle: 'Hermes に質問', defaultAssistant: '既定アシスタント', addFile: 'ファイル追加', addCompanyMaterial: '会社資料を追加', openCompanyKnowledgeAria: '会社ナレッジベースを開く', selectedFiles: (count) => `${count} 件のファイル`, selectedCompanyMaterials: (count) => `${count} 件の会社資料`, you: 'あなた', emptyTitle: 'この Mac 上で Hermes に何でも聞けます。', emptyDescription: 'ローカル内容に基づく回答が必要なときはファイルを添付します。', openSetup: '設定を開く', addApiKey: 'API Key を追加', openSourcesAria: 'ファイルを開く', messageAria: 'メッセージ', placeholderReady: 'Hermes に質問...', placeholderNotReady: '先に Hermes を開始', startBeforeSend: '送信する前に Hermes を開始してください。', newConversation: '新しい Hermes 会話', newAssistantConversation: (name) => `${name} チャット`, emptyActions: { quickChat: { title: '質問する', description: '通常のチャットを始め、この Mac の内容から Hermes に答えてもらいます。', action: 'チャット開始', prompt: 'この件を整理するのを手伝ってください。' }, companyKnowledge: { title: '会社資料を整える', description: '製品、価格、認証、物流、支払い条件を Hermes に教えます。', action: '会社資料を開く', prompt: '会社資料に基づいてこの質問に答えてください。' }, addFiles: { title: 'ファイルとチャット', description: 'ローカルファイルを追加して、回答に自分の文脈を使います。', action: 'ファイル追加', prompt: '追加したファイルを要約してください。' }, createAssistant: { title: 'アシスタントを作成', description: 'よく行う作業向けの再利用できる助手を作ります。', action: 'アシスタント作成', prompt: 'このワークフロー用のアシスタントを作成してください。' } } },
   session: { count: (count) => `${count} 件の会話`, newSessionAria: '新しい会話', closeAria: '会話リストを閉じる', searchAria: '会話を検索', searchPlaceholder: '検索', titleAria: '会話タイトル', saveTitleAria: 'タイトルを保存', renameAria: (title) => `${title} を名称変更`, deleteAria: (title) => `${title} を削除`, messages: (count) => `${count} 件のメッセージ`, noMatch: '一致する会話がありません', tryAnother: '別の語で試してください', newConversation: '新しい会話', startWithHermes: 'Hermes で開始' },
   files: { title: 'ファイル', attachLocalFiles: 'ローカルファイルを添付', attached: (count) => `${count} 件添付`, closeAria: 'ファイルパネルを閉じる', addFiles: 'ファイル追加', uploading: 'アップロード中...', supportedTypes: 'PDF、文書、メモ、コード、画像', preview: 'プレビュー', closePreviewAria: 'プレビューを閉じる', noPreview: '読み取れるプレビューはまだありません。', fileNameAria: 'ファイル名', saveFileNameAria: 'ファイル名を保存', previewAria: (name) => `${name} をプレビュー`, downloadAria: (name) => `${name} をダウンロード`, copyAria: (name) => `${name} をコピー`, renameAria: (name) => `${name} を名称変更`, deleteAria: (name) => `${name} を削除`, empty: 'ファイルはまだありません。ファイルを追加すると回答に使えます。', actions: { summarize: { label: '要約', description: '選択したファイルを短い概要にします。', prompt: 'このファイルをわかりやすく要約してください。' }, keyPoints: { label: '重要点を探す', description: '重要な事実、決定、リスクを抜き出します。', prompt: 'このファイルの重要点を見つけてください。' }, askFile: { label: 'ファイルに質問', description: '選択したファイルについて具体的に質問します。', prompt: 'このファイルを優先して私の質問に答えてください。' }, actionPlan: { label: '行動計画', description: 'ファイルを次の手順と担当に変換します。', prompt: 'このファイルを実行しやすい行動計画にしてください。' } }, status: { ready: '準備完了', needsRetry: '再試行が必要', gettingReady: '準備中', added: '追加済み' } },
+  companyKnowledge: {
+    eyebrow: '会社 AI',
+    title: '会社ナレッジベース',
+    subtitle: 'Hermes が回答で参照できる会社資料を管理します。',
+    profileTitle: '会社プロフィール',
+    materialsTitle: '会社資料',
+    addFiles: '会社資料を追加',
+    uploading: 'アップロード中...',
+    supportedTypes: 'PDF、文書、メモ、Web テキスト、画像',
+    empty: '会社資料はまだありません。追加すると Hermes が会社文脈で回答できます。',
+    noPreview: '保存済みです。画像とバイナリファイルは、視覚または抽出モデルが必要です。',
+    categoryForNewFiles: '新しいファイル種別',
+    fields: { name: '会社名', website: 'Web サイト', markets: '対象市場', mainProducts: '主力製品', certifications: '認証', paymentTerms: '支払い条件', shippingTerms: '物流条件', brandVoice: 'ブランドの語調', notes: '重要メモ' },
+    categories: { 'company-profile': '会社プロフィール', 'product-catalog': '製品カタログ', 'price-list': '価格表', certification: '認証', 'shipping-logistics': '配送と物流', 'payment-terms': '支払い条件', faq: 'FAQ', 'case-study': '導入事例', other: 'その他' },
+  },
   keyNudge: { pasteOneKey: 'API Key を1つ貼り付けます。新しいチャットで自動使用します。', pasteKeyFirst: '先に API Key を貼り付けてください。', saving: '保存中...', savedCanSend: '保存済み。送信できます。', save: '保存' },
   gateway: { restartTitle: 'Hermes の再起動が必要です。', notReadyTitle: 'Hermes はまだ準備できていません。', startHermes: 'Hermes を開始', tryAgain: '再試行', details: '詳細', setup: '設定', starting: 'Hermes を開始しています。通常はすぐ終わります。', failed: '再試行してください。失敗が続く場合は設定を開いてください。', notInstalled: 'ローカルの非公開チャットを使うには Hermes を設定してください。', paused: 'メッセージ送信前に Hermes を開始してください。' },
   runtime: {
@@ -960,7 +1082,7 @@ const ja = withOverrides(en, {
   },
   profile: { eyebrow: '別々のローカルワークスペース', title: 'ユーザープロファイル', newNamePlaceholder: '新しいプロファイル名', newNameAria: '新しいプロファイル名', add: '追加', profileNameAria: 'プロファイル名', saveProfileAria: 'プロファイルを保存', activeNow: '使用中', clickToUse: 'クリックして使用', renameAria: (name) => `${name} を名称変更`, deleteAria: (name) => `${name} を削除`, rulesTitle: 'ローカルプロファイルのルール', keepChatsLocal: 'チャットをローカルに保存', keepFilesLocal: 'ファイルをローカルに保存', shareWithTeam: 'チームとプロファイルを共有' },
   keys: { readySummary: (providers, agents) => `${providers} 件のプロバイダーを ${agents} 件のアシスタントで使用可能`, title: 'API Key', saveKey: 'キーを保存', advancedDetails: '詳細設定', hideDetails: '詳細を隠す', savedHelp: '保存したキーはローカルで暗号化されます。最初に保存したプロバイダーが新しいチャットで自動使用されます。', noModels: '同期済みモデルはありません', noKeySaved: '保存済みキーなし', noProviders: '保存済みプロバイダーキーはありません。', test: 'テスト', models: 'モデル', defaults: '既定', maskKeys: 'キーを隠す', confirmDestructiveTools: '危険なツールは確認する', allowExternalTools: '外部ツールを許可', form: { pasteKeyFirst: '先に API Key を貼り付けてください。', saving: 'キーを保存中...', saved: '保存済み。新しいチャットでこのキーを使います。', testing: 'テスト中...', connected: '接続済み', checkingModels: 'モデルを確認中...' } },
-  diagnostics: { runtime: 'ランタイム', conversations: '会話', sources: 'ソース', keys: 'キー', agents: 'エージェント', tokens: 'トークン', storage: 'ストレージ', jobs: 'ジョブ', channels: 'チャンネル', logs: 'ログ', localChatHistory: 'ローカルチャット履歴', uploadedLocalContext: 'アップロード済みローカル文脈', storedProviderEntries: '保存済みプロバイダー', savedInstructionProfiles: '保存済み指示プロファイル', tokenDetail: (input, output) => `${input} 入力 / ${output} 出力`, localFiles: (count) => `${count} 件のローカルファイル`, jobDetail: (runs, failed) => `${runs} 実行 / ${failed} 失敗`, channelDetail: (count) => `${count} 件設定済み`, logDetail: (count) => `${count} 件のエラー` },
+  diagnostics: { runtime: 'ランタイム', conversations: '会話', sources: 'ソース', companyKnowledge: '会社ナレッジ', keys: 'キー', agents: 'エージェント', tokens: 'トークン', storage: 'ストレージ', jobs: 'ジョブ', channels: 'チャンネル', logs: 'ログ', localChatHistory: 'ローカルチャット履歴', uploadedLocalContext: 'アップロード済みローカル文脈', uploadedCompanyContext: 'アップロード済みの会社コンテキスト', storedProviderEntries: '保存済みプロバイダー', savedInstructionProfiles: '保存済み指示プロファイル', tokenDetail: (input, output) => `${input} 入力 / ${output} 出力`, localFiles: (count) => `${count} 件のローカルファイル`, companyMaterials: (count) => `${count} 件の会社資料`, jobDetail: (runs, failed) => `${runs} 実行 / ${failed} 失敗`, channelDetail: (count) => `${count} 件設定済み`, logDetail: (count) => `${count} 件のエラー` },
   settings: { normal: { title: '設定', description: '日常の操作を見つけやすくします。', sections: { general: { title: '一般', description: '名前、言語、基本的なワークスペース動作。' }, appearance: { title: '外観', description: 'テーマと表示設定。' }, workspace: { title: 'ワークスペース', description: 'ローカルフォルダとファイルの既定値。' }, assistants: { title: 'アシスタント', description: '既定アシスタントとすばやい作成オプション。' } } }, expert: { title: 'エキスパート設定', description: 'ローカルランタイム、プロバイダー、プライバシー、診断の制御。', warning: 'これらを変更すると、起動、モデル接続、ローカルデータに影響することがあります。', sections: { providers: { title: 'プロバイダー', description: 'API Key、Base URL、モデル、接続テスト。' }, runtime: { title: 'ランタイム', description: 'ローカル Hermes のインストール、更新、修復、起動状態。' }, privacy: { title: 'プライバシー', description: 'ローカル保存、記憶、ファイル、ツール権限。' }, diagnostics: { title: '診断', description: 'ヘルスチェック、ログ、トークン使用量、トラブルシュート情報。' } } } },
   errors: { title: '確認が必要です', retry: '再試行', copyDetails: '詳細をコピー', openSettings: '設定を開く', withDetail: (message) => `詳細: ${message}`, friendly: { runtimeUnavailable: { title: 'Hermes が実行されていません', message: 'ローカルチャットには先に Hermes の起動が必要です。', recovery: 'Hermes をもう一度開始してください。失敗が続く場合はエキスパート設定を開いてレポートをコピーします。' }, providerMissing: { title: 'モデルプロバイダーがありません', message: 'クラウドモデルを使うにはプロバイダーの保存が必要です。', recovery: '設定で API Key を追加するか、準備済みのローカル Hermes を使ってください。' }, apiKeyInvalid: { title: 'API Key が使えません', message: 'プロバイダーがこのキーを拒否したか、Base URL が違います。', recovery: 'キー、Base URL、既定モデルを確認して再テストしてください。' }, messageFailed: { title: 'メッセージを送信できませんでした', message: 'Hermes はこのリクエストを完了できませんでした。', recovery: '一度再試行してください。失敗が続く場合は詳細をコピーして診断します。' }, fileUploadFailed: { title: 'ファイルを追加できませんでした', message: 'Hermes はこのファイルを読めないか保存できません。', recovery: '別のファイルを試すか、先にローカルフォルダへ移動してください。' }, fileTooLarge: { title: 'ファイルが大きすぎます', message: 'このファイルは現在 Hermes が処理できるサイズを超えています。', recovery: '小さなファイルに分け、必要な部分だけ追加してください。' }, assistantCreateFailed: { title: 'アシスタントを作成できませんでした', message: 'Hermes はこのアシスタントを保存できません。', recovery: '名前と指示を確認して、もう一度試してください。' }, unknown: { title: '予期しない問題です', message: 'Hermes が理解できない問題に当たりました。', recovery: 'もう一度試してください。繰り返す場合は詳細をコピーしてください。' } } },
   format: { usage: (input, output, total) => `約 ${input} 入力 / ${output} 出力 / ${total} tokens` },
@@ -968,15 +1090,30 @@ const ja = withOverrides(en, {
 })
 
 const ko = withOverrides(en, {
-  common: { brandSubtitle: '로컬 AI 파트너', back: '이전', continue: '계속', save: '저장', saving: '저장 중', saved: '저장됨', create: '만들기', creating: '만드는 중', edit: '편집', new: '새로 만들기', add: '추가', use: '사용', chat: '채팅', files: '파일', assistants: '도우미', settings: '설정', update: '업데이트', details: '자세히', hideDetails: '자세히 숨기기', openSettings: '설정 열기', setup: '설정', search: '검색', send: '보내기', sending: '보내는 중', ready: '준비됨', unknown: '알 수 없음', notChecked: '아직 확인 안 함', localHermes: '로컬 Hermes', apiKey: 'API Key', provider: '공급자', providerName: '공급자 이름', baseUrl: 'Base URL', defaultModel: '기본 모델', model: '모델' },
-  advanced: { eyebrow: '고급', title: 'Hermes 설정', closeAria: '고급 설정 닫기', navAria: '고급 설정', tabs: { setup: 'Hermes', personalize: '개인화', agents: '도우미', profiles: '프로필', keys: '키', diagnostics: '진단' } },
+  common: { brandSubtitle: '로컬 AI 파트너', back: '이전', continue: '계속', save: '저장', saving: '저장 중', saved: '저장됨', create: '만들기', creating: '만드는 중', edit: '편집', new: '새로 만들기', add: '추가', use: '사용', chat: '채팅', files: '파일', assistants: '도우미', settings: '설정', update: '업데이트', details: '자세히', hideDetails: '자세히 숨기기', openSettings: '설정 열기', setup: '설정', search: '검색', send: '보내기', sending: '보내는 중', ready: '준비됨', unknown: '알 수 없음', notChecked: '아직 확인 안 함', localHermes: '로컬 Hermes', companyKnowledge: '회사 지식 베이스', companyMaterials: '회사 자료', apiKey: 'API Key', provider: '공급자', providerName: '공급자 이름', baseUrl: 'Base URL', defaultModel: '기본 모델', model: '모델' },
+  advanced: { eyebrow: '고급', title: 'Hermes 설정', closeAria: '고급 설정 닫기', navAria: '고급 설정', tabs: { setup: 'Hermes', personalize: '개인화', company: '회사 자료', agents: '도우미', profiles: '프로필', keys: '키', diagnostics: '진단' } },
   onboarding: { ...ja.onboarding, loadingEyebrow: '처음 실행', loadingTitle: '작업 공간을 준비하는 중입니다.', loadingDescription: '로컬 배포가 준비되면 Hermes가 설정 안내를 엽니다.', stepsAria: '초기 설정 단계', stepProgress: (current, total) => `${total}단계 중 ${current}단계`, steps: { language: { label: '언어', title: '언어를 선택하세요.', description: 'Hermes가 첫 설정에서 이 언어를 사용합니다.' }, identity: { label: '이름', title: '이 작업 공간의 이름을 정하세요.', description: '채팅에서 사용할 이름과 메모리 사용 여부를 정합니다.' }, provider: { label: '공급자', title: '모델 공급자를 연결하세요.', description: 'OpenAI 호환 공급자를 지금 추가하거나 나중에 설정하세요.' }, theme: { label: '테마', title: '간단한 테마를 고르세요.', description: '이 로컬 작업 공간의 화면 스타일을 선택합니다.' }, workspace: { label: '경로', title: '작업 경로를 선택하세요.', description: 'Hermes가 로컬 자료를 이 폴더에 저장합니다.' }, features: { label: '기능', title: '기본 기능을 켜세요.', description: '채팅을 열 때 보일 도구를 선택합니다.' } }, languageDetails: { 'zh-CN': '중국어 간체로 시작합니다.', 'zh-TW': '중국어 번체로 시작합니다.', ja: '일본어로 시작합니다.', ko: '한국어로 시작합니다.', en: '영어로 Hermills와 Hermes를 사용합니다.' }, identity: { userName: '내 이름', agentName: '도우미 이름', memoryTitle: '메모리를 켜고 시작', memoryDescription: 'Hermes가 이 작업 공간의 선택한 설정을 기억할 수 있습니다.' }, provider: { skip: '건너뛰기', skipDetail: '나중에 설정', setupLater: '나중에 설정에서 공급자를 추가할 수 있습니다.' }, themeOptions: { warm: { label: '따뜻한 종이', detail: '부드러운 종이 화면과 청록색 포인트.' }, night: { label: '푸른 밤', detail: '밤 작업에 맞춘 어두운 화면.' }, plain: { label: '깔끔한 흰색', detail: '높은 대비와 단순한 화면.' }, system: { label: '자동', detail: '이 Mac의 시스템 화면 설정을 따릅니다.' } }, workspace: { path: '작업 공간 경로', chooseFolder: '폴더 선택', choosingFolder: '선택 중...' }, features: { chat: { label: '채팅', detail: '로컬 채팅 작업 공간을 바로 엽니다.' }, files: { label: '파일', detail: '파일을 첨부해 로컬 문맥으로 사용합니다.' }, memory: { label: '메모리', detail: '선택한 설정을 Hermes가 기억하게 합니다.' }, assistants: { label: '도우미', detail: '나중에 작업별 Agent를 만들 수 있습니다.' }, diagnostics: { label: '진단', detail: '실행 상태와 상태 점검을 표시합니다.' } }, validation: { missingNames: '이름 두 개를 모두 입력하세요.', missingProvider: '공급자 이름, Base URL, 기본 모델이 필요합니다.', missingWorkspace: '작업 공간 경로를 선택하거나 입력하세요.', missingFeature: '기능을 하나 이상 선택하세요.', noDirectoryPicker: '이 빌드에서는 폴더 선택기를 사용할 수 없습니다. 경로를 직접 입력하세요.' }, startChatting: '채팅 시작' },
   firstRun: { setupEyebrow: '설정', checkingTitle: '이 Mac을 확인하는 중입니다.', checkingDescription: '설정이 완료되면 Hermes가 채팅을 엽니다.', oneTimeSetup: '첫 설정', packageCheckFallback: 'Hermes가 먼저 공식 설치 패키지를 확인합니다.' },
   topbar: { chats: '대화', assistants: '도우미', files: '파일', settingsAria: '고급 설정', serviceWarning: (message) => `로컬 서비스 알림: ${message}` },
   mode: { label: '모드', ariaLabel: '화면 모드 선택', options: { simple: { label: '간단', description: '일상 채팅, 파일, 도우미, 기본 설정만 표시합니다.', switchLabel: '간단 모드 사용', currentLabel: '간단 모드 사용 중' }, expert: { label: '전문가', description: '공급자, 런타임, 개인정보, 진단 설정을 표시합니다.', switchLabel: '전문가 모드 사용', currentLabel: '전문가 모드 사용 중' } } },
-  chat: { sectionLabel: '채팅', defaultTitle: 'Hermes에게 묻기', defaultAssistant: '기본 도우미', addFile: '파일 추가', selectedFiles: (count) => `${count}개 파일`, you: '나', emptyTitle: '이 Mac에서 Hermes에게 무엇이든 물어보세요.', emptyDescription: '로컬 내용에 기반한 답변이 필요하면 파일을 첨부하세요.', openSetup: '설정 열기', addApiKey: 'API Key 추가', openSourcesAria: '파일 열기', messageAria: '메시지', placeholderReady: 'Hermes에게 묻기...', placeholderNotReady: '먼저 Hermes 시작', startBeforeSend: '메시지를 보내기 전에 Hermes를 시작하세요.', newConversation: '새 Hermes 대화', newAssistantConversation: (name) => `${name} 채팅`, emptyActions: { quickChat: { title: '질문하기', description: '일반 채팅을 시작하고 Hermes가 이 Mac의 맥락으로 답하게 합니다.', action: '채팅 시작', prompt: '이 일을 정리하는 데 도움을 주세요.' }, addFiles: { title: '파일로 채팅', description: '로컬 파일을 추가해 답변에 내 문맥을 사용합니다.', action: '파일 추가', prompt: '추가한 파일을 요약해 주세요.' }, createAssistant: { title: '도우미 만들기', description: '자주 하는 작업을 위한 재사용 가능한 도우미를 만듭니다.', action: '도우미 만들기', prompt: '이 작업 흐름을 위한 도우미를 만들어 주세요.' } } },
+  chat: { sectionLabel: '채팅', defaultTitle: 'Hermes에게 묻기', defaultAssistant: '기본 도우미', addFile: '파일 추가', addCompanyMaterial: '회사 자료 추가', openCompanyKnowledgeAria: '회사 지식 베이스 열기', selectedFiles: (count) => `${count}개 파일`, selectedCompanyMaterials: (count) => `${count}개 회사 자료`, you: '나', emptyTitle: '이 Mac에서 Hermes에게 무엇이든 물어보세요.', emptyDescription: '로컬 내용에 기반한 답변이 필요하면 파일을 첨부하세요.', openSetup: '설정 열기', addApiKey: 'API Key 추가', openSourcesAria: '파일 열기', messageAria: '메시지', placeholderReady: 'Hermes에게 묻기...', placeholderNotReady: '먼저 Hermes 시작', startBeforeSend: '메시지를 보내기 전에 Hermes를 시작하세요.', newConversation: '새 Hermes 대화', newAssistantConversation: (name) => `${name} 채팅`, emptyActions: { quickChat: { title: '질문하기', description: '일반 채팅을 시작하고 Hermes가 이 Mac의 맥락으로 답하게 합니다.', action: '채팅 시작', prompt: '이 일을 정리하는 데 도움을 주세요.' }, companyKnowledge: { title: '회사 자료 정리', description: '제품, 가격, 인증, 물류, 결제 조건을 Hermes에게 알려줍니다.', action: '회사 자료 열기', prompt: '회사 자료를 바탕으로 이 질문에 답해 주세요.' }, addFiles: { title: '파일로 채팅', description: '로컬 파일을 추가해 답변에 내 문맥을 사용합니다.', action: '파일 추가', prompt: '추가한 파일을 요약해 주세요.' }, createAssistant: { title: '도우미 만들기', description: '자주 하는 작업을 위한 재사용 가능한 도우미를 만듭니다.', action: '도우미 만들기', prompt: '이 작업 흐름을 위한 도우미를 만들어 주세요.' } } },
   session: { count: (count) => `${count}개 대화`, newSessionAria: '새 대화', closeAria: '대화 목록 닫기', searchAria: '대화 검색', searchPlaceholder: '검색', titleAria: '대화 제목', saveTitleAria: '제목 저장', renameAria: (title) => `${title} 이름 바꾸기`, deleteAria: (title) => `${title} 삭제`, messages: (count) => `${count}개 메시지`, noMatch: '일치하는 대화 없음', tryAnother: '다른 단어를 시도하세요', newConversation: '새 대화', startWithHermes: 'Hermes로 시작' },
   files: { title: '파일', attachLocalFiles: '로컬 파일 첨부', attached: (count) => `${count}개 첨부됨`, closeAria: '파일 패널 닫기', addFiles: '파일 추가', uploading: '업로드 중...', supportedTypes: 'PDF, 문서, 메모, 코드, 이미지', preview: '미리보기', closePreviewAria: '미리보기 닫기', noPreview: '아직 읽을 수 있는 미리보기가 없습니다.', fileNameAria: '파일 이름', saveFileNameAria: '파일 이름 저장', previewAria: (name) => `${name} 미리보기`, downloadAria: (name) => `${name} 다운로드`, copyAria: (name) => `${name} 복사`, renameAria: (name) => `${name} 이름 바꾸기`, deleteAria: (name) => `${name} 삭제`, empty: '아직 파일이 없습니다. 파일을 추가하면 답변에 사용할 수 있습니다.', actions: { summarize: { label: '요약', description: '선택한 파일을 짧은 개요로 바꿉니다.', prompt: '이 파일을 쉬운 말로 요약해 주세요.' }, keyPoints: { label: '핵심 찾기', description: '중요한 사실, 결정, 위험을 뽑아냅니다.', prompt: '이 파일의 핵심을 찾아 주세요.' }, askFile: { label: '파일에 질문', description: '선택한 파일에 대해 구체적으로 질문합니다.', prompt: '이 파일을 먼저 사용해서 제 질문에 답해 주세요.' }, actionPlan: { label: '실행 계획', description: '파일을 다음 단계와 담당자로 정리합니다.', prompt: '이 파일을 실행 가능한 계획으로 바꿔 주세요.' } }, status: { ready: '준비됨', needsRetry: '재시도 필요', gettingReady: '준비 중', added: '추가됨' } },
+  companyKnowledge: {
+    eyebrow: '회사 AI',
+    title: '회사 지식 베이스',
+    subtitle: 'Hermes가 답변에 참고할 회사 자료를 관리합니다.',
+    profileTitle: '회사 프로필',
+    materialsTitle: '회사 자료',
+    addFiles: '회사 자료 추가',
+    uploading: '업로드 중...',
+    supportedTypes: 'PDF, 문서, 메모, 웹 텍스트, 이미지',
+    empty: '아직 회사 자료가 없습니다. 추가하면 Hermes가 회사 맥락으로 답할 수 있습니다.',
+    noPreview: '저장되었습니다. 이미지와 바이너리 파일은 비전 또는 추출 모델이 필요합니다.',
+    categoryForNewFiles: '새 파일 유형',
+    fields: { name: '회사명', website: '웹사이트', markets: '대상 시장', mainProducts: '주요 제품', certifications: '인증', paymentTerms: '결제 조건', shippingTerms: '물류 조건', brandVoice: '브랜드 톤', notes: '중요 메모' },
+    categories: { 'company-profile': '회사 프로필', 'product-catalog': '제품 카탈로그', 'price-list': '가격표', certification: '인증', 'shipping-logistics': '배송 및 물류', 'payment-terms': '결제 조건', faq: 'FAQ', 'case-study': '사례', other: '기타' },
+  },
   keyNudge: { pasteOneKey: 'API Key 하나를 붙여넣으세요. 새 채팅에서 자동으로 사용됩니다.', pasteKeyFirst: '먼저 API Key를 붙여넣으세요.', saving: '저장 중...', savedCanSend: '저장됨. 이제 보낼 수 있습니다.', save: '저장' },
   gateway: { restartTitle: 'Hermes를 다시 시작해야 합니다.', notReadyTitle: 'Hermes가 아직 준비되지 않았습니다.', startHermes: 'Hermes 시작', tryAgain: '다시 시도', details: '자세히', setup: '설정', starting: 'Hermes가 시작 중입니다. 보통 잠시 후 완료됩니다.', failed: '다시 시도하세요. 계속 실패하면 설정을 여세요.', notInstalled: '비공개 로컬 채팅을 사용하려면 Hermes를 설정하세요.', paused: '메시지를 보내기 전에 Hermes를 시작하세요.' },
   runtime: {
@@ -1006,7 +1143,7 @@ const ko = withOverrides(en, {
   },
   profile: { eyebrow: '분리된 로컬 작업 공간', title: '사용자 프로필', newNamePlaceholder: '새 프로필 이름', newNameAria: '새 프로필 이름', add: '추가', profileNameAria: '프로필 이름', saveProfileAria: '프로필 저장', activeNow: '현재 사용 중', clickToUse: '클릭해서 사용', renameAria: (name) => `${name} 이름 바꾸기`, deleteAria: (name) => `${name} 삭제`, rulesTitle: '로컬 프로필 규칙', keepChatsLocal: '채팅을 로컬에 저장', keepFilesLocal: '파일을 로컬에 저장', shareWithTeam: '팀과 프로필 공유' },
   keys: { readySummary: (providers, agents) => `${providers}개 공급자를 ${agents}개 도우미에서 사용 가능`, title: 'API Key', saveKey: '키 저장', advancedDetails: '고급 자세히', hideDetails: '자세히 숨기기', savedHelp: '저장된 키는 로컬에서 암호화됩니다. 첫 번째로 저장한 공급자가 새 채팅에 자동으로 사용됩니다.', noModels: '동기화된 모델 없음', noKeySaved: '저장된 키 없음', noProviders: '저장된 공급자 키가 없습니다.', test: '테스트', models: '모델', defaults: '기본값', maskKeys: '키 숨기기', confirmDestructiveTools: '위험한 도구는 확인하기', allowExternalTools: '외부 도구 허용', form: { pasteKeyFirst: '먼저 API Key를 붙여넣으세요.', saving: '키 저장 중...', saved: '저장됨. 새 채팅에서 이 키를 사용합니다.', testing: '테스트 중...', connected: '연결됨', checkingModels: '모델 확인 중...' } },
-  diagnostics: { runtime: '런타임', conversations: '대화', sources: '소스', keys: '키', agents: '에이전트', tokens: '토큰', storage: '저장 공간', jobs: '작업', channels: '채널', logs: '로그', localChatHistory: '로컬 채팅 기록', uploadedLocalContext: '업로드된 로컬 문맥', storedProviderEntries: '저장된 공급자', savedInstructionProfiles: '저장된 지시 프로필', tokenDetail: (input, output) => `${input} 입력 / ${output} 출력`, localFiles: (count) => `${count}개 로컬 파일`, jobDetail: (runs, failed) => `${runs}회 실행 / ${failed}회 실패`, channelDetail: (count) => `${count}개 설정됨`, logDetail: (count) => `${count}개 오류` },
+  diagnostics: { runtime: '런타임', conversations: '대화', sources: '소스', companyKnowledge: '회사 지식', keys: '키', agents: '에이전트', tokens: '토큰', storage: '저장 공간', jobs: '작업', channels: '채널', logs: '로그', localChatHistory: '로컬 채팅 기록', uploadedLocalContext: '업로드된 로컬 문맥', uploadedCompanyContext: '업로드된 회사 맥락', storedProviderEntries: '저장된 공급자', savedInstructionProfiles: '저장된 지시 프로필', tokenDetail: (input, output) => `${input} 입력 / ${output} 출력`, localFiles: (count) => `${count}개 로컬 파일`, companyMaterials: (count) => `${count}개 회사 자료`, jobDetail: (runs, failed) => `${runs}회 실행 / ${failed}회 실패`, channelDetail: (count) => `${count}개 설정됨`, logDetail: (count) => `${count}개 오류` },
   settings: { normal: { title: '설정', description: '일상 설정을 쉽게 찾을 수 있게 합니다.', sections: { general: { title: '일반', description: '이름, 언어, 기본 작업 공간 동작.' }, appearance: { title: '화면', description: '테마와 표시 설정.' }, workspace: { title: '작업 공간', description: '로컬 폴더와 파일 기본값.' }, assistants: { title: '도우미', description: '기본 도우미와 빠른 만들기 옵션.' } } }, expert: { title: '전문가 설정', description: '로컬 런타임, 공급자, 개인정보, 진단 제어.', warning: '이 설정을 바꾸면 시작, 모델 접근, 로컬 데이터에 영향을 줄 수 있습니다.', sections: { providers: { title: '공급자', description: 'API Key, Base URL, 모델, 연결 테스트.' }, runtime: { title: '런타임', description: '로컬 Hermes 설치, 업데이트, 복구, 시작 상태.' }, privacy: { title: '개인정보', description: '로컬 저장소, 메모리, 파일, 도구 권한.' }, diagnostics: { title: '진단', description: '상태 점검, 로그, 토큰 사용량, 문제 해결 데이터.' } } } },
   errors: { title: '확인이 필요합니다', retry: '다시 시도', copyDetails: '자세히 복사', openSettings: '설정 열기', withDetail: (message) => `자세히: ${message}`, friendly: { runtimeUnavailable: { title: 'Hermes가 실행 중이 아닙니다', message: '로컬 채팅은 먼저 Hermes를 시작해야 합니다.', recovery: 'Hermes를 다시 시작하세요. 계속 실패하면 전문가 설정을 열고 보고서를 복사하세요.' }, providerMissing: { title: '모델 공급자가 없습니다', message: '클라우드 모델을 사용하려면 공급자를 저장해야 합니다.', recovery: '설정에서 API Key를 추가하거나 준비된 로컬 Hermes를 사용하세요.' }, apiKeyInvalid: { title: 'API Key를 사용할 수 없습니다', message: '공급자가 이 키를 거부했거나 Base URL이 잘못되었습니다.', recovery: '키, Base URL, 기본 모델을 확인한 뒤 다시 테스트하세요.' }, messageFailed: { title: '메시지를 보내지 못했습니다', message: 'Hermes가 이 요청을 완료하지 못했습니다.', recovery: '한 번 다시 시도하세요. 계속 실패하면 자세히를 복사해 진단하세요.' }, fileUploadFailed: { title: '파일을 추가하지 못했습니다', message: 'Hermes가 이 파일을 읽거나 저장할 수 없습니다.', recovery: '다른 파일을 시도하거나 먼저 로컬 폴더로 옮기세요.' }, fileTooLarge: { title: '파일이 너무 큽니다', message: '이 파일은 현재 Hermes가 처리할 수 있는 크기를 넘습니다.', recovery: '더 작은 파일로 나누고 필요한 부분만 추가하세요.' }, assistantCreateFailed: { title: '도우미를 만들지 못했습니다', message: 'Hermes가 이 도우미를 저장할 수 없습니다.', recovery: '이름과 지시문을 확인한 뒤 다시 시도하세요.' }, unknown: { title: '예상하지 못한 문제입니다', message: 'Hermes가 이해하지 못한 문제가 발생했습니다.', recovery: '다시 시도하세요. 반복되면 자세히를 복사하세요.' } } },
   format: { usage: (input, output, total) => `약 ${input} 입력 / ${output} 출력 / ${total} tokens` },

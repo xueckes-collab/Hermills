@@ -331,6 +331,10 @@ export type Material = {
   id: string;
   name: string;
   folder?: string;
+  scope?: "personal" | "company";
+  category?: CompanyMaterialCategory;
+  tags?: string[];
+  description?: string;
   mimeType: string;
   size: number;
   sha256?: string;
@@ -338,10 +342,37 @@ export type Material = {
   textPreview?: string;
   extractionError?: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type MaterialPreview = Material & {
   contentText?: string;
+};
+
+export type CompanyMaterialCategory =
+  | "company-profile"
+  | "product-catalog"
+  | "price-list"
+  | "certification"
+  | "shipping-logistics"
+  | "payment-terms"
+  | "faq"
+  | "case-study"
+  | "other";
+
+export type CompanyProfile = {
+  version: 1;
+  name: string;
+  legalName?: string;
+  website?: string;
+  markets: string[];
+  mainProducts: string[];
+  certifications: string[];
+  paymentTerms: string[];
+  shippingTerms: string[];
+  brandVoice: string;
+  notes: string;
+  updatedAt?: string;
 };
 
 type RawRuntimeStatus = {
@@ -766,6 +797,44 @@ export const api = {
       body: JSON.stringify({ content, materialIds })
     }));
   },
+  async companyProfile(): Promise<CompanyProfile> {
+    return request<CompanyProfile>("/api/company/profile");
+  },
+  async saveCompanyProfile(input: Partial<Omit<CompanyProfile, "version" | "updatedAt">>): Promise<CompanyProfile> {
+    return request<CompanyProfile>("/api/company/profile", {
+      method: "PUT",
+      body: JSON.stringify(input)
+    });
+  },
+  async companyMaterials(): Promise<Material[]> {
+    return request<Material[]>("/api/company/materials");
+  },
+  async saveCompanyMaterial(input: File | { name: string; mimeType: string; size: number; contentText?: string; category?: CompanyMaterialCategory; tags?: string[]; description?: string }): Promise<Material> {
+    if (typeof File !== "undefined" && input instanceof File) {
+      const body = new FormData();
+      body.append("file", input, input.name);
+      return request<Material>("/api/company/materials", {
+        method: "POST",
+        body
+      });
+    }
+    return request<Material>("/api/company/materials", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async companyMaterialPreview(id: string): Promise<MaterialPreview> {
+    return request<MaterialPreview>(`/api/company/materials/${id}/preview`);
+  },
+  async updateCompanyMaterial(id: string, input: { name?: string; category?: CompanyMaterialCategory | null; tags?: string[]; description?: string | null }): Promise<Material> {
+    return request<Material>(`/api/company/materials/${id}`, { method: "PUT", body: JSON.stringify(input) });
+  },
+  async copyCompanyMaterial(id: string, input: { name?: string; category?: CompanyMaterialCategory | null; tags?: string[]; description?: string | null } = {}): Promise<Material> {
+    return request<Material>(`/api/company/materials/${id}/copy`, { method: "POST", body: JSON.stringify(input) });
+  },
+  async deleteCompanyMaterial(id: string): Promise<void> {
+    await request<void>(`/api/company/materials/${id}`, { method: "DELETE" });
+  },
   async materials(): Promise<Material[]> {
     return request<Material[]>("/api/materials");
   },
@@ -823,6 +892,17 @@ export const fallback = {
     shouldShowFirstDeploy: true,
     runtimeRecoverable: false
   } satisfies AppState,
+  companyProfile: {
+    version: 1,
+    name: "",
+    markets: [],
+    mainProducts: [],
+    certifications: [],
+    paymentTerms: [],
+    shippingTerms: [],
+    brandVoice: "",
+    notes: ""
+  } satisfies CompanyProfile,
   onboarding: {
     version: 1,
     language: "en",
@@ -868,5 +948,6 @@ export const fallback = {
   channels: [] satisfies ChannelRecord[],
   logs: [] satisfies LogEntry[],
   sessions: [] satisfies ChatSession[],
-  materials: [] satisfies Material[]
+  materials: [] satisfies Material[],
+  companyMaterials: [] satisfies Material[]
 };

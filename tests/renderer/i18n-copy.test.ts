@@ -42,4 +42,29 @@ describe("renderer language copy", () => {
       expect(copy.onboarding.features.files.detail).not.toBe(english.onboarding.features.files.detail);
     }
   });
+
+  it("localizes company knowledge copy in every supported language", () => {
+    const english = getUiCopy("en");
+
+    for (const language of languages) {
+      const copy = getUiCopy(language);
+      const visibleCopy = [
+        copy.common.companyKnowledge,
+        copy.advanced.tabs.company,
+        copy.chat.emptyActions.companyKnowledge.title,
+        copy.companyKnowledge.title,
+        copy.companyKnowledge.profileTitle,
+        copy.companyKnowledge.materialsTitle,
+        copy.companyKnowledge.categories["product-catalog"],
+        copy.diagnostics.companyKnowledge,
+      ];
+
+      expect(visibleCopy.every((item) => typeof item === "string" && item.trim().length > 0), `${language} company knowledge copy should not be blank`).toBe(true);
+
+      if (language !== "en") {
+        expect(copy.companyKnowledge.title).not.toBe(english.companyKnowledge.title);
+        expect(copy.chat.emptyActions.companyKnowledge.title).not.toBe(english.chat.emptyActions.companyKnowledge.title);
+      }
+    }
+  });
 });

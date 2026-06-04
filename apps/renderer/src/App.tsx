@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Bot,
   Brain,
+  Building2,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -36,25 +37,27 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatSession, InstallEvent, Material, MaterialPreview, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, InstallEvent, Material, MaterialPreview, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
 
-type AdvancedPanel = 'setup' | 'personalize' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
+type AdvancedPanel = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
 
 const advancedItems: Array<{ id: AdvancedPanel; icon: LucideIcon }> = [
   { id: 'setup', icon: Cpu },
   { id: 'personalize', icon: Languages },
+  { id: 'company', icon: Building2 },
   { id: 'agents', icon: Bot },
   { id: 'profiles', icon: ShieldCheck },
   { id: 'keys', icon: KeyRound },
   { id: 'diagnostics', icon: Wrench },
 ]
 
-const simpleAdvancedPanels: AdvancedPanel[] = ['setup', 'personalize', 'agents', 'keys']
+const simpleAdvancedPanels: AdvancedPanel[] = ['setup', 'personalize', 'company', 'agents', 'keys']
 
 const chatEmptyActions: Array<{ id: ChatEmptyEntryId; icon: LucideIcon }> = [
   { id: 'quickChat', icon: MessageCircle },
+  { id: 'companyKnowledge', icon: Building2 },
   { id: 'addFiles', icon: Paperclip },
   { id: 'createAssistant', icon: Bot },
 ]
@@ -412,10 +415,12 @@ export default function App() {
   const analytics = useEndpoint(api.analyticsSummary, fallback.analytics, chatEnabled)
   const sessions = useEndpoint(api.chatSessions, fallback.sessions, chatEnabled)
   const materials = useEndpoint(api.materials, fallback.materials, chatEnabled)
+  const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, chatEnabled)
+  const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, chatEnabled)
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
-  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error
+  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
 
   async function refreshAfterDeploy() {
@@ -526,6 +531,7 @@ export default function App() {
         openAdvanced={openAdvanced}
         defaultAgentId={onboarding.data.defaultAgentId}
         copy={copy}
+        openCompanyKnowledge={() => openAdvanced('company')}
       />
 
       {advancedOpen ? (
@@ -549,6 +555,10 @@ export default function App() {
           setOnboardingState={onboarding.setData}
           sessions={sessions.data}
           materials={materials.data}
+          companyProfile={companyProfile.data}
+          setCompanyProfile={companyProfile.setData}
+          companyMaterials={companyMaterials.data}
+          setCompanyMaterials={companyMaterials.setData}
           uiMode={uiMode}
           setUiMode={setUiMode}
           copy={copy}
@@ -579,6 +589,7 @@ function ClientWorkspace({
   openAdvanced,
   defaultAgentId,
   copy,
+  openCompanyKnowledge,
 }: {
   runtime: RuntimeStatus
   sessions: ChatSession[]
@@ -600,6 +611,7 @@ function ClientWorkspace({
   openAdvanced: (panel: AdvancedPanel) => void
   defaultAgentId?: string
   copy: UiCopy
+  openCompanyKnowledge: () => void
 }) {
   const [activeSessionId, setActiveSessionId] = useState('')
   const [preferredAgentId, setPreferredAgentId] = useState('')
@@ -660,6 +672,10 @@ function ClientWorkspace({
     }
     if (actionId === 'createAssistant') {
       setAssistantsOpen(true)
+      return
+    }
+    if (actionId === 'companyKnowledge') {
+      openCompanyKnowledge()
       return
     }
     setDraft(copy.chat.emptyActions[actionId].prompt)
@@ -1990,6 +2006,10 @@ function AdvancedOverlay({
   setOnboardingState,
   sessions,
   materials,
+  companyProfile,
+  setCompanyProfile,
+  companyMaterials,
+  setCompanyMaterials,
   uiMode,
   setUiMode,
   copy,
@@ -2013,6 +2033,10 @@ function AdvancedOverlay({
   setOnboardingState: (state: OnboardingState) => void
   sessions: ChatSession[]
   materials: Material[]
+  companyProfile: CompanyProfile
+  setCompanyProfile: (profile: CompanyProfile) => void
+  companyMaterials: Material[]
+  setCompanyMaterials: (materials: Material[]) => void
   uiMode: UiModeId
   setUiMode: (mode: UiModeId) => void
   copy: UiCopy
@@ -2075,6 +2099,7 @@ function AdvancedOverlay({
           <div className="advanced-content">
             {activePanel === 'setup' && <RuntimeInstaller runtime={runtime} setRuntime={setRuntime} uiMode={uiMode} copy={copy} />}
             {activePanel === 'personalize' && <PersonalizationPanel onboardingState={onboardingState} setOnboardingState={setOnboardingState} copy={copy} />}
+            {activePanel === 'company' && <CompanyKnowledgePanel profile={companyProfile} setProfile={setCompanyProfile} materials={companyMaterials} setMaterials={setCompanyMaterials} copy={copy} />}
             {activePanel === 'agents' && <AgentBuilder agents={agents} providers={providers} refresh={setAgents} compact={uiMode === 'simple'} copy={copy} />}
             {activePanel === 'profiles' && <ProfilePanel profileState={profiles} refresh={setProfiles} copy={copy} />}
             {activePanel === 'keys' && (
@@ -2088,7 +2113,7 @@ function AdvancedOverlay({
               />
             )}
             {activePanel === 'diagnostics' && (
-              <DiagnosticsPanel runtime={runtime} sessions={sessions} materials={materials} providers={providers} agents={agents} usage={usage} analytics={analytics} copy={copy} />
+              <DiagnosticsPanel runtime={runtime} sessions={sessions} materials={materials} companyMaterials={companyMaterials} providers={providers} agents={agents} usage={usage} analytics={analytics} copy={copy} />
             )}
           </div>
         </div>
@@ -2905,6 +2930,268 @@ function ProfilePanel({ profileState, refresh, copy }: { profileState: ProfileSt
   )
 }
 
+const companyCategoryOptions: CompanyMaterialCategory[] = [
+  'company-profile',
+  'product-catalog',
+  'price-list',
+  'certification',
+  'shipping-logistics',
+  'payment-terms',
+  'faq',
+  'case-study',
+  'other',
+]
+
+function CompanyKnowledgePanel({
+  profile,
+  setProfile,
+  materials,
+  setMaterials,
+  copy,
+}: {
+  profile: CompanyProfile
+  setProfile: (profile: CompanyProfile) => void
+  materials: Material[]
+  setMaterials: (materials: Material[]) => void
+  copy: UiCopy
+}) {
+  const [draft, setDraft] = useState(() => companyDraftFromProfile(profile))
+  const [uploadCategory, setUploadCategory] = useState<CompanyMaterialCategory>('product-catalog')
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState('')
+  const [preview, setPreview] = useState<MaterialPreview>()
+  const [previewLoadingId, setPreviewLoadingId] = useState('')
+
+  useEffect(() => {
+    setDraft(companyDraftFromProfile(profile))
+  }, [profile])
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      setProfile(await api.saveCompanyProfile(companyProfileFromDraft(draft)))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function uploadCompanyFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? [])
+    if (!files.length) return
+    setUploading(true)
+    setError('')
+    try {
+      const saved: Material[] = []
+      for (const file of files) {
+        const material = await api.saveCompanyMaterial(file)
+        saved.push(await api.updateCompanyMaterial(material.id, { category: uploadCategory }))
+      }
+      setMaterials([...saved, ...materials])
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setUploading(false)
+      event.currentTarget.value = ''
+    }
+  }
+
+  async function previewCompanyMaterial(id: string) {
+    setPreviewLoadingId(id)
+    setError('')
+    try {
+      setPreview(await api.companyMaterialPreview(id))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setPreviewLoadingId('')
+    }
+  }
+
+  async function updateCompanyMaterialCategory(id: string, category: CompanyMaterialCategory) {
+    setError('')
+    try {
+      const next = await api.updateCompanyMaterial(id, { category })
+      setMaterials(materials.map((material) => material.id === id ? next : material))
+      if (preview?.id === id) setPreview({ ...preview, ...next })
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    }
+  }
+
+  async function deleteCompanyMaterial(id: string) {
+    setError('')
+    try {
+      await api.deleteCompanyMaterial(id)
+      setMaterials(materials.filter((material) => material.id !== id))
+      if (preview?.id === id) setPreview(undefined)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    }
+  }
+
+  return (
+    <section className="settings-layout company-layout">
+      <form className="quiet-panel settings-form company-profile-form" onSubmit={saveProfile}>
+        <div className="panel-header">
+          <div>
+            <span>{copy.companyKnowledge.eyebrow}</span>
+            <h3>{copy.companyKnowledge.profileTitle}</h3>
+          </div>
+          <button className="primary-button icon-label" type="submit" disabled={saving}>
+            {saving ? <RefreshCw size={16} /> : <CheckCircle2 size={16} />}
+            {saving ? copy.common.saving : copy.common.save}
+          </button>
+        </div>
+        <div className="company-form-grid">
+          <label>
+            {copy.companyKnowledge.fields.name}
+            <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Acme Trading" />
+          </label>
+          <label>
+            {copy.companyKnowledge.fields.website}
+            <input value={draft.website} onChange={(event) => setDraft({ ...draft, website: event.target.value })} placeholder="https://example.com" />
+          </label>
+        </div>
+        <label>
+          {copy.companyKnowledge.fields.mainProducts}
+          <textarea value={draft.mainProducts} onChange={(event) => setDraft({ ...draft, mainProducts: event.target.value })} rows={3} />
+        </label>
+        <label>
+          {copy.companyKnowledge.fields.markets}
+          <textarea value={draft.markets} onChange={(event) => setDraft({ ...draft, markets: event.target.value })} rows={2} />
+        </label>
+        <div className="company-form-grid">
+          <label>
+            {copy.companyKnowledge.fields.paymentTerms}
+            <textarea value={draft.paymentTerms} onChange={(event) => setDraft({ ...draft, paymentTerms: event.target.value })} rows={2} />
+          </label>
+          <label>
+            {copy.companyKnowledge.fields.shippingTerms}
+            <textarea value={draft.shippingTerms} onChange={(event) => setDraft({ ...draft, shippingTerms: event.target.value })} rows={2} />
+          </label>
+        </div>
+        <label>
+          {copy.companyKnowledge.fields.certifications}
+          <textarea value={draft.certifications} onChange={(event) => setDraft({ ...draft, certifications: event.target.value })} rows={2} />
+        </label>
+        <label>
+          {copy.companyKnowledge.fields.brandVoice}
+          <textarea value={draft.brandVoice} onChange={(event) => setDraft({ ...draft, brandVoice: event.target.value })} rows={3} />
+        </label>
+        <label>
+          {copy.companyKnowledge.fields.notes}
+          <textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} rows={4} />
+        </label>
+      </form>
+
+      <aside className="quiet-panel company-materials-panel">
+        <div className="panel-header">
+          <div>
+            <span>{copy.companyKnowledge.subtitle}</span>
+            <h3>{copy.companyKnowledge.materialsTitle}</h3>
+          </div>
+          <label className="company-category-select">
+            <span>{copy.companyKnowledge.categoryForNewFiles}</span>
+            <select value={uploadCategory} onChange={(event) => setUploadCategory(event.target.value as CompanyMaterialCategory)}>
+              {companyCategoryOptions.map((category) => <option value={category} key={category}>{copy.companyKnowledge.categories[category]}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <label className="upload-dropzone company-upload-dropzone">
+          <Building2 size={20} />
+          <strong>{uploading ? copy.companyKnowledge.uploading : copy.companyKnowledge.addFiles}</strong>
+          <span>{copy.companyKnowledge.supportedTypes}</span>
+          <input type="file" multiple onChange={uploadCompanyFiles} aria-label={copy.companyKnowledge.addFiles} />
+        </label>
+
+        {error ? <div className="inline-alert compact">{error}</div> : null}
+
+        {preview ? (
+          <article className="material-preview company-preview">
+            <div className="material-preview-header">
+              <div>
+                <span>{copy.files.preview}</span>
+                <strong>{preview.name}</strong>
+              </div>
+              <button className="icon-button" aria-label={copy.files.closePreviewAria} onClick={() => setPreview(undefined)}>
+                <X size={14} />
+              </button>
+            </div>
+            <pre>{preview.contentText || copy.companyKnowledge.noPreview}</pre>
+          </article>
+        ) : null}
+
+        <div className="material-list company-material-list">
+          {materials.length ? materials.map((material) => (
+            <article className="material-row company-material-row" key={material.id}>
+              <button className="material-select" onClick={() => previewCompanyMaterial(material.id)}>
+                <FileText size={16} />
+                <span>
+                  <strong>{material.name}</strong>
+                  <small>{copy.companyKnowledge.categories[material.category ?? 'other']} · {formatBytes(material.size)} · {materialStatusLabel(material, copy)}</small>
+                </span>
+              </button>
+              <div className="material-actions company-material-actions">
+                <select value={material.category ?? 'other'} onChange={(event) => updateCompanyMaterialCategory(material.id, event.target.value as CompanyMaterialCategory)}>
+                  {companyCategoryOptions.map((category) => <option value={category} key={category}>{copy.companyKnowledge.categories[category]}</option>)}
+                </select>
+                <button className="icon-button" aria-label={copy.files.previewAria(material.name)} onClick={() => previewCompanyMaterial(material.id)}>
+                  {previewLoadingId === material.id ? <RefreshCw size={14} /> : <Eye size={14} />}
+                </button>
+                <button className="icon-button danger" aria-label={copy.files.deleteAria(material.name)} onClick={() => deleteCompanyMaterial(material.id)}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </article>
+          )) : <div className="empty-state">{copy.companyKnowledge.empty}</div>}
+        </div>
+      </aside>
+    </section>
+  )
+}
+
+function companyDraftFromProfile(profile: CompanyProfile) {
+  return {
+    name: profile.name ?? '',
+    website: profile.website ?? '',
+    markets: joinLines(profile.markets),
+    mainProducts: joinLines(profile.mainProducts),
+    certifications: joinLines(profile.certifications),
+    paymentTerms: joinLines(profile.paymentTerms),
+    shippingTerms: joinLines(profile.shippingTerms),
+    brandVoice: profile.brandVoice ?? '',
+    notes: profile.notes ?? '',
+  }
+}
+
+function companyProfileFromDraft(draft: ReturnType<typeof companyDraftFromProfile>): Partial<Omit<CompanyProfile, 'version' | 'updatedAt'>> {
+  return {
+    name: draft.name.trim(),
+    website: draft.website.trim() || undefined,
+    markets: splitLines(draft.markets),
+    mainProducts: splitLines(draft.mainProducts),
+    certifications: splitLines(draft.certifications),
+    paymentTerms: splitLines(draft.paymentTerms),
+    shippingTerms: splitLines(draft.shippingTerms),
+    brandVoice: draft.brandVoice.trim(),
+    notes: draft.notes.trim(),
+  }
+}
+
+function joinLines(values: string[] | undefined): string {
+  return (values ?? []).join('\n')
+}
+
+function splitLines(value: string): string[] {
+  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean)
+}
+
 function SettingsPanel({
   providers,
   readyProviders,
@@ -3077,6 +3364,7 @@ function DiagnosticsPanel({
   runtime,
   sessions,
   materials,
+  companyMaterials,
   providers,
   agents,
   usage,
@@ -3086,6 +3374,7 @@ function DiagnosticsPanel({
   runtime: RuntimeStatus
   sessions: ChatSession[]
   materials: Material[]
+  companyMaterials: Material[]
   providers: Provider[]
   agents: Agent[]
   usage: UsageSummary
@@ -3097,6 +3386,7 @@ function DiagnosticsPanel({
       <StatusRow icon={Cpu} label={copy.diagnostics.runtime} value={runtimeStatusLabel(runtime, copy)} detail={runtime.version || runtime.path || copy.runtime.steps['not-installed']} />
       <StatusRow icon={MessageCircle} label={copy.diagnostics.conversations} value={String(sessions.length)} detail={copy.diagnostics.localChatHistory} />
       <StatusRow icon={FileText} label={copy.diagnostics.sources} value={String(materials.length)} detail={copy.diagnostics.uploadedLocalContext} />
+      <StatusRow icon={Building2} label={copy.diagnostics.companyKnowledge} value={String(companyMaterials.length)} detail={copy.diagnostics.companyMaterials(companyMaterials.length)} />
       <StatusRow icon={KeyRound} label={copy.diagnostics.keys} value={String(providers.length)} detail={copy.diagnostics.storedProviderEntries} />
       <StatusRow icon={Bot} label={copy.diagnostics.agents} value={String(agents.length)} detail={copy.diagnostics.savedInstructionProfiles} />
       <StatusRow icon={Cpu} label={copy.diagnostics.tokens} value={formatNumber(usage.usage.totalTokens)} detail={copy.diagnostics.tokenDetail(formatNumber(usage.usage.inputTokens), formatNumber(usage.usage.outputTokens))} />

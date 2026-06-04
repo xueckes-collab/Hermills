@@ -212,6 +212,86 @@ describe("Hermills local API", () => {
     expect(runtime.requests.at(-1)?.messages.at(-1)?.content).toContain("Use Hermes first.");
   });
 
+  it("saves company profile, uploads company materials, and auto-attaches company context to chat", async () => {
+    const profileResponse = await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://example.com",
+      markets: ["United States", "Germany"],
+      mainProducts: ["LED work light"],
+      paymentTerms: ["T/T", "L/C"],
+      shippingTerms: ["FOB Ningbo"],
+      brandVoice: "Professional and direct.",
+      notes: "Always mention MOQ when buyers ask for samples."
+    } });
+    expect(profileResponse.statusCode).toBe(200);
+    expect(profileResponse.json()).toMatchObject({ name: "Eckes Export", mainProducts: ["LED work light"] });
+
+    const materialResponse = await server.inject({ method: "POST", url: "/api/company/materials", headers, payload: {
+      name: "catalog.md",
+      mimeType: "text/markdown",
+      size: 36,
+      contentText: "Model X has CE certification.",
+      category: "product-catalog"
+    } });
+    expect(materialResponse.statusCode).toBe(200);
+    expect(materialResponse.json()).toMatchObject({ scope: "company", category: "product-catalog" });
+    expect(materialResponse.json()).not.toHaveProperty("path");
+
+    const ordinaryMaterials = await server.inject({ method: "GET", url: "/api/materials", headers });
+    expect(ordinaryMaterials.statusCode).toBe(200);
+    expect(ordinaryMaterials.json()).toEqual([]);
+
+    const sessionResponse = await server.inject({ method: "POST", url: "/api/chat/sessions", headers, payload: { title: "Company chat" } });
+    expect(sessionResponse.statusCode).toBe(200);
+
+    const messageResponse = await server.inject({
+      method: "POST",
+      url: `/api/chat/sessions/${sessionResponse.json().id}/messages`,
+      headers,
+      payload: { content: "What should I tell this buyer?" }
+    });
+    expect(messageResponse.statusCode).toBe(200);
+    expect(messageResponse.json().messages[0].content).toBe("What should I tell this buyer?");
+    const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
+    expect(runtimeContent).toContain("--- Company knowledge ---");
+    expect(runtimeContent).toContain("Eckes Export");
+    expect(runtimeContent).toContain("Model X has CE certification.");
+  });
+
+  it("previews, updates, copies, and deletes company materials", async () => {
+    const materialResponse = await server.inject({ method: "POST", url: "/api/company/materials", headers, payload: {
+      name: "payment.md",
+      mimeType: "text/markdown",
+      size: 24,
+      contentText: "Use 30% deposit and 70% before shipment.",
+      category: "payment-terms"
+    } });
+    expect(materialResponse.statusCode).toBe(200);
+
+    const id = materialResponse.json().id;
+    const previewResponse = await server.inject({ method: "GET", url: `/api/company/materials/${id}/preview`, headers });
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.json().contentText).toContain("30% deposit");
+
+    const updateResponse = await server.inject({
+      method: "PUT",
+      url: `/api/company/materials/${id}`,
+      headers,
+      payload: { category: "faq", tags: ["payment"], description: "Buyer payment terms" }
+    });
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json()).toMatchObject({ category: "faq", tags: ["payment"], description: "Buyer payment terms" });
+
+    const copyResponse = await server.inject({ method: "POST", url: `/api/company/materials/${id}/copy`, headers, payload: { name: "payment copy.md" } });
+    expect(copyResponse.statusCode).toBe(200);
+    expect(copyResponse.json()).toMatchObject({ scope: "company", name: "payment copy.md" });
+
+    const deleteResponse = await server.inject({ method: "DELETE", url: `/api/company/materials/${id}`, headers });
+    expect(deleteResponse.statusCode).toBe(204);
+    const listResponse = await server.inject({ method: "GET", url: "/api/company/materials", headers });
+    expect(listResponse.json().map((item: { id: string }) => item.id)).not.toContain(id);
+  });
+
   it("searches, renames, deletes chat sessions, and reports estimated usage", async () => {
     const sessionResponse = await server.inject({ method: "POST", url: "/api/chat/sessions", headers, payload: { title: "Alpha chat" } });
     expect(sessionResponse.statusCode).toBe(200);

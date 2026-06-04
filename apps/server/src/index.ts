@@ -16,6 +16,9 @@ import {
   ChatSessionSchema,
   getDataHome,
   getLogHome,
+  CompanyMaterialCategorySchema,
+  CompanyProfileSchema,
+  CompanyProfileUpdateSchema,
   InstallRequestSchema,
   JobRecordSchema,
   JobRunRecordSchema,
@@ -32,6 +35,7 @@ import {
   type ChannelRecord,
   type ChatMessage,
   type ChatSession,
+  type CompanyProfile,
   type InstallEvent,
   type InstallRequest,
   type JobRecord,
@@ -177,13 +181,25 @@ const UploadMaterialBody = z.object({
 
 const UpdateMaterialBody = z.object({
   name: z.string().min(1).max(180).optional(),
-  folder: z.string().min(1).max(160).nullable().optional()
+  folder: z.string().min(1).max(160).nullable().optional(),
+  category: CompanyMaterialCategorySchema.nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).optional(),
+  description: z.string().trim().max(1000).nullable().optional()
 }).strict();
 
 const CopyMaterialBody = z.object({
   name: z.string().min(1).max(180).optional(),
-  folder: z.string().min(1).max(160).nullable().optional()
+  folder: z.string().min(1).max(160).nullable().optional(),
+  category: CompanyMaterialCategorySchema.nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).optional(),
+  description: z.string().trim().max(1000).nullable().optional()
 }).strict();
+
+const UploadCompanyMaterialBody = UploadMaterialBody.extend({
+  category: CompanyMaterialCategorySchema.optional(),
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).optional(),
+  description: z.string().trim().max(1000).optional()
+});
 
 const AppStateDocumentSchema = z.object({
   version: z.literal(1).default(1),
@@ -312,6 +328,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const materials = new MaterialRepository(options.baseDir);
   const appState = new AppStateRepository(options.baseDir);
   const onboarding = new OnboardingRepository(options.baseDir);
+  const companyProfile = new CompanyProfileRepository(options.baseDir);
   const profiles = new ProfileRepository(options.baseDir);
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
@@ -489,12 +506,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/jobs/:id/run", async (request) => {
     const { id } = request.params as { id: string };
     await assertJobProfile(id);
-    return runJobNow(id, jobs, logs, runtime, agents, providers, materials);
+    return runJobNow(id, jobs, logs, runtime, agents, providers, materials, companyProfile);
   });
   server.post("/api/jobs/:id/run-now", async (request) => {
     const { id } = request.params as { id: string };
     await assertJobProfile(id);
-    return runJobNow(id, jobs, logs, runtime, agents, providers, materials);
+    return runJobNow(id, jobs, logs, runtime, agents, providers, materials, companyProfile);
   });
   server.get("/api/jobs/:id/history", async (request) => {
     const { id } = request.params as { id: string };
@@ -585,9 +602,51 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const body = SendChatMessageBody.parse(request.body);
     const attachedMaterials = body.materialIds?.length ? await materials.getMany(body.materialIds) : [];
     const session = await chats.append(id, { id: randomUUID(), role: "user", content: body.content, createdAt: new Date().toISOString() });
-    return chats.append(id, await createAssistantReply(session, runtime, agents, providers, attachedMaterials));
+    return chats.append(id, await createAssistantReply(session, runtime, agents, providers, attachedMaterials, await buildCompanyKnowledgeContext(companyProfile, materials)));
   });
-  server.get("/api/materials", async () => (await materials.list()).map(publicMaterial));
+  server.get("/api/company/profile", async () => companyProfile.get());
+  server.put("/api/company/profile", async (request) => companyProfile.update(CompanyProfileUpdateSchema.parse(request.body ?? {})));
+  server.get("/api/company/materials", async () => (await materials.listCompany()).map(publicMaterial));
+  server.post("/api/company/materials", async (request) => {
+    if (isMultipartRequest(request)) {
+      return publicMaterial(await materials.createFromMultipart(await readMaterialUpload(request), { scope: "company", folder: "Company knowledge" }));
+    }
+    return publicMaterial(await materials.createFromJson({
+      ...UploadCompanyMaterialBody.parse(request.body),
+      scope: "company",
+      folder: "Company knowledge"
+    }));
+  });
+  server.get("/api/company/materials/:id/preview", async (request) => {
+    const { id } = request.params as { id: string };
+    await materials.assertCompanyMaterial(id);
+    return materials.preview(id);
+  });
+  server.get("/api/company/materials/:id/download", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await materials.assertCompanyMaterial(id);
+    const download = await materials.download(id);
+    reply.header("Content-Type", download.mimeType);
+    reply.header("Content-Disposition", `attachment; filename="${safeDownloadName(download.fileName)}"`);
+    return reply.send(download.buffer);
+  });
+  server.put("/api/company/materials/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    await materials.assertCompanyMaterial(id);
+    return publicMaterial(await materials.update(id, UpdateMaterialBody.parse(request.body ?? {})));
+  });
+  server.post("/api/company/materials/:id/copy", async (request) => {
+    const { id } = request.params as { id: string };
+    await materials.assertCompanyMaterial(id);
+    return publicMaterial(await materials.copy(id, { ...CopyMaterialBody.parse(request.body ?? {}), scope: "company", folder: "Company knowledge" }));
+  });
+  server.delete("/api/company/materials/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await materials.assertCompanyMaterial(id);
+    await materials.remove(id);
+    return reply.code(204).send();
+  });
+  server.get("/api/materials", async () => (await materials.listPersonal()).map(publicMaterial));
   server.post("/api/materials", async (request) => {
     if (isMultipartRequest(request)) {
       return publicMaterial(await materials.createFromMultipart(await readMaterialUpload(request)));
@@ -656,7 +715,8 @@ async function createAssistantReply(
   runtime: RuntimeAdapter,
   agents: AgentRepository,
   providers: ProviderRepository,
-  attachedMaterials: MaterialRecord[] = []
+  attachedMaterials: MaterialRecord[] = [],
+  companyKnowledgeContext = ""
 ): Promise<ChatMessage> {
   try {
     const agent = session.agentId ? await agents.get(session.agentId).catch(() => undefined) : undefined;
@@ -669,9 +729,10 @@ async function createAssistantReply(
       apiKey,
       defaultModel: providerRecord.defaultModel
     } : undefined;
-    const promptText = withRuntimeAttachedMaterials(session.messages, attachedMaterials).map((message) => message.content).join("\n");
+    const runtimeMessages = withRuntimeCompanyKnowledge(withRuntimeAttachedMaterials(session.messages, attachedMaterials), companyKnowledgeContext);
+    const promptText = runtimeMessages.map((message) => message.content).join("\n");
     const replyText = await runtime.createHermesReply({
-      messages: withRuntimeAttachedMaterials(session.messages, attachedMaterials),
+      messages: runtimeMessages,
       model: session.model ?? agent?.model,
       instructions: agent?.instructions,
       provider
@@ -1498,6 +1559,34 @@ interface MaterialStoreDocument {
   materials: MaterialRecord[];
 }
 
+class CompanyProfileRepository {
+  private readonly filePath: string;
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "company-profile.json");
+  }
+
+  async get(): Promise<CompanyProfile> {
+    try {
+      return CompanyProfileSchema.parse(JSON.parse(await readFile(this.filePath, "utf8")));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return CompanyProfileSchema.parse({});
+      throw error;
+    }
+  }
+
+  async update(input: z.infer<typeof CompanyProfileUpdateSchema>): Promise<CompanyProfile> {
+    const current = await this.get();
+    const next = CompanyProfileSchema.parse({
+      ...current,
+      ...input,
+      updatedAt: new Date().toISOString()
+    });
+    await writePrivateJson(this.filePath, next);
+    return next;
+  }
+}
+
 type PublicProviderCredential = Omit<ProviderCredential, "credentialRef">;
 type PublicMaterialRecord = Omit<MaterialRecord, "path">;
 type PublicChannelRecord = Omit<ChannelRecord, "secretRef">;
@@ -1508,6 +1597,14 @@ interface MaterialUpload {
   mimeType: string;
   buffer: Buffer;
 }
+
+type MaterialMetadataInput = {
+  scope?: MaterialRecord["scope"];
+  category?: MaterialRecord["category"] | null;
+  tags?: string[];
+  description?: string | null;
+  folder?: string | null;
+};
 
 interface MultipartCandidate {
   filename: string;
@@ -1635,6 +1732,14 @@ class MaterialRepository {
     return (await this.read()).materials;
   }
 
+  async listPersonal(): Promise<MaterialRecord[]> {
+    return (await this.list()).filter((material) => material.scope !== "company");
+  }
+
+  async listCompany(): Promise<MaterialRecord[]> {
+    return (await this.list()).filter((material) => material.scope === "company");
+  }
+
   async getMany(ids: string[]): Promise<MaterialRecord[]> {
     const byId = new Map((await this.list()).map((material) => [material.id, material]));
     return ids.flatMap((id) => {
@@ -1643,11 +1748,15 @@ class MaterialRepository {
     });
   }
 
-  async createFromJson(input: z.infer<typeof UploadMaterialBody>): Promise<MaterialRecord> {
+  async createFromJson(input: z.infer<typeof UploadMaterialBody> & MaterialMetadataInput): Promise<MaterialRecord> {
     const buffer = input.contentText ? Buffer.from(input.contentText, "utf8") : Buffer.alloc(0);
     return this.createRecord({
       name: input.name,
-      folder: input.folder,
+      folder: input.folder === null ? undefined : input.folder,
+      scope: input.scope,
+      category: input.category === null ? undefined : input.category,
+      tags: input.tags,
+      description: input.description === null ? undefined : input.description,
       mimeType: input.mimeType || "application/octet-stream",
       buffer,
       declaredSize: input.size,
@@ -1655,9 +1764,14 @@ class MaterialRepository {
     });
   }
 
-  async createFromMultipart(input: MaterialUpload): Promise<MaterialRecord> {
+  async createFromMultipart(input: MaterialUpload, metadata: MaterialMetadataInput = {}): Promise<MaterialRecord> {
     return this.createRecord({
       name: input.name,
+      folder: metadata.folder === null ? undefined : metadata.folder,
+      scope: metadata.scope,
+      category: metadata.category === null ? undefined : metadata.category,
+      tags: metadata.tags,
+      description: metadata.description === null ? undefined : metadata.description,
       mimeType: input.mimeType,
       buffer: input.buffer,
       extraction: extractMaterialText(input.name, input.mimeType, input.buffer)
@@ -1693,20 +1807,28 @@ class MaterialRepository {
     const next = MaterialRecordSchema.parse({
       ...current,
       name: input.name ?? current.name,
-      folder: input.folder === null ? undefined : input.folder ?? current.folder
+      folder: input.folder === null ? undefined : input.folder ?? current.folder,
+      category: input.category === null ? undefined : input.category ?? current.category,
+      tags: input.tags ?? current.tags,
+      description: input.description === null ? undefined : input.description ?? current.description,
+      updatedAt: new Date().toISOString()
     });
     document.materials[index] = next;
     await this.write(document);
     return next;
   }
 
-  async copy(id: string, input: z.infer<typeof CopyMaterialBody>): Promise<MaterialRecord> {
+  async copy(id: string, input: z.infer<typeof CopyMaterialBody> & MaterialMetadataInput): Promise<MaterialRecord> {
     const material = await this.requireMaterial(id);
     if (!material.path) throw new ClientInputError("Material file is unavailable.");
     const buffer = await readFile(await this.resolveStoredFile(material));
     return this.createRecord({
       name: input.name ?? copyName(material.name),
       folder: input.folder === null ? undefined : input.folder ?? material.folder,
+      scope: input.scope ?? material.scope,
+      category: input.category === null ? undefined : input.category ?? material.category,
+      tags: input.tags ?? material.tags,
+      description: input.description === null ? undefined : input.description ?? material.description,
       mimeType: material.mimeType,
       buffer,
       declaredSize: material.size,
@@ -1718,7 +1840,7 @@ class MaterialRepository {
     });
   }
 
-  private async createRecord(input: { name: string; folder?: string; mimeType: string; buffer: Buffer; declaredSize?: number; extraction: MaterialExtractionResult }): Promise<MaterialRecord> {
+  private async createRecord(input: { name: string; folder?: string; scope?: MaterialRecord["scope"]; category?: MaterialRecord["category"]; tags?: string[]; description?: string; mimeType: string; buffer: Buffer; declaredSize?: number; extraction: MaterialExtractionResult }): Promise<MaterialRecord> {
     const id = randomUUID();
     const now = new Date().toISOString();
     const document = await this.read();
@@ -1728,13 +1850,18 @@ class MaterialRepository {
       id,
       name: input.name,
       folder: input.folder,
+      scope: input.scope ?? "personal",
+      category: input.category,
+      tags: input.tags ?? [],
+      description: input.description,
       mimeType: input.mimeType,
       size,
       sha256: input.buffer.byteLength ? createHash("sha256").update(input.buffer).digest("hex") : undefined,
       extractionState: input.extraction.extractionState,
       textPreview: input.extraction.textPreview,
       extractionError: input.extraction.extractionError,
-      createdAt: now
+      createdAt: now,
+      updatedAt: now
     });
 
     if (input.buffer.byteLength) {
@@ -1766,6 +1893,11 @@ class MaterialRepository {
     });
   }
 
+  async assertCompanyMaterial(id: string): Promise<void> {
+    const material = await this.requireMaterial(id);
+    if (material.scope !== "company") throw new ClientInputError("Company material not found.");
+  }
+
   private async requireMaterial(id: string): Promise<MaterialRecord> {
     const material = (await this.list()).find((item) => item.id === id);
     if (!material) throw new Error(`Material not found: ${id}`);
@@ -1788,7 +1920,8 @@ class MaterialRepository {
 
   private async read(): Promise<MaterialStoreDocument> {
     try {
-      return JSON.parse(await readFile(this.filePath, "utf8")) as MaterialStoreDocument;
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as MaterialStoreDocument;
+      return { materials: Array.isArray(parsed.materials) ? parsed.materials.map((material) => MaterialRecordSchema.parse(material)) : [] };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { materials: [] };
       throw error;
@@ -1819,6 +1952,51 @@ function withRuntimeAttachedMaterials(messages: ChatMessage[], materials: Materi
   const lastUserIndex = messages.map((message) => message.role).lastIndexOf("user");
   if (lastUserIndex === -1) return messages;
   return messages.map((message, index) => index === lastUserIndex ? { ...message, content: withAttachedMaterials(message.content, materials) } : message);
+}
+
+function withRuntimeCompanyKnowledge(messages: ChatMessage[], companyKnowledgeContext: string): ChatMessage[] {
+  if (!companyKnowledgeContext.trim()) return messages;
+  const lastUserIndex = messages.map((message) => message.role).lastIndexOf("user");
+  if (lastUserIndex === -1) return messages;
+  return messages.map((message, index) => index === lastUserIndex
+    ? { ...message, content: `${message.content}\n\n--- Company knowledge ---\n${companyKnowledgeContext}` }
+    : message);
+}
+
+async function buildCompanyKnowledgeContext(companyProfile: CompanyProfileRepository, materials: MaterialRepository): Promise<string> {
+  const profile = await companyProfile.get();
+  const companyMaterials = await materials.listCompany();
+  const blocks = [
+    companyProfileContext(profile),
+    ...companyMaterials.slice(0, 12).map(companyMaterialContext)
+  ].filter(Boolean);
+  return blocks.length ? truncateForContext(blocks.join("\n\n"), 30_000) : "";
+}
+
+function companyProfileContext(profile: CompanyProfile): string {
+  const lines = [
+    profile.name ? `Company name: ${profile.name}` : "",
+    profile.legalName ? `Legal name: ${profile.legalName}` : "",
+    profile.website ? `Website: ${profile.website}` : "",
+    profile.markets.length ? `Markets: ${profile.markets.join(", ")}` : "",
+    profile.mainProducts.length ? `Main products: ${profile.mainProducts.join(", ")}` : "",
+    profile.certifications.length ? `Certifications: ${profile.certifications.join(", ")}` : "",
+    profile.paymentTerms.length ? `Payment terms: ${profile.paymentTerms.join(", ")}` : "",
+    profile.shippingTerms.length ? `Shipping terms: ${profile.shippingTerms.join(", ")}` : "",
+    profile.brandVoice ? `Brand voice: ${profile.brandVoice}` : "",
+    profile.notes ? `Notes: ${profile.notes}` : ""
+  ].filter(Boolean);
+  return lines.length ? `## Company profile\n${lines.join("\n")}` : "";
+}
+
+function companyMaterialContext(material: MaterialRecord): string {
+  if (material.textPreview) {
+    return `## ${material.name}\nMIME: ${material.mimeType}\nCategory: ${material.category ?? "other"}\n${material.description ? `Description: ${material.description}\n` : ""}${material.textPreview}`;
+  }
+  if (material.extractionState === "failed") {
+    return `## ${material.name}\nMIME: ${material.mimeType}\nCategory: ${material.category ?? "other"}\nText extraction failed: ${material.extractionError ?? "No text could be extracted."}`;
+  }
+  return `## ${material.name}\nMIME: ${material.mimeType}\nCategory: ${material.category ?? "other"}\nThis company file is saved in Hermills but does not have readable text yet.`;
 }
 
 function safeFileName(value: string): string {
@@ -2001,7 +2179,8 @@ async function runJobNow(
   runtime: RuntimeAdapter,
   agents: AgentRepository,
   providers: ProviderRepository,
-  materials: MaterialRepository
+  materials: MaterialRepository,
+  companyProfile: CompanyProfileRepository
 ): Promise<JobRunRecord> {
   const job = await jobs.get(id);
   if (!job || job.deletedAt) throw new ClientInputError(`Job not found: ${id}`);
@@ -2028,7 +2207,11 @@ async function runJobNow(
     const providerRecord = providerId ? await providers.get(providerId).catch(() => undefined) : undefined;
     const apiKey = providerRecord ? await providers.readApiKey(providerRecord).catch(() => undefined) : undefined;
     const attachedMaterials = job.task.materialIds.length ? await materials.getMany(job.task.materialIds) : [];
-    const content = withAttachedMaterials(job.task.prompt, attachedMaterials);
+    const companyKnowledgeContext = await buildCompanyKnowledgeContext(companyProfile, materials);
+    const content = withRuntimeCompanyKnowledge(
+      [{ id: randomUUID(), role: "user", content: withAttachedMaterials(job.task.prompt, attachedMaterials), createdAt: startedAt }],
+      companyKnowledgeContext
+    )[0].content;
     const replyText = await runtime.createHermesReply({
       messages: [{ id: randomUUID(), role: "user", content, createdAt: startedAt }],
       model: job.task.model ?? agent?.model,

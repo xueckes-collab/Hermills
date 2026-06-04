@@ -19,11 +19,27 @@ export const KnowledgeFileSchema = z.object({
 }).strict();
 
 export const MaterialExtractionStateSchema = z.enum(["stored", "extracting", "indexed", "failed"]);
+export const MaterialScopeSchema = z.enum(["personal", "company"]);
+export const CompanyMaterialCategorySchema = z.enum([
+  "company-profile",
+  "product-catalog",
+  "price-list",
+  "certification",
+  "shipping-logistics",
+  "payment-terms",
+  "faq",
+  "case-study",
+  "other"
+]);
 
 export const MaterialRecordSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(180),
   folder: z.string().min(1).max(160).optional(),
+  scope: MaterialScopeSchema.default("personal"),
+  category: CompanyMaterialCategorySchema.optional(),
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
+  description: z.string().trim().max(1000).optional(),
   path: z.string().min(1).optional(),
   mimeType: z.string().default("application/octet-stream"),
   size: z.number().int().nonnegative(),
@@ -31,7 +47,8 @@ export const MaterialRecordSchema = z.object({
   extractionState: MaterialExtractionStateSchema.default("stored"),
   textPreview: z.string().optional(),
   extractionError: z.string().max(500).optional(),
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime().optional()
 }).strict();
 
 export const AgentDefinitionSchema = z.object({
@@ -72,6 +89,25 @@ const OptionalTrimmedString = (maxLength: number) => z.preprocess(
   (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
   z.string().trim().min(1).max(maxLength).optional()
 );
+
+const CompanyTextListSchema = z.array(z.string().trim().min(1).max(180)).max(60).default([]);
+
+export const CompanyProfileSchema = z.object({
+  version: z.literal(1).default(1),
+  name: z.string().trim().max(160).default(""),
+  legalName: OptionalTrimmedString(180),
+  website: OptionalTrimmedString(500),
+  markets: CompanyTextListSchema,
+  mainProducts: CompanyTextListSchema,
+  certifications: CompanyTextListSchema,
+  paymentTerms: CompanyTextListSchema,
+  shippingTerms: CompanyTextListSchema,
+  brandVoice: z.string().trim().max(2000).default(""),
+  notes: z.string().trim().max(8000).default(""),
+  updatedAt: z.string().datetime().optional()
+}).strict();
+
+export const CompanyProfileUpdateSchema = CompanyProfileSchema.omit({ version: true, updatedAt: true }).partial().strict();
 
 export const OnboardingLanguageSchema = z.enum(["zh-CN", "zh-TW", "ja", "ko", "en"]);
 export const OnboardingThemeSchema = z.enum(["warm", "night", "plain", "system"]);

@@ -1719,6 +1719,11 @@ textarea,
   grid-template-columns: minmax(0, 720px);
 }
 
+.company-layout {
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
 .quiet-panel {
   padding: 16px;
 }
@@ -1886,6 +1891,58 @@ textarea,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.company-profile-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.company-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.company-materials-panel {
+  display: grid;
+  gap: 14px;
+  max-height: min(760px, calc(100vh - 190px));
+  min-height: 0;
+}
+
+.company-category-select {
+  display: grid;
+  min-width: 170px;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.company-upload-dropzone {
+  min-height: 108px;
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(239, 250, 246, 0.74);
+}
+
+.company-material-list {
+  max-height: 360px;
+}
+
+.company-material-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.company-material-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+.company-preview pre {
+  max-height: 180px;
 }
 
 .personalization-actions .soft-button {
@@ -2694,6 +2751,11 @@ details[open] .complex-detail {
   .builder-layout,
   .settings-layout,
   .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .company-form-grid,
+  .company-layout {
     grid-template-columns: 1fr;
   }
 
