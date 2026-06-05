@@ -18,6 +18,8 @@ import type {
   EmailSequenceDraftSchema,
   GeneratedIcpSchema,
   GeneratedUspSchema,
+  OutreachCampaignRecipientSchema,
+  OutreachCampaignSchema,
   OutreachDraftSchema,
   OutreachLeadSchema,
   OutreachSenderAccountSchema,
@@ -50,6 +52,8 @@ export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
 export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;
 export type EmailSequenceDraft = z.infer<typeof EmailSequenceDraftSchema>;
 export type OutreachWorkflow = z.infer<typeof OutreachWorkflowSchema>;
+export type OutreachCampaign = z.infer<typeof OutreachCampaignSchema>;
+export type OutreachCampaignRecipient = z.infer<typeof OutreachCampaignRecipientSchema>;
 
 export interface InstallEvent {
   jobId: string;

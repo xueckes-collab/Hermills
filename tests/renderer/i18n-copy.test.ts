@@ -105,6 +105,21 @@ describe("renderer language copy", () => {
         copy.devLetter.results.status.draft,
         copy.devLetter.warnings.quickRequired,
         copy.devLetter.warnings.confirmSend,
+        copy.devLetter.warnings.confirmBatchSend(3),
+        copy.devLetter.warnings.confirmStopCampaign,
+        copy.devLetter.batch.singleMode,
+        copy.devLetter.batch.campaignMode,
+        copy.devLetter.batch.title,
+        copy.devLetter.batch.actions.create,
+        copy.devLetter.batch.actions.generate,
+        copy.devLetter.batch.actions.approve,
+        copy.devLetter.batch.actions.send,
+        copy.devLetter.batch.campaignStatus.ready,
+        copy.devLetter.batch.recipientStatus.generated,
+        copy.devLetter.batch.recipientStatus.approved,
+        copy.devLetter.batch.status.created(2),
+        copy.devLetter.batch.status.sent(1),
+        copy.devLetter.batch.warnings.noApproved,
       ];
 
       expect(visibleCopy.every((item) => typeof item === "string" && item.trim().length > 0), `${language} outreach copy should not be blank`).toBe(true);

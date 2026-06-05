@@ -24,6 +24,7 @@ import {
   MessageCircle,
   PanelRightOpen,
   Paperclip,
+  PauseCircle,
   Pencil,
   Play,
   Plus,
@@ -40,7 +41,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
 
@@ -441,11 +442,12 @@ export default function App() {
   const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, chatEnabled)
   const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, chatEnabled)
   const outreachLeads = useEndpoint(api.outreachLeads, fallback.outreachLeads, chatEnabled)
+  const outreachCampaigns = useEndpoint(api.outreachCampaigns, fallback.outreachCampaigns, chatEnabled)
   const outreachSenders = useEndpoint(api.outreachSenderAccounts, fallback.outreachSenderAccounts, chatEnabled)
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
-  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachSenders.error
+  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
 
   async function refreshAfterDeploy() {
@@ -545,6 +547,8 @@ export default function App() {
         companyMaterials={companyMaterials.data}
         outreachLeads={outreachLeads.data}
         setOutreachLeads={outreachLeads.setData}
+        outreachCampaigns={outreachCampaigns.data}
+        setOutreachCampaigns={outreachCampaigns.setData}
         outreachSenders={outreachSenders.data}
         setOutreachSenders={outreachSenders.setData}
         setRuntime={runtime.setData}
@@ -609,6 +613,8 @@ function ClientWorkspace({
   companyMaterials,
   outreachLeads,
   setOutreachLeads,
+  outreachCampaigns,
+  setOutreachCampaigns,
   outreachSenders,
   setOutreachSenders,
   setRuntime,
@@ -637,6 +643,8 @@ function ClientWorkspace({
   companyMaterials: Material[]
   outreachLeads: OutreachLead[]
   setOutreachLeads: (leads: OutreachLead[]) => void
+  outreachCampaigns: OutreachCampaign[]
+  setOutreachCampaigns: (campaigns: OutreachCampaign[]) => void
   outreachSenders: OutreachSenderAccount[]
   setOutreachSenders: (senders: OutreachSenderAccount[]) => void
   setRuntime: (runtime: RuntimeStatus) => void
@@ -1018,6 +1026,8 @@ function ClientWorkspace({
             companyMaterials={companyMaterials}
             leads={outreachLeads}
             setLeads={setOutreachLeads}
+            campaigns={outreachCampaigns}
+            setCampaigns={setOutreachCampaigns}
             senderAccounts={outreachSenders}
             setSenderAccounts={setOutreachSenders}
             providers={providers}
@@ -1184,12 +1194,15 @@ type SenderFormDraft = {
 }
 
 type OutreachQuestStepId = 'company' | 'lead' | 'research' | 'draft' | 'mailbox' | 'send'
+type OutreachMode = 'single' | 'campaign'
 
 function DevelopmentLetterPage({
   companyProfile,
   companyMaterials,
   leads,
   setLeads,
+  campaigns,
+  setCampaigns,
   senderAccounts,
   setSenderAccounts,
   providers,
@@ -1200,6 +1213,8 @@ function DevelopmentLetterPage({
   companyMaterials: Material[]
   leads: OutreachLead[]
   setLeads: (leads: OutreachLead[]) => void
+  campaigns: OutreachCampaign[]
+  setCampaigns: (campaigns: OutreachCampaign[]) => void
   senderAccounts: OutreachSenderAccount[]
   setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
   providers: Provider[]
@@ -1211,6 +1226,13 @@ function DevelopmentLetterPage({
   const [quickEmail, setQuickEmail] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
+  const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
+  const [campaignName, setCampaignName] = useState('开发信批量任务')
+  const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState('')
+  const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
+  const [campaignDraftSubject, setCampaignDraftSubject] = useState('')
+  const [campaignDraftBody, setCampaignDraftBody] = useState('')
   const [csvText, setCsvText] = useState('')
   const [csvOpen, setCsvOpen] = useState(false)
   const [draft, setDraft] = useState<OutreachDraft>()
@@ -1231,6 +1253,11 @@ function DevelopmentLetterPage({
   const senderEmailRef = useRef<HTMLInputElement>(null)
   const selectedLead = selectedLeadId ? leads.find((lead) => lead.id === selectedLeadId) : undefined
   const selectedSender = selectedSenderId ? senderAccounts.find((account) => account.id === selectedSenderId) : undefined
+  const selectedCampaign = selectedCampaignId ? campaigns.find((campaign) => campaign.id === selectedCampaignId) : campaigns[0]
+  const campaignRecipients = selectedCampaign?.recipients ?? []
+  const selectedCampaignRecipient = selectedCampaignRecipientId
+    ? campaignRecipients.find((recipient) => recipient.id === selectedCampaignRecipientId)
+    : campaignRecipients.find((recipient) => recipient.status === 'generated' || recipient.status === 'failed') ?? campaignRecipients[0]
   const defaultProvider = providers.find((provider) => provider.status === 'connected')
   const workflowEmails = useMemo<EmailSequenceDraft[]>(() => workflow ? [workflow.initialEmail, ...workflow.followUps] : [], [workflow])
   const selectedWorkflowEmail = workflowEmails.find((email) => email.id === selectedEmailId) ?? workflowEmails[0]
@@ -1278,6 +1305,20 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!selectedSenderId && senderAccounts[0]) setSelectedSenderId(senderAccounts[0].id)
   }, [selectedSenderId, senderAccounts])
+
+  useEffect(() => {
+    if (!selectedCampaignId && campaigns[0]) setSelectedCampaignId(campaigns[0].id)
+  }, [selectedCampaignId, campaigns])
+
+  useEffect(() => {
+    if (!selectedCampaignRecipient?.draft) {
+      setCampaignDraftSubject('')
+      setCampaignDraftBody('')
+      return
+    }
+    setCampaignDraftSubject(selectedCampaignRecipient.draft.subject)
+    setCampaignDraftBody(selectedCampaignRecipient.draft.body)
+  }, [selectedCampaignRecipient?.id, selectedCampaignRecipient?.draft?.updatedAt])
 
   function selectWorkflowEmail(email: EmailSequenceDraft) {
     setSelectedEmailId(email.id)
@@ -1361,6 +1402,187 @@ function DevelopmentLetterPage({
     setSelectedSenderId(sender.id)
     setSenderDraft(senderFormFromAccount(sender))
     setSenderProviderId(senderProviderFromHost(sender.host))
+  }
+
+  function replaceCampaign(campaign: OutreachCampaign) {
+    setCampaigns(campaigns.some((item) => item.id === campaign.id)
+      ? campaigns.map((item) => item.id === campaign.id ? campaign : item)
+      : [campaign, ...campaigns])
+    setSelectedCampaignId(campaign.id)
+    const reviewCandidate = campaign.recipients.find((recipient) => recipient.status === 'generated' || recipient.status === 'failed') ?? campaign.recipients[0]
+    if (reviewCandidate) setSelectedCampaignRecipientId(reviewCandidate.id)
+  }
+
+  function toggleCampaignLead(leadId: string) {
+    setSelectedCampaignLeadIds((current) => current.includes(leadId)
+      ? current.filter((id) => id !== leadId)
+      : [...current, leadId])
+  }
+
+  async function createCampaign() {
+    if (!selectedCampaignLeadIds.length) {
+      setError(copy.devLetter.batch.warnings.noCustomers)
+      return
+    }
+    const selectedLeads = leads.filter((lead) => selectedCampaignLeadIds.includes(lead.id))
+    const missing = selectedLeads.find((lead) => !lead.website || !lead.email)
+    if (missing) {
+      setError(copy.devLetter.batch.warnings.missingCustomer(missing.companyName))
+      return
+    }
+    setBusy('campaignCreate')
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.createOutreachCampaign({
+        name: campaignName.trim() || copy.devLetter.batch.defaultName,
+        leadIds: selectedCampaignLeadIds,
+        senderAccountId: selectedSender?.id,
+        language,
+        tone,
+        providerId: defaultProvider?.id,
+        model: defaultProvider?.defaultModel,
+        rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
+      })
+      replaceCampaign(campaign)
+      setSelectedCampaignLeadIds([])
+      setNotice(copy.devLetter.batch.status.created(campaign.recipients.length))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function generateCampaign() {
+    if (!selectedCampaign) return
+    setBusy('campaignGenerate')
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.generateOutreachCampaign(selectedCampaign.id)
+      replaceCampaign(campaign)
+      setNotice(copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function approveCampaignRecipient() {
+    if (!selectedCampaign || !selectedCampaignRecipient) return
+    if (!campaignDraftSubject.trim() || !campaignDraftBody.trim()) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return
+    }
+    setBusy('campaignApprove')
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.approveOutreachCampaignRecipient(selectedCampaign.id, selectedCampaignRecipient.id, {
+        subject: campaignDraftSubject.trim(),
+        body: campaignDraftBody.trim()
+      })
+      replaceCampaign(campaign)
+      setNotice(copy.devLetter.batch.status.approved)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function skipCampaignRecipient(recipient: OutreachCampaignRecipient) {
+    if (!selectedCampaign) return
+    setBusy(`campaignSkip:${recipient.id}`)
+    setError('')
+    setNotice('')
+    try {
+      replaceCampaign(await api.skipOutreachCampaignRecipient(selectedCampaign.id, recipient.id))
+      setNotice(copy.devLetter.batch.status.skipped)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function startCampaign() {
+    if (!selectedCampaign) return
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) {
+      setError(copy.devLetter.warnings.senderRequired)
+      return
+    }
+    if (!sender.deliveryConfirmedAt) {
+      setError(copy.devLetter.warnings.senderNotConfirmed)
+      return
+    }
+    const approvedCount = selectedCampaign.recipients.filter((recipient) => recipient.status === 'approved' || recipient.status === 'queued').length
+    if (!approvedCount) {
+      setError(copy.devLetter.batch.warnings.noApproved)
+      return
+    }
+    if (!window.confirm(copy.devLetter.warnings.confirmBatchSend(approvedCount))) return
+    setBusy('campaignSend')
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.startOutreachCampaign(selectedCampaign.id, { senderAccountId: sender.id })
+      replaceCampaign(campaign)
+      setNotice(copy.devLetter.batch.status.sent(campaign.stats.sent))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function pauseCampaign() {
+    if (!selectedCampaign) return
+    setBusy('campaignPause')
+    setError('')
+    setNotice('')
+    try {
+      replaceCampaign(await api.pauseOutreachCampaign(selectedCampaign.id))
+      setNotice(copy.devLetter.batch.status.paused)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function resumeCampaign() {
+    if (!selectedCampaign) return
+    setBusy('campaignResume')
+    setError('')
+    setNotice('')
+    try {
+      replaceCampaign(await api.resumeOutreachCampaign(selectedCampaign.id))
+      setNotice(copy.devLetter.batch.status.resumed)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function stopCampaign() {
+    if (!selectedCampaign) return
+    if (!window.confirm(copy.devLetter.warnings.confirmStopCampaign)) return
+    setBusy('campaignStop')
+    setError('')
+    setNotice('')
+    try {
+      replaceCampaign(await api.stopOutreachCampaign(selectedCampaign.id))
+      setNotice(copy.devLetter.batch.status.stopped)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
   }
 
   async function saveLead() {
@@ -1647,6 +1869,153 @@ function DevelopmentLetterPage({
           : copy.devLetter.status.companyMissing}
       </div>
 
+      <div className="outreach-mode-switch" role="tablist" aria-label={copy.devLetter.batch.modeAria}>
+        <button className={outreachMode === 'single' ? 'active' : ''} type="button" onClick={() => setOutreachMode('single')}>
+          <Mail size={15} />
+          {copy.devLetter.batch.singleMode}
+        </button>
+        <button className={outreachMode === 'campaign' ? 'active' : ''} type="button" onClick={() => setOutreachMode('campaign')}>
+          <ListChecks size={15} />
+          {copy.devLetter.batch.campaignMode}
+        </button>
+      </div>
+
+      {outreachMode === 'campaign' ? (
+        <section className="quiet-panel outreach-campaign-panel">
+          <div className="panel-heading-row">
+            <div>
+              <span>{copy.devLetter.batch.eyebrow}</span>
+              <h3>{copy.devLetter.batch.title}</h3>
+              <p>{copy.devLetter.batch.subtitle}</p>
+            </div>
+            <div className="outreach-actions">
+              <button className="soft-button compact" type="button" disabled={busy === 'campaignGenerate' || !selectedCampaign} onClick={generateCampaign}>
+                <Search size={14} />
+                {busy === 'campaignGenerate' ? copy.devLetter.batch.actions.generating : copy.devLetter.batch.actions.generate}
+              </button>
+              <button className="primary-button compact" type="button" disabled={busy === 'campaignSend' || !selectedCampaign || !selectedCampaign.stats.approved} onClick={startCampaign}>
+                <Send size={14} />
+                {busy === 'campaignSend' ? copy.devLetter.actions.sending : copy.devLetter.batch.actions.send}
+              </button>
+            </div>
+          </div>
+
+          <div className="campaign-summary-strip">
+            {(['pending', 'generated', 'approved', 'sent', 'failed'] as const).map((status) => (
+              <span className={`campaign-stat ${status}`} key={status}>
+                <strong>{selectedCampaign?.stats[status] ?? 0}</strong>
+                {copy.devLetter.batch.recipientStatus[status]}
+              </span>
+            ))}
+          </div>
+
+          <div className="campaign-setup-grid">
+            <div className="campaign-create-box">
+              <Field label={copy.devLetter.batch.fields.name}>
+                <input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} />
+              </Field>
+              <div className="campaign-lead-list" aria-label={copy.devLetter.batch.customerList}>
+                {leads.length ? leads.map((lead) => {
+                  const ready = Boolean(lead.website && lead.email)
+                  const selected = selectedCampaignLeadIds.includes(lead.id)
+                  return (
+                    <button className={`campaign-lead-row ${selected ? 'active' : ''} ${ready ? '' : 'incomplete'}`} key={lead.id} type="button" onClick={() => toggleCampaignLead(lead.id)}>
+                      <span className="check-dot">{selected ? <CheckCircle2 size={15} /> : null}</span>
+                      <span>
+                        <strong>{lead.companyName}</strong>
+                        <small>{lead.email || copy.devLetter.batch.missingEmail} · {lead.website || copy.devLetter.batch.missingWebsite}</small>
+                      </span>
+                    </button>
+                  )
+                }) : <div className="empty-state">{copy.devLetter.status.noLeads}</div>}
+              </div>
+              <div className="outreach-actions">
+                <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
+                  <Upload size={14} />
+                  {copy.devLetter.actions.importCsv}
+                </button>
+                <button className="primary-button compact" type="button" disabled={busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
+                  <Plus size={14} />
+                  {busy === 'campaignCreate' ? copy.common.creating : copy.devLetter.batch.actions.create}
+                </button>
+              </div>
+              {csvOpen ? (
+                <div className="csv-import-box compact">
+                  <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder={copy.devLetter.placeholders.csv} rows={3} />
+                  <button className="primary-button compact" type="button" disabled={busy === 'csv'} onClick={importCsv}>{busy === 'csv' ? copy.common.saving : copy.devLetter.actions.importCsv}</button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="campaign-review-box">
+              <div className="campaign-list-tabs">
+                {campaigns.length ? campaigns.slice(0, 5).map((campaign) => (
+                  <button className={selectedCampaign?.id === campaign.id ? 'active' : ''} key={campaign.id} type="button" onClick={() => setSelectedCampaignId(campaign.id)}>
+                    <strong>{campaign.name}</strong>
+                    <small>{copy.devLetter.batch.campaignStatus[campaign.status]}</small>
+                  </button>
+                )) : <span className="state-hint">{copy.devLetter.batch.noCampaign}</span>}
+              </div>
+
+              <div className="campaign-recipient-grid">
+                <div className="campaign-recipient-list">
+                  {campaignRecipients.map((recipient) => (
+                    <button className={`campaign-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`} key={recipient.id} type="button" onClick={() => setSelectedCampaignRecipientId(recipient.id)}>
+                      <span className={`status-dot ${recipient.status}`} />
+                      <span>
+                        <strong>{recipient.companyName}</strong>
+                        <small>{copy.devLetter.batch.recipientStatus[recipient.status]} · {recipient.email}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="campaign-draft-review">
+                  {selectedCampaignRecipient?.draft ? (
+                    <>
+                      <div className="campaign-review-heading">
+                        <span>{copy.devLetter.batch.reviewing}</span>
+                        <strong>{selectedCampaignRecipient.companyName}</strong>
+                      </div>
+                      <Field label={copy.devLetter.fields.subject}><input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></Field>
+                      <Field label={copy.devLetter.fields.body}><textarea className="campaign-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></Field>
+                      <div className="outreach-actions">
+                        <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>
+                          <CheckCircle2 size={14} />
+                          {copy.devLetter.batch.actions.approve}
+                        </button>
+                        <button className="soft-button compact" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>
+                          <X size={14} />
+                          {copy.devLetter.batch.actions.skip}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="empty-state">{copy.devLetter.batch.emptyReview}</div>
+                  )}
+                </div>
+              </div>
+
+              {selectedCampaign ? (
+                <div className="campaign-control-row">
+                  <button className="soft-button compact" type="button" disabled={busy === 'campaignPause' || selectedCampaign.status !== 'sending'} onClick={pauseCampaign}>
+                    <PauseCircle size={14} />
+                    {copy.devLetter.batch.actions.pause}
+                  </button>
+                  <button className="soft-button compact" type="button" disabled={busy === 'campaignResume' || selectedCampaign.status === 'stopped'} onClick={resumeCampaign}>
+                    <Play size={14} />
+                    {copy.devLetter.batch.actions.resume}
+                  </button>
+                  <button className="soft-button compact danger" type="button" disabled={busy === 'campaignStop' || selectedCampaign.status === 'stopped'} onClick={stopCampaign}>
+                    <Trash2 size={14} />
+                    {copy.devLetter.batch.actions.stop}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <>
       <section className="quiet-panel outreach-quest-panel" aria-label={copy.devLetter.quest.title}>
         <div className="panel-heading-row">
           <div>
@@ -1914,6 +2283,8 @@ function DevelopmentLetterPage({
           </div>
         </section>
       </details>
+        </>
+      )}
 
       {notice ? <div className="status-hint success"><CheckCircle2 size={15} />{notice}</div> : null}
       {error ? <div className="status-hint error"><AlertCircle size={15} />{error}</div> : null}

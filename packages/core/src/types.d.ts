@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachDraftSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
+import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachCampaignRecipientSchema, OutreachCampaignSchema, OutreachDraftSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
 export type AgentCapabilities = z.infer<typeof CapabilitySchema>;
 export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
@@ -24,6 +24,8 @@ export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
 export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;
 export type EmailSequenceDraft = z.infer<typeof EmailSequenceDraftSchema>;
 export type OutreachWorkflow = z.infer<typeof OutreachWorkflowSchema>;
+export type OutreachCampaign = z.infer<typeof OutreachCampaignSchema>;
+export type OutreachCampaignRecipient = z.infer<typeof OutreachCampaignRecipientSchema>;
 export interface InstallEvent {
     jobId: string;
     level: "info" | "warn" | "error" | "done";

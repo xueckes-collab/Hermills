@@ -1766,6 +1766,230 @@ textarea,
   color: var(--green);
 }
 
+.outreach-mode-switch {
+  display: inline-flex;
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.outreach-mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.outreach-mode-switch button.active {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.outreach-campaign-panel {
+  display: grid;
+  gap: 12px;
+  border-color: rgba(15, 118, 110, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(239, 250, 246, 0.66)),
+    rgba(255, 255, 255, 0.72);
+}
+
+.campaign-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.campaign-stat {
+  display: grid;
+  gap: 2px;
+  min-height: 50px;
+  padding: 9px;
+  border: 1px solid rgba(15, 118, 110, 0.13);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.campaign-stat strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.campaign-stat.sent strong,
+.campaign-stat.approved strong {
+  color: var(--green);
+}
+
+.campaign-stat.failed strong {
+  color: var(--danger);
+}
+
+.campaign-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.campaign-create-box,
+.campaign-review-box,
+.campaign-draft-review {
+  display: grid;
+  gap: 10px;
+}
+
+.campaign-lead-list,
+.campaign-recipient-list {
+  display: grid;
+  gap: 6px;
+  max-height: 310px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.campaign-lead-row,
+.campaign-recipient-row,
+.campaign-list-tabs button {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
+  text-align: left;
+}
+
+.campaign-lead-row,
+.campaign-recipient-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 8px 10px;
+}
+
+.campaign-lead-row.active,
+.campaign-recipient-row.active,
+.campaign-list-tabs button.active {
+  border-color: rgba(15, 118, 110, 0.34);
+  background: var(--green-soft);
+}
+
+.campaign-lead-row.incomplete {
+  opacity: 0.74;
+}
+
+.campaign-lead-row strong,
+.campaign-recipient-row strong,
+.campaign-list-tabs strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.campaign-lead-row small,
+.campaign-recipient-row small,
+.campaign-list-tabs small {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-dot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 999px;
+  color: var(--green);
+}
+
+.campaign-list-tabs {
+  display: grid;
+  grid-auto-columns: minmax(150px, 0.38fr);
+  grid-auto-flow: column;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.campaign-list-tabs button {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.campaign-recipient-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.74fr) minmax(300px, 1.26fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.campaign-review-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.campaign-review-heading span {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.campaign-draft-body {
+  min-height: 210px;
+  resize: vertical;
+}
+
+.campaign-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-dot.pending,
+.status-dot.generated,
+.status-dot.approved,
+.status-dot.queued {
+  background: rgba(196, 125, 28, 0.22);
+}
+
+.status-dot.researching,
+.status-dot.sending {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+.status-dot.sent {
+  background: rgba(15, 118, 110, 0.28);
+}
+
+.status-dot.skipped {
+  background: rgba(120, 113, 108, 0.22);
+}
+
 .outreach-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.92fr) minmax(360px, 1.08fr);
@@ -2864,6 +3088,11 @@ details[open] .complex-detail {
   color: var(--ink);
 }
 
+.soft-button.danger {
+  border-color: rgba(168, 52, 70, 0.22);
+  color: var(--danger);
+}
+
 .primary-button.compact,
 .soft-button.compact {
   min-height: 36px;
@@ -3135,10 +3364,16 @@ details[open] .complex-detail {
   .outreach-grid,
   .outreach-quick-grid,
   .outreach-result-grid,
+  .campaign-setup-grid,
+  .campaign-recipient-grid,
   .lead-form-grid,
   .sender-form-grid,
   .mail-simple-grid {
     grid-template-columns: 1fr;
+  }
+
+  .campaign-summary-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .quest-step-grid {

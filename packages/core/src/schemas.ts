@@ -358,6 +358,71 @@ export const OutreachWorkflowSchema = z.object({
   updatedAt: z.string().datetime()
 }).strict();
 
+export const OutreachCampaignStatusSchema = z.enum(["draft", "generating", "ready", "sending", "paused", "completed", "failed", "stopped"]);
+export const OutreachCampaignRecipientStatusSchema = z.enum(["pending", "researching", "generated", "approved", "queued", "sending", "sent", "failed", "skipped"]);
+
+export const OutreachCampaignRateLimitSchema = z.object({
+  maxPerHour: z.number().int().min(1).max(60).default(10),
+  minDelayMinutes: z.number().int().min(1).max(60).default(6)
+}).strict();
+
+export const OutreachCampaignStatsSchema = z.object({
+  total: z.number().int().nonnegative().default(0),
+  pending: z.number().int().nonnegative().default(0),
+  researching: z.number().int().nonnegative().default(0),
+  generated: z.number().int().nonnegative().default(0),
+  approved: z.number().int().nonnegative().default(0),
+  queued: z.number().int().nonnegative().default(0),
+  sending: z.number().int().nonnegative().default(0),
+  sent: z.number().int().nonnegative().default(0),
+  failed: z.number().int().nonnegative().default(0),
+  skipped: z.number().int().nonnegative().default(0)
+}).strict();
+
+export const OutreachCampaignSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1),
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(1000).default(""),
+  senderAccountId: z.string().min(1).optional(),
+  mode: z.literal("first-email-only").default("first-email-only"),
+  status: OutreachCampaignStatusSchema.default("draft"),
+  language: z.string().trim().min(1).max(80).default("English"),
+  tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).max(100).optional(),
+  rateLimit: OutreachCampaignRateLimitSchema.default({}),
+  stats: OutreachCampaignStatsSchema.default({}),
+  startedAt: z.string().datetime().optional(),
+  pausedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional(),
+  stoppedAt: z.string().datetime().optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
+export const OutreachCampaignRecipientSchema = z.object({
+  id: z.string().min(1),
+  profileId: z.string().min(1),
+  campaignId: z.string().min(1),
+  leadId: z.string().min(1),
+  workflowId: z.string().min(1).optional(),
+  initialDraftId: z.string().min(1).optional(),
+  email: z.string().trim().min(3).max(320),
+  companyName: z.string().trim().min(1).max(180),
+  website: z.string().trim().min(3).max(500),
+  contactName: OptionalTrimmedString(160),
+  contactTitle: OptionalTrimmedString(160),
+  status: OutreachCampaignRecipientStatusSchema.default("pending"),
+  approvedAt: z.string().datetime().optional(),
+  queuedAt: z.string().datetime().optional(),
+  sentAt: z.string().datetime().optional(),
+  skippedAt: z.string().datetime().optional(),
+  sendError: z.string().max(1000).optional(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+}).strict();
+
 export const JobStatusSchema = z.enum(["active", "paused"]);
 export const JobRunStatusSchema = z.enum(["queued", "running", "succeeded", "failed", "skipped"]);
 export const JobRunTriggerSchema = z.enum(["manual", "schedule"]);

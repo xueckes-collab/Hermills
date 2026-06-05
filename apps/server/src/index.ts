@@ -30,6 +30,8 @@ import {
   LogSourceSchema,
   previewSecret,
   CustomerResearchSnapshotSchema,
+  OutreachCampaignRecipientSchema,
+  OutreachCampaignSchema,
   OutreachDraftSchema,
   OutreachLeadSchema,
   OutreachSenderAccountSchema,
@@ -52,6 +54,8 @@ import {
   type OnboardingProviderState,
   type OnboardingState,
   type OnboardingUpdate,
+  type OutreachCampaign,
+  type OutreachCampaignRecipient,
   type OutreachDraft,
   type OutreachLead,
   type OutreachSenderAccount,
@@ -400,6 +404,35 @@ const SendOutreachDraftBody = z.object({
   to: OptionalOnboardingString(320)
 }).strict();
 
+const OutreachCampaignRateLimitBody = z.object({
+  maxPerHour: z.coerce.number().int().min(1).max(60).default(10),
+  minDelayMinutes: z.coerce.number().int().min(1).max(60).default(6)
+}).strict();
+
+const CreateOutreachCampaignBody = z.object({
+  profileId: z.string().min(1).optional(),
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(1000).optional(),
+  leadIds: z.array(z.string().min(1)).min(1).max(200),
+  senderAccountId: z.string().min(1).optional(),
+  language: z.string().trim().min(1).max(80).default("English"),
+  tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  providerId: z.string().min(1).optional(),
+  model: z.string().min(1).max(100).optional(),
+  rateLimit: OutreachCampaignRateLimitBody.optional()
+}).strict();
+
+const ApproveOutreachCampaignRecipientBody = z.object({
+  confirm: z.literal(true),
+  subject: OptionalOnboardingString(240),
+  body: OptionalOnboardingString(20_000)
+}).strict();
+
+const StartOutreachCampaignBody = z.object({
+  senderAccountId: z.string().min(1),
+  confirm: z.literal(true)
+}).strict();
+
 const SendOutreachTestEmailBody = z.object({
   to: OptionalOnboardingString(320)
 }).strict();
@@ -437,6 +470,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const outreachDrafts = new OutreachDraftRepository(options.baseDir);
   const outreachSenders = new OutreachSenderRepository(options.baseDir);
   const outreachWorkflows = new OutreachWorkflowRepository(options.baseDir);
+  const outreachCampaigns = new OutreachCampaignRepository(options.baseDir);
   const profiles = new ProfileRepository(options.baseDir);
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
@@ -839,6 +873,110 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const workflow = await outreachWorkflows.require(id);
     await assertActiveProfile(workflow.profileId);
     return workflow;
+  });
+  server.get("/api/outreach/campaigns", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachCampaigns.listWithRecipients({ profileId: await resolveProfileId(query.profileId), q: query.q }, outreachDrafts);
+  });
+  server.post("/api/outreach/campaigns", async (request) => {
+    const body = CreateOutreachCampaignBody.parse(request.body ?? {});
+    const profileId = await resolveProfileId(body.profileId);
+    if (body.senderAccountId) {
+      const sender = await outreachSenders.require(body.senderAccountId);
+      if (sender.profileId !== profileId) throw new ClientInputError("Sender account belongs to another profile.");
+    }
+    const leads = await Promise.all(body.leadIds.map((id) => outreachLeads.require(id)));
+    return outreachCampaigns.create({
+      profileId,
+      name: body.name,
+      description: body.description,
+      senderAccountId: body.senderAccountId,
+      language: body.language,
+      tone: body.tone,
+      providerId: body.providerId,
+      model: body.model,
+      rateLimit: body.rateLimit,
+      leads
+    });
+  });
+  server.get("/api/outreach/campaigns/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.requireWithRecipients(id, outreachDrafts);
+    await assertActiveProfile(campaign.profileId);
+    return campaign;
+  });
+  server.post("/api/outreach/campaigns/:id/generate", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    return generateOutreachCampaignWorkflows({
+      campaignId: id,
+      runtime,
+      providers,
+      companyProfile,
+      materials,
+      leads: outreachLeads,
+      drafts: outreachDrafts,
+      workflows: outreachWorkflows,
+      campaigns: outreachCampaigns
+    });
+  });
+  server.post("/api/outreach/campaigns/:id/recipients/:recipientId/approve", async (request) => {
+    const { id, recipientId } = request.params as { id: string; recipientId: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    const body = ApproveOutreachCampaignRecipientBody.parse(request.body ?? {});
+    return approveOutreachCampaignRecipient({
+      campaignId: id,
+      recipientId,
+      subject: body.subject,
+      body: body.body,
+      drafts: outreachDrafts,
+      workflows: outreachWorkflows,
+      campaigns: outreachCampaigns
+    });
+  });
+  server.post("/api/outreach/campaigns/:id/recipients/:recipientId/skip", async (request) => {
+    const { id, recipientId } = request.params as { id: string; recipientId: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    return skipOutreachCampaignRecipient(id, recipientId, outreachCampaigns, outreachDrafts);
+  });
+  server.post("/api/outreach/campaigns/:id/start", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    const body = StartOutreachCampaignBody.parse(request.body ?? {});
+    return sendOutreachCampaignBatch({
+      campaignId: id,
+      senderAccountId: body.senderAccountId,
+      leads: outreachLeads,
+      drafts: outreachDrafts,
+      senders: outreachSenders,
+      campaigns: outreachCampaigns
+    });
+  });
+  server.post("/api/outreach/campaigns/:id/pause", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    await outreachCampaigns.updateCampaign(id, { status: "paused", pausedAt: new Date().toISOString() });
+    return outreachCampaigns.requireWithRecipients(id, outreachDrafts);
+  });
+  server.post("/api/outreach/campaigns/:id/resume", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot be resumed.");
+    await outreachCampaigns.updateCampaign(id, { status: "ready", pausedAt: undefined });
+    return outreachCampaigns.requireWithRecipients(id, outreachDrafts);
+  });
+  server.post("/api/outreach/campaigns/:id/stop", async (request) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    await stopOutreachCampaign(id, outreachCampaigns, outreachDrafts);
+    return outreachCampaigns.requireWithRecipients(id, outreachDrafts);
   });
   server.put("/api/outreach/drafts/:id", async (request) => {
     const { id } = request.params as { id: string };
@@ -1857,6 +1995,15 @@ interface OutreachWorkflowStoreDocument {
   workflows: OutreachWorkflow[];
 }
 
+interface OutreachCampaignStoreDocument {
+  campaigns: OutreachCampaign[];
+  recipients: OutreachCampaignRecipient[];
+}
+
+interface OutreachCampaignWithRecipients extends OutreachCampaign {
+  recipients: Array<OutreachCampaignRecipient & { draft?: OutreachDraft }>;
+}
+
 interface OutreachListOptions {
   profileId?: string;
   q?: string;
@@ -2124,6 +2271,174 @@ class OutreachWorkflowRepository {
   }
 }
 
+class OutreachCampaignRepository {
+  private readonly filePath: string;
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "outreach-campaigns.json");
+  }
+
+  async list(options: OutreachListOptions = {}): Promise<OutreachCampaign[]> {
+    const needle = options.q?.trim().toLowerCase();
+    return (await this.read()).campaigns.filter((campaign) => {
+      if (options.profileId && campaign.profileId !== options.profileId) return false;
+      if (!needle) return true;
+      return [campaign.name, campaign.description, campaign.language, campaign.tone, campaign.status].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle));
+    });
+  }
+
+  async listWithRecipients(options: OutreachListOptions = {}, drafts: OutreachDraftRepository): Promise<OutreachCampaignWithRecipients[]> {
+    const document = await this.read();
+    const needle = options.q?.trim().toLowerCase();
+    const campaigns = document.campaigns.filter((campaign) => {
+      if (options.profileId && campaign.profileId !== options.profileId) return false;
+      if (!needle) return true;
+      return [campaign.name, campaign.description, campaign.language, campaign.tone, campaign.status].filter(Boolean).some((value) => String(value).toLowerCase().includes(needle));
+    });
+    return Promise.all(campaigns.map((campaign) => this.enrich(campaign, document.recipients.filter((recipient) => recipient.campaignId === campaign.id), drafts)));
+  }
+
+  async get(id: string): Promise<OutreachCampaign | undefined> {
+    return (await this.read()).campaigns.find((campaign) => campaign.id === id);
+  }
+
+  async require(id: string): Promise<OutreachCampaign> {
+    const campaign = await this.get(id);
+    if (!campaign) throw new ClientInputError(`Outreach campaign not found: ${id}`);
+    return campaign;
+  }
+
+  async getWithRecipients(id: string, drafts: OutreachDraftRepository): Promise<OutreachCampaignWithRecipients | undefined> {
+    const document = await this.read();
+    const campaign = document.campaigns.find((item) => item.id === id);
+    if (!campaign) return undefined;
+    return this.enrich(campaign, document.recipients.filter((recipient) => recipient.campaignId === id), drafts);
+  }
+
+  async requireWithRecipients(id: string, drafts: OutreachDraftRepository): Promise<OutreachCampaignWithRecipients> {
+    const campaign = await this.getWithRecipients(id, drafts);
+    if (!campaign) throw new ClientInputError(`Outreach campaign not found: ${id}`);
+    return campaign;
+  }
+
+  async create(input: {
+    profileId: string;
+    name: string;
+    description?: string;
+    senderAccountId?: string;
+    language: string;
+    tone: string;
+    providerId?: string;
+    model?: string;
+    rateLimit?: z.infer<typeof OutreachCampaignRateLimitBody>;
+    leads: OutreachLead[];
+  }): Promise<OutreachCampaignWithRecipients> {
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const seenLeadIds = new Set<string>();
+    const recipients: OutreachCampaignRecipient[] = input.leads.map((lead) => {
+      if (lead.profileId !== input.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
+      if (seenLeadIds.has(lead.id)) throw new ClientInputError(`Lead was selected twice: ${lead.companyName}`);
+      seenLeadIds.add(lead.id);
+      if (!lead.website || !lead.email) throw new ClientInputError(`Every batch customer needs website and email before campaign creation: ${lead.companyName}`);
+      return OutreachCampaignRecipientSchema.parse({
+        id: randomUUID(),
+        profileId: input.profileId,
+        campaignId: id,
+        leadId: lead.id,
+        email: lead.email,
+        companyName: lead.companyName,
+        website: lead.website,
+        contactName: lead.contactName,
+        contactTitle: lead.contactTitle,
+        status: "pending",
+        createdAt: now,
+        updatedAt: now
+      });
+    });
+    const campaign = OutreachCampaignSchema.parse({
+      id,
+      profileId: input.profileId,
+      name: input.name,
+      description: input.description ?? "",
+      senderAccountId: input.senderAccountId,
+      language: input.language,
+      tone: input.tone,
+      providerId: input.providerId,
+      model: input.model,
+      rateLimit: input.rateLimit ?? {},
+      status: "draft",
+      createdAt: now,
+      updatedAt: now
+    });
+    const document = await this.read();
+    document.campaigns.unshift(campaign);
+    document.recipients.unshift(...recipients);
+    const written = await this.write(document);
+    const saved = written.campaigns.find((item) => item.id === id)!;
+    return this.enrich(saved, written.recipients.filter((recipient) => recipient.campaignId === id), undefined);
+  }
+
+  async updateCampaign(id: string, input: Partial<Omit<OutreachCampaign, "id" | "profileId" | "createdAt" | "updatedAt" | "stats" | "mode">>): Promise<OutreachCampaign> {
+    const document = await this.read();
+    const index = document.campaigns.findIndex((campaign) => campaign.id === id);
+    if (index === -1) throw new ClientInputError(`Outreach campaign not found: ${id}`);
+    const next = OutreachCampaignSchema.parse({
+      ...document.campaigns[index],
+      ...input,
+      updatedAt: new Date().toISOString()
+    });
+    document.campaigns[index] = next;
+    const written = await this.write(document);
+    return written.campaigns.find((campaign) => campaign.id === id)!;
+  }
+
+  async updateRecipient(id: string, input: Partial<Omit<OutreachCampaignRecipient, "id" | "profileId" | "campaignId" | "leadId" | "createdAt" | "updatedAt">>): Promise<OutreachCampaignRecipient> {
+    const document = await this.read();
+    const index = document.recipients.findIndex((recipient) => recipient.id === id);
+    if (index === -1) throw new ClientInputError(`Campaign recipient not found: ${id}`);
+    const next = OutreachCampaignRecipientSchema.parse({
+      ...document.recipients[index],
+      ...input,
+      updatedAt: new Date().toISOString()
+    });
+    document.recipients[index] = next;
+    const written = await this.write(document);
+    return written.recipients.find((recipient) => recipient.id === id)!;
+  }
+
+  private async enrich(campaign: OutreachCampaign, recipients: OutreachCampaignRecipient[], drafts?: OutreachDraftRepository): Promise<OutreachCampaignWithRecipients> {
+    const enriched = await Promise.all(recipients.map(async (recipient) => ({
+      ...recipient,
+      draft: recipient.initialDraftId && drafts ? await drafts.get(recipient.initialDraftId) : undefined
+    })));
+    return { ...campaign, recipients: enriched };
+  }
+
+  private async read(): Promise<OutreachCampaignStoreDocument> {
+    try {
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as OutreachCampaignStoreDocument;
+      return {
+        campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns.map((campaign) => OutreachCampaignSchema.parse(campaign)) : [],
+        recipients: Array.isArray(parsed.recipients) ? parsed.recipients.map((recipient) => OutreachCampaignRecipientSchema.parse(recipient)) : []
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { campaigns: [], recipients: [] };
+      throw error;
+    }
+  }
+
+  private async write(document: OutreachCampaignStoreDocument): Promise<OutreachCampaignStoreDocument> {
+    const campaigns = document.campaigns.map((campaign) => OutreachCampaignSchema.parse({
+      ...campaign,
+      stats: campaignStats(document.recipients.filter((recipient) => recipient.campaignId === campaign.id))
+    }));
+    const recipients = document.recipients.map((recipient) => OutreachCampaignRecipientSchema.parse(recipient));
+    await writePrivateJson(this.filePath, { campaigns, recipients });
+    return { campaigns, recipients };
+  }
+}
+
 class OutreachSenderRepository {
   private readonly filePath: string;
   private readonly vault: LocalCredentialVault;
@@ -2356,6 +2671,25 @@ function publicChannel(channel: ChannelRecord): PublicChannelRecord {
 function publicOutreachSender(sender: OutreachSenderAccount): PublicOutreachSenderAccount {
   const { passwordRef: _passwordRef, ...safeSender } = sender;
   return safeSender;
+}
+
+function campaignStats(recipients: OutreachCampaignRecipient[]): OutreachCampaign["stats"] {
+  const stats: OutreachCampaign["stats"] = {
+    total: recipients.length,
+    pending: 0,
+    researching: 0,
+    generated: 0,
+    approved: 0,
+    queued: 0,
+    sending: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0
+  };
+  for (const recipient of recipients) {
+    stats[recipient.status] += 1;
+  }
+  return stats;
 }
 
 function parseCsvRows(input: string): string[][] {
@@ -2680,6 +3014,7 @@ async function generateOutreachDraft(input: {
 async function generateOutreachWorkflow(input: {
   body: z.infer<typeof AutoOutreachDraftBody>;
   profileId: string;
+  lead?: OutreachLead;
   runtime: RuntimeAdapter;
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
@@ -2689,7 +3024,7 @@ async function generateOutreachWorkflow(input: {
   workflows: OutreachWorkflowRepository;
 }): Promise<OutreachWorkflow> {
   const research = await researchCustomerWebsite(input.body.website);
-  const lead = await input.leads.create({
+  const lead = input.lead ?? await input.leads.create({
     profileId: input.profileId,
     companyName: research.companyName || companyNameFromWebsite(research.website) || companyNameFromEmail(input.body.email),
     website: research.website,
@@ -2773,6 +3108,209 @@ async function generateOutreachWorkflow(input: {
     model: input.body.model ?? providerRecord?.defaultModel,
     usage: estimateMessageUsage(prompt, replyText)
   });
+}
+
+async function generateOutreachCampaignWorkflows(input: {
+  campaignId: string;
+  runtime: RuntimeAdapter;
+  providers: ProviderRepository;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  leads: OutreachLeadRepository;
+  drafts: OutreachDraftRepository;
+  workflows: OutreachWorkflowRepository;
+  campaigns: OutreachCampaignRepository;
+}): Promise<OutreachCampaignWithRecipients> {
+  const campaign = await input.campaigns.require(input.campaignId);
+  if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot generate new drafts.");
+  await input.campaigns.updateCampaign(campaign.id, { status: "generating" });
+  const detail = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+  for (const recipient of detail.recipients) {
+    if (!["pending", "failed"].includes(recipient.status) || recipient.workflowId || recipient.initialDraftId) continue;
+    await input.campaigns.updateRecipient(recipient.id, { status: "researching", sendError: undefined });
+    try {
+      const lead = await input.leads.require(recipient.leadId);
+      if (lead.profileId !== campaign.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
+      const workflow = await generateOutreachWorkflow({
+        body: {
+          website: recipient.website,
+          email: recipient.email,
+          language: campaign.language,
+          tone: campaign.tone,
+          providerId: campaign.providerId,
+          model: campaign.model
+        },
+        profileId: campaign.profileId,
+        lead,
+        runtime: input.runtime,
+        providers: input.providers,
+        companyProfile: input.companyProfile,
+        materials: input.materials,
+        leads: input.leads,
+        drafts: input.drafts,
+        workflows: input.workflows
+      });
+      await input.campaigns.updateRecipient(recipient.id, {
+        status: "generated",
+        workflowId: workflow.id,
+        initialDraftId: workflow.draftId,
+        sendError: undefined
+      });
+    } catch (error) {
+      await input.campaigns.updateRecipient(recipient.id, {
+        status: "failed",
+        sendError: redactSecrets(error instanceof Error ? error.message : String(error))
+      });
+    }
+  }
+  const refreshed = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+  await input.campaigns.updateCampaign(campaign.id, { status: nextCampaignStatus(refreshed) });
+  return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+}
+
+async function approveOutreachCampaignRecipient(input: {
+  campaignId: string;
+  recipientId: string;
+  subject?: string;
+  body?: string;
+  drafts: OutreachDraftRepository;
+  workflows: OutreachWorkflowRepository;
+  campaigns: OutreachCampaignRepository;
+}): Promise<OutreachCampaignWithRecipients> {
+  const detail = await input.campaigns.requireWithRecipients(input.campaignId, input.drafts);
+  const recipient = detail.recipients.find((item) => item.id === input.recipientId);
+  if (!recipient) throw new ClientInputError(`Campaign recipient not found: ${input.recipientId}`);
+  if (["sent", "sending", "skipped"].includes(recipient.status)) throw new ClientInputError("This recipient cannot be approved anymore.");
+  if (!recipient.initialDraftId || !recipient.workflowId) throw new ClientInputError("Generate this recipient draft before approving it.");
+  let draft = await input.drafts.require(recipient.initialDraftId);
+  if (input.subject || input.body) {
+    draft = await input.drafts.update(draft.id, {
+      subject: input.subject ?? draft.subject,
+      body: input.body ?? draft.body
+    });
+    const workflow = await input.workflows.require(recipient.workflowId);
+    await input.workflows.update(workflow.id, {
+      initialEmail: {
+        ...workflow.initialEmail,
+        subject: draft.subject,
+        body: draft.body,
+        status: draft.status,
+        sentAt: draft.sentAt,
+        sendError: draft.sendError
+      }
+    });
+  }
+  await input.campaigns.updateRecipient(recipient.id, {
+    status: "approved",
+    approvedAt: new Date().toISOString(),
+    sendError: undefined
+  });
+  await input.campaigns.updateCampaign(input.campaignId, { status: "ready" });
+  return input.campaigns.requireWithRecipients(input.campaignId, input.drafts);
+}
+
+async function skipOutreachCampaignRecipient(
+  campaignId: string,
+  recipientId: string,
+  campaigns: OutreachCampaignRepository,
+  drafts: OutreachDraftRepository
+): Promise<OutreachCampaignWithRecipients> {
+  const detail = await campaigns.requireWithRecipients(campaignId, drafts);
+  const recipient = detail.recipients.find((item) => item.id === recipientId);
+  if (!recipient) throw new ClientInputError(`Campaign recipient not found: ${recipientId}`);
+  if (recipient.status === "sent") throw new ClientInputError("Sent recipients cannot be skipped.");
+  await campaigns.updateRecipient(recipient.id, { status: "skipped", skippedAt: new Date().toISOString(), sendError: undefined });
+  const refreshed = await campaigns.requireWithRecipients(campaignId, drafts);
+  await campaigns.updateCampaign(campaignId, { status: nextCampaignStatus(refreshed) });
+  return campaigns.requireWithRecipients(campaignId, drafts);
+}
+
+async function sendOutreachCampaignBatch(input: {
+  campaignId: string;
+  senderAccountId: string;
+  leads: OutreachLeadRepository;
+  drafts: OutreachDraftRepository;
+  senders: OutreachSenderRepository;
+  campaigns: OutreachCampaignRepository;
+}): Promise<OutreachCampaignWithRecipients> {
+  const campaign = await input.campaigns.require(input.campaignId);
+  if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot be sent.");
+  const sender = await input.senders.require(input.senderAccountId);
+  if (sender.profileId !== campaign.profileId) throw new ClientInputError("Sender account belongs to another profile.");
+  if (!sender.deliveryConfirmedAt) throw new ClientInputError("Confirm the sender mailbox before sending outreach.");
+  const detail = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+  const candidates = detail.recipients.filter((recipient) => ["approved", "queued"].includes(recipient.status));
+  if (!candidates.length) throw new ClientInputError("Approve at least one generated campaign draft before sending.");
+  const now = new Date().toISOString();
+  await input.campaigns.updateCampaign(campaign.id, {
+    senderAccountId: sender.id,
+    status: "sending",
+    startedAt: campaign.startedAt ?? now
+  });
+  const limit = campaign.rateLimit.maxPerHour;
+  for (const recipient of candidates.slice(0, limit)) {
+    const freshCampaign = await input.campaigns.require(campaign.id);
+    if (freshCampaign.status === "paused" || freshCampaign.status === "stopped") break;
+    if (!recipient.initialDraftId) {
+      await input.campaigns.updateRecipient(recipient.id, { status: "failed", sendError: "Recipient has no approved first email draft." });
+      await input.campaigns.updateCampaign(campaign.id, { status: "failed" });
+      return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+    }
+    await input.campaigns.updateRecipient(recipient.id, { status: "sending", queuedAt: recipient.queuedAt ?? now, sendError: undefined });
+    try {
+      const draft = await input.drafts.require(recipient.initialDraftId);
+      const lead = await input.leads.get(recipient.leadId);
+      const sent = await sendOutreachDraft({
+        draft,
+        sender,
+        lead,
+        to: recipient.email,
+        senders: input.senders,
+        drafts: input.drafts
+      });
+      await input.campaigns.updateRecipient(recipient.id, {
+        status: "sent",
+        sentAt: sent.sentAt ?? new Date().toISOString(),
+        sendError: undefined
+      });
+    } catch (error) {
+      await input.campaigns.updateRecipient(recipient.id, {
+        status: "failed",
+        sendError: redactSecrets(error instanceof Error ? error.message : String(error))
+      });
+      await input.campaigns.updateCampaign(campaign.id, { status: "failed" });
+      return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+    }
+  }
+  const refreshed = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+  await input.campaigns.updateCampaign(campaign.id, { status: nextCampaignStatus(refreshed) });
+  return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+}
+
+async function stopOutreachCampaign(
+  campaignId: string,
+  campaigns: OutreachCampaignRepository,
+  drafts: OutreachDraftRepository
+): Promise<void> {
+  const detail = await campaigns.requireWithRecipients(campaignId, drafts);
+  const now = new Date().toISOString();
+  for (const recipient of detail.recipients) {
+    if (!["sent", "skipped"].includes(recipient.status)) {
+      await campaigns.updateRecipient(recipient.id, { status: "skipped", skippedAt: now, sendError: undefined });
+    }
+  }
+  await campaigns.updateCampaign(campaignId, { status: "stopped", stoppedAt: now });
+}
+
+function nextCampaignStatus(campaign: OutreachCampaignWithRecipients): OutreachCampaign["status"] {
+  const recipients = campaign.recipients;
+  if (!recipients.length) return "draft";
+  if (recipients.some((recipient) => recipient.status === "sending")) return "sending";
+  if (recipients.every((recipient) => recipient.status === "sent" || recipient.status === "skipped")) return "completed";
+  if (recipients.some((recipient) => recipient.status === "failed") && !recipients.some((recipient) => ["pending", "researching", "generated", "approved", "queued"].includes(recipient.status))) return "failed";
+  if (recipients.some((recipient) => ["generated", "approved", "queued", "sent"].includes(recipient.status))) return "ready";
+  if (recipients.some((recipient) => recipient.status === "researching")) return "generating";
+  return "draft";
 }
 
 async function resolveGenerationProvider(providerId: string | undefined, providers: ProviderRepository): Promise<ProviderCredential | undefined> {

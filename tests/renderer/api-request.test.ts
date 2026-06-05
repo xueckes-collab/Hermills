@@ -53,6 +53,31 @@ describe("renderer API request wrapper", () => {
       { id: "provider-ready", status: "connected", maskedKey: "sk••••ready" }
     ]);
   });
+
+  it("creates outreach campaigns without a send confirmation flag", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "campaign-1", recipients: [], stats: {} }));
+    stubDesktop(fetchMock);
+
+    await api.createOutreachCampaign({ name: "Batch", leadIds: ["lead-1", "lead-2"], language: "English" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/api/outreach/campaigns");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "Batch", leadIds: ["lead-1", "lead-2"], language: "English" });
+  });
+
+  it("uses explicit confirmation only for campaign approval and sending", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "campaign-1", recipients: [], stats: {} }));
+    stubDesktop(fetchMock);
+
+    await api.generateOutreachCampaign("campaign-1");
+    await api.approveOutreachCampaignRecipient("campaign-1", "recipient-1", { subject: "Hi", body: "Body" });
+    await api.startOutreachCampaign("campaign-1", { senderAccountId: "sender-1" });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({});
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ subject: "Hi", body: "Body", confirm: true });
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({ senderAccountId: "sender-1", confirm: true });
+  });
 });
 
 function stubDesktop(fetchMock: typeof fetch): void {

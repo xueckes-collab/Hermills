@@ -1504,6 +1504,244 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         delayDays?: number | undefined;
     }[] | undefined;
 }>;
+export declare const OutreachCampaignStatusSchema: z.ZodEnum<["draft", "generating", "ready", "sending", "paused", "completed", "failed", "stopped"]>;
+export declare const OutreachCampaignRecipientStatusSchema: z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "failed", "skipped"]>;
+export declare const OutreachCampaignRateLimitSchema: z.ZodObject<{
+    maxPerHour: z.ZodDefault<z.ZodNumber>;
+    minDelayMinutes: z.ZodDefault<z.ZodNumber>;
+}, "strict", z.ZodTypeAny, {
+    maxPerHour: number;
+    minDelayMinutes: number;
+}, {
+    maxPerHour?: number | undefined;
+    minDelayMinutes?: number | undefined;
+}>;
+export declare const OutreachCampaignStatsSchema: z.ZodObject<{
+    total: z.ZodDefault<z.ZodNumber>;
+    pending: z.ZodDefault<z.ZodNumber>;
+    researching: z.ZodDefault<z.ZodNumber>;
+    generated: z.ZodDefault<z.ZodNumber>;
+    approved: z.ZodDefault<z.ZodNumber>;
+    queued: z.ZodDefault<z.ZodNumber>;
+    sending: z.ZodDefault<z.ZodNumber>;
+    sent: z.ZodDefault<z.ZodNumber>;
+    failed: z.ZodDefault<z.ZodNumber>;
+    skipped: z.ZodDefault<z.ZodNumber>;
+}, "strict", z.ZodTypeAny, {
+    generated: number;
+    failed: number;
+    sent: number;
+    sending: number;
+    pending: number;
+    researching: number;
+    approved: number;
+    queued: number;
+    skipped: number;
+    total: number;
+}, {
+    generated?: number | undefined;
+    failed?: number | undefined;
+    sent?: number | undefined;
+    sending?: number | undefined;
+    pending?: number | undefined;
+    researching?: number | undefined;
+    approved?: number | undefined;
+    queued?: number | undefined;
+    skipped?: number | undefined;
+    total?: number | undefined;
+}>;
+export declare const OutreachCampaignSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodString;
+    name: z.ZodString;
+    description: z.ZodDefault<z.ZodString>;
+    senderAccountId: z.ZodOptional<z.ZodString>;
+    mode: z.ZodDefault<z.ZodLiteral<"first-email-only">>;
+    status: z.ZodDefault<z.ZodEnum<["draft", "generating", "ready", "sending", "paused", "completed", "failed", "stopped"]>>;
+    language: z.ZodDefault<z.ZodString>;
+    tone: z.ZodDefault<z.ZodString>;
+    providerId: z.ZodOptional<z.ZodString>;
+    model: z.ZodOptional<z.ZodString>;
+    rateLimit: z.ZodDefault<z.ZodObject<{
+        maxPerHour: z.ZodDefault<z.ZodNumber>;
+        minDelayMinutes: z.ZodDefault<z.ZodNumber>;
+    }, "strict", z.ZodTypeAny, {
+        maxPerHour: number;
+        minDelayMinutes: number;
+    }, {
+        maxPerHour?: number | undefined;
+        minDelayMinutes?: number | undefined;
+    }>>;
+    stats: z.ZodDefault<z.ZodObject<{
+        total: z.ZodDefault<z.ZodNumber>;
+        pending: z.ZodDefault<z.ZodNumber>;
+        researching: z.ZodDefault<z.ZodNumber>;
+        generated: z.ZodDefault<z.ZodNumber>;
+        approved: z.ZodDefault<z.ZodNumber>;
+        queued: z.ZodDefault<z.ZodNumber>;
+        sending: z.ZodDefault<z.ZodNumber>;
+        sent: z.ZodDefault<z.ZodNumber>;
+        failed: z.ZodDefault<z.ZodNumber>;
+        skipped: z.ZodDefault<z.ZodNumber>;
+    }, "strict", z.ZodTypeAny, {
+        generated: number;
+        failed: number;
+        sent: number;
+        sending: number;
+        pending: number;
+        researching: number;
+        approved: number;
+        queued: number;
+        skipped: number;
+        total: number;
+    }, {
+        generated?: number | undefined;
+        failed?: number | undefined;
+        sent?: number | undefined;
+        sending?: number | undefined;
+        pending?: number | undefined;
+        researching?: number | undefined;
+        approved?: number | undefined;
+        queued?: number | undefined;
+        skipped?: number | undefined;
+        total?: number | undefined;
+    }>>;
+    startedAt: z.ZodOptional<z.ZodString>;
+    pausedAt: z.ZodOptional<z.ZodString>;
+    completedAt: z.ZodOptional<z.ZodString>;
+    stoppedAt: z.ZodOptional<z.ZodString>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    status: "failed" | "ready" | "stopped" | "draft" | "generating" | "sending" | "paused" | "completed";
+    id: string;
+    name: string;
+    description: string;
+    createdAt: string;
+    updatedAt: string;
+    language: string;
+    profileId: string;
+    tone: string;
+    mode: "first-email-only";
+    rateLimit: {
+        maxPerHour: number;
+        minDelayMinutes: number;
+    };
+    stats: {
+        generated: number;
+        failed: number;
+        sent: number;
+        sending: number;
+        pending: number;
+        researching: number;
+        approved: number;
+        queued: number;
+        skipped: number;
+        total: number;
+    };
+    providerId?: string | undefined;
+    model?: string | undefined;
+    senderAccountId?: string | undefined;
+    startedAt?: string | undefined;
+    pausedAt?: string | undefined;
+    completedAt?: string | undefined;
+    stoppedAt?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    profileId: string;
+    status?: "failed" | "ready" | "stopped" | "draft" | "generating" | "sending" | "paused" | "completed" | undefined;
+    description?: string | undefined;
+    providerId?: string | undefined;
+    model?: string | undefined;
+    language?: string | undefined;
+    tone?: string | undefined;
+    senderAccountId?: string | undefined;
+    mode?: "first-email-only" | undefined;
+    rateLimit?: {
+        maxPerHour?: number | undefined;
+        minDelayMinutes?: number | undefined;
+    } | undefined;
+    stats?: {
+        generated?: number | undefined;
+        failed?: number | undefined;
+        sent?: number | undefined;
+        sending?: number | undefined;
+        pending?: number | undefined;
+        researching?: number | undefined;
+        approved?: number | undefined;
+        queued?: number | undefined;
+        skipped?: number | undefined;
+        total?: number | undefined;
+    } | undefined;
+    startedAt?: string | undefined;
+    pausedAt?: string | undefined;
+    completedAt?: string | undefined;
+    stoppedAt?: string | undefined;
+}>;
+export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodString;
+    campaignId: z.ZodString;
+    leadId: z.ZodString;
+    workflowId: z.ZodOptional<z.ZodString>;
+    initialDraftId: z.ZodOptional<z.ZodString>;
+    email: z.ZodString;
+    companyName: z.ZodString;
+    website: z.ZodString;
+    contactName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    contactTitle: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    status: z.ZodDefault<z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "failed", "skipped"]>>;
+    approvedAt: z.ZodOptional<z.ZodString>;
+    queuedAt: z.ZodOptional<z.ZodString>;
+    sentAt: z.ZodOptional<z.ZodString>;
+    skippedAt: z.ZodOptional<z.ZodString>;
+    sendError: z.ZodOptional<z.ZodString>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    status: "generated" | "failed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "skipped";
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    website: string;
+    profileId: string;
+    companyName: string;
+    email: string;
+    leadId: string;
+    campaignId: string;
+    contactName?: string | undefined;
+    contactTitle?: string | undefined;
+    sentAt?: string | undefined;
+    sendError?: string | undefined;
+    workflowId?: string | undefined;
+    initialDraftId?: string | undefined;
+    approvedAt?: string | undefined;
+    queuedAt?: string | undefined;
+    skippedAt?: string | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    website: string;
+    profileId: string;
+    companyName: string;
+    email: string;
+    leadId: string;
+    campaignId: string;
+    status?: "generated" | "failed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "skipped" | undefined;
+    contactName?: unknown;
+    contactTitle?: unknown;
+    sentAt?: string | undefined;
+    sendError?: string | undefined;
+    workflowId?: string | undefined;
+    initialDraftId?: string | undefined;
+    approvedAt?: string | undefined;
+    queuedAt?: string | undefined;
+    skippedAt?: string | undefined;
+}>;
 export declare const JobStatusSchema: z.ZodEnum<["active", "paused"]>;
 export declare const JobRunStatusSchema: z.ZodEnum<["queued", "running", "succeeded", "failed", "skipped"]>;
 export declare const JobRunTriggerSchema: z.ZodEnum<["manual", "schedule"]>;
@@ -1583,7 +1821,7 @@ export declare const JobRecordSchema: z.ZodObject<{
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    status: "active" | "paused";
+    status: "paused" | "active";
     id: string;
     name: string;
     description: string;
@@ -1622,7 +1860,7 @@ export declare const JobRecordSchema: z.ZodObject<{
         agentId?: string | undefined;
         materialIds?: string[] | undefined;
     };
-    status?: "active" | "paused" | undefined;
+    status?: "paused" | "active" | undefined;
     description?: string | undefined;
     profileId?: string | undefined;
     nextRunAt?: string | undefined;
@@ -1659,11 +1897,11 @@ export declare const JobRunRecordSchema: z.ZodObject<{
     model: z.ZodOptional<z.ZodString>;
     providerId: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
-    status: "failed" | "running" | "queued" | "succeeded" | "skipped";
+    status: "failed" | "running" | "queued" | "skipped" | "succeeded";
     id: string;
+    startedAt: string;
     jobId: string;
     trigger: "manual" | "schedule";
-    startedAt: string;
     providerId?: string | undefined;
     model?: string | undefined;
     usage?: {
@@ -1678,11 +1916,11 @@ export declare const JobRunRecordSchema: z.ZodObject<{
     input?: string | undefined;
     outputPreview?: string | undefined;
 }, {
-    status: "failed" | "running" | "queued" | "succeeded" | "skipped";
+    status: "failed" | "running" | "queued" | "skipped" | "succeeded";
     id: string;
+    startedAt: string;
     jobId: string;
     trigger: "manual" | "schedule";
-    startedAt: string;
     providerId?: string | undefined;
     model?: string | undefined;
     usage?: {

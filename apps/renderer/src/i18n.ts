@@ -304,6 +304,8 @@ export type UiCopy = {
       senderRequired: string
       senderNotConfirmed: string
       confirmSend: string
+      confirmBatchSend: (count: number) => string
+      confirmStopCampaign: string
     }
     results: {
       title: string
@@ -334,6 +336,52 @@ export type UiCopy = {
       customAuthHint: string
       testEmailHint: string
       providerDescriptions: Record<'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom', string>
+    }
+    batch: {
+      modeAria: string
+      singleMode: string
+      campaignMode: string
+      eyebrow: string
+      title: string
+      subtitle: string
+      defaultName: string
+      customerList: string
+      noCampaign: string
+      emptyReview: string
+      reviewing: string
+      missingEmail: string
+      missingWebsite: string
+      fields: {
+        name: string
+      }
+      actions: {
+        create: string
+        generate: string
+        generating: string
+        approve: string
+        skip: string
+        send: string
+        pause: string
+        resume: string
+        stop: string
+      }
+      campaignStatus: Record<'draft' | 'generating' | 'ready' | 'sending' | 'paused' | 'completed' | 'failed' | 'stopped', string>
+      recipientStatus: Record<'pending' | 'researching' | 'generated' | 'approved' | 'queued' | 'sending' | 'sent' | 'failed' | 'skipped', string>
+      status: {
+        created: (count: number) => string
+        generated: (count: number) => string
+        approved: string
+        skipped: string
+        sent: (count: number) => string
+        paused: string
+        resumed: string
+        stopped: string
+      }
+      warnings: {
+        noCustomers: string
+        missingCustomer: (name: string) => string
+        noApproved: string
+      }
     }
   }
   keyNudge: {
@@ -923,6 +971,8 @@ const en: UiCopy = {
       senderRequired: 'Save a mailbox before sending.',
       senderNotConfirmed: 'Finish the mailbox test first. Send one test email and confirm it arrived.',
       confirmSend: 'This sends a real email. Read it once, then confirm.',
+      confirmBatchSend: (count) => `This sends ${count} real first email${count === 1 ? '' : 's'}. Read the approved drafts first, then confirm.`,
+      confirmStopCampaign: 'Stop this campaign and cancel all unsent recipients?',
     },
     results: {
       title: 'Research result',
@@ -959,6 +1009,50 @@ const en: UiCopy = {
         aliyun: 'Alibaba enterprise mail',
         zoho: 'Zoho Mail SMTP',
         custom: 'Any SMTP mailbox',
+      },
+    },
+    batch: {
+      modeAria: 'Choose outreach mode',
+      singleMode: 'One customer',
+      campaignMode: 'Batch customers',
+      eyebrow: 'Batch outreach',
+      title: 'Batch first-email quest',
+      subtitle: 'Select customers, generate drafts, review each first email, then send only approved emails.',
+      defaultName: 'Batch outreach campaign',
+      customerList: 'Customer list',
+      noCampaign: 'Create a batch task first.',
+      emptyReview: 'Generate drafts, then choose a customer to review.',
+      reviewing: 'Reviewing',
+      missingEmail: 'missing email',
+      missingWebsite: 'missing website',
+      fields: { name: 'Task name' },
+      actions: {
+        create: 'Create task',
+        generate: 'Research and write',
+        generating: 'Generating...',
+        approve: 'Approve draft',
+        skip: 'Skip',
+        send: 'Send approved',
+        pause: 'Pause',
+        resume: 'Resume',
+        stop: 'Stop',
+      },
+      campaignStatus: { draft: 'Draft', generating: 'Generating', ready: 'Ready', sending: 'Sending', paused: 'Paused', completed: 'Completed', failed: 'Failed', stopped: 'Stopped' },
+      recipientStatus: { pending: 'Waiting', researching: 'Researching', generated: 'Needs review', approved: 'Approved', queued: 'Queued', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' },
+      status: {
+        created: (count) => `Task created with ${count} customer${count === 1 ? '' : 's'}.`,
+        generated: (count) => `${count} draft${count === 1 ? '' : 's'} ready for review.`,
+        approved: 'Draft approved.',
+        skipped: 'Customer skipped.',
+        sent: (count) => `${count} email${count === 1 ? '' : 's'} sent.`,
+        paused: 'Campaign paused.',
+        resumed: 'Campaign ready again.',
+        stopped: 'Campaign stopped.',
+      },
+      warnings: {
+        noCustomers: 'Choose at least one customer.',
+        missingCustomer: (name) => `${name} needs a website and email first.`,
+        noApproved: 'Approve at least one draft before sending.',
       },
     },
   },
@@ -1337,6 +1431,8 @@ const zhCN = withOverrides(en, {
       senderRequired: '发送前请先保存一个发件邮箱。',
       senderNotConfirmed: '请先完成邮箱测试：发一封测试邮件，并确认已经收到。',
       confirmSend: '这里会发送真实邮件。请先读一遍，再确认发送。',
+      confirmBatchSend: (count) => `这里会发送 ${count} 封真实首封邮件。请先读完已通过的草稿，再确认发送。`,
+      confirmStopCampaign: '停止这个批量任务，并取消所有未发送客户吗？',
     },
     results: {
       title: '背调结果',
@@ -1373,6 +1469,50 @@ const zhCN = withOverrides(en, {
         aliyun: '阿里企业邮箱',
         zoho: 'Zoho Mail',
         custom: '任意 SMTP 邮箱',
+      },
+    },
+    batch: {
+      modeAria: '选择开发信模式',
+      singleMode: '单个客户',
+      campaignMode: '批量客户',
+      eyebrow: '批量开发信',
+      title: '批量首封邮件闯关',
+      subtitle: '选客户，背调生成，逐条检查，只发送你通过的首封邮件。',
+      defaultName: '开发信批量任务',
+      customerList: '客户名单',
+      noCampaign: '先创建一个批量任务。',
+      emptyReview: '先生成草稿，再选择客户检查。',
+      reviewing: '正在检查',
+      missingEmail: '缺邮箱',
+      missingWebsite: '缺网站',
+      fields: { name: '任务名称' },
+      actions: {
+        create: '创建任务',
+        generate: '背调并生成',
+        generating: '生成中...',
+        approve: '通过草稿',
+        skip: '跳过',
+        send: '发送已通过',
+        pause: '暂停',
+        resume: '继续',
+        stop: '停止',
+      },
+      campaignStatus: { draft: '草稿', generating: '生成中', ready: '可发送', sending: '发送中', paused: '已暂停', completed: '已完成', failed: '有失败', stopped: '已停止' },
+      recipientStatus: { pending: '等待', researching: '背调中', generated: '待检查', approved: '已通过', queued: '排队中', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过' },
+      status: {
+        created: (count) => `已创建任务，共 ${count} 个客户。`,
+        generated: (count) => `${count} 封草稿待检查。`,
+        approved: '草稿已通过。',
+        skipped: '已跳过这个客户。',
+        sent: (count) => `已发送 ${count} 封邮件。`,
+        paused: '批量任务已暂停。',
+        resumed: '批量任务可以继续。',
+        stopped: '批量任务已停止。',
+      },
+      warnings: {
+        noCustomers: '请先选择至少一个客户。',
+        missingCustomer: (name) => `${name} 需要先补齐网站和邮箱。`,
+        noApproved: '至少通过一封草稿后才能发送。',
       },
     },
   },

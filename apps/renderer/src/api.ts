@@ -512,6 +512,73 @@ export type OutreachWorkflow = {
   updatedAt: string;
 };
 
+export type OutreachCampaignStatus = "draft" | "generating" | "ready" | "sending" | "paused" | "completed" | "failed" | "stopped";
+export type OutreachCampaignRecipientStatus = "pending" | "researching" | "generated" | "approved" | "queued" | "sending" | "sent" | "failed" | "skipped";
+
+export type OutreachCampaignRateLimit = {
+  maxPerHour: number;
+  minDelayMinutes: number;
+};
+
+export type OutreachCampaignStats = {
+  total: number;
+  pending: number;
+  researching: number;
+  generated: number;
+  approved: number;
+  queued: number;
+  sending: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+};
+
+export type OutreachCampaignRecipient = {
+  id: string;
+  profileId: string;
+  campaignId: string;
+  leadId: string;
+  workflowId?: string;
+  initialDraftId?: string;
+  email: string;
+  companyName: string;
+  website: string;
+  contactName?: string;
+  contactTitle?: string;
+  status: OutreachCampaignRecipientStatus;
+  approvedAt?: string;
+  queuedAt?: string;
+  sentAt?: string;
+  skippedAt?: string;
+  sendError?: string;
+  draft?: OutreachDraft;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachCampaign = {
+  id: string;
+  profileId: string;
+  name: string;
+  description: string;
+  senderAccountId?: string;
+  mode: "first-email-only";
+  status: OutreachCampaignStatus;
+  language: string;
+  tone: string;
+  providerId?: string;
+  model?: string;
+  rateLimit: OutreachCampaignRateLimit;
+  stats: OutreachCampaignStats;
+  recipients: OutreachCampaignRecipient[];
+  startedAt?: string;
+  pausedAt?: string;
+  completedAt?: string;
+  stoppedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type RawRuntimeStatus = {
   installed: boolean;
   localDeploymentComplete?: boolean;
@@ -1024,6 +1091,52 @@ export const api = {
   async outreachWorkflow(id: string): Promise<OutreachWorkflow> {
     return request<OutreachWorkflow>(`/api/outreach/workflows/${id}`);
   },
+  async outreachCampaigns(q?: string): Promise<OutreachCampaign[]> {
+    return request<OutreachCampaign[]>(`/api/outreach/campaigns${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  },
+  async outreachCampaign(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}`);
+  },
+  async createOutreachCampaign(input: {
+    name: string;
+    description?: string;
+    leadIds: string[];
+    senderAccountId?: string;
+    language?: string;
+    tone?: string;
+    providerId?: string;
+    model?: string;
+    rateLimit?: Partial<OutreachCampaignRateLimit>;
+  }): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>("/api/outreach/campaigns", { method: "POST", body: JSON.stringify(input) });
+  },
+  async generateOutreachCampaign(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate`, { method: "POST", body: "{}" });
+  },
+  async approveOutreachCampaignRecipient(campaignId: string, recipientId: string, input: { subject?: string; body?: string } = {}): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ ...input, confirm: true })
+    });
+  },
+  async skipOutreachCampaignRecipient(campaignId: string, recipientId: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/skip`, { method: "POST", body: "{}" });
+  },
+  async startOutreachCampaign(id: string, input: { senderAccountId: string }): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/start`, {
+      method: "POST",
+      body: JSON.stringify({ ...input, confirm: true })
+    });
+  },
+  async pauseOutreachCampaign(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/pause`, { method: "POST", body: "{}" });
+  },
+  async resumeOutreachCampaign(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/resume`, { method: "POST", body: "{}" });
+  },
+  async stopOutreachCampaign(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/stop`, { method: "POST", body: "{}" });
+  },
   async updateOutreachDraft(id: string, input: Partial<Pick<OutreachDraft, "subject" | "body" | "language" | "tone">>): Promise<OutreachDraft> {
     return request<OutreachDraft>(`/api/outreach/drafts/${id}`, { method: "PUT", body: JSON.stringify(input) });
   },
@@ -1182,5 +1295,6 @@ export const fallback = {
   materials: [] satisfies Material[],
   companyMaterials: [] satisfies Material[],
   outreachLeads: [] satisfies OutreachLead[],
+  outreachCampaigns: [] satisfies OutreachCampaign[],
   outreachSenderAccounts: [] satisfies OutreachSenderAccount[]
 };
