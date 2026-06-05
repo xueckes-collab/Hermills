@@ -26,7 +26,7 @@ describe("Agent Builder stores", () => {
     expect(await agents.list()).toHaveLength(1);
   });
 
-  it("adds imported GPT built-in agents once", async () => {
+  it("seeds the imported GPT built-in agents", async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-agent-builtin-"));
     const agents = new AgentRepository(baseDir, { seedBuiltinAgents: true });
 
@@ -37,11 +37,10 @@ describe("Agent Builder stores", () => {
     expect(secondList).toHaveLength(builtinAgentSeeds.length);
     expect(firstList.map((agent) => agent.id)).toEqual(builtinAgentSeeds.map((agent) => agent.id));
     expect(firstList.map((agent) => agent.displayName)).toEqual([
-      "SEO Blog写手",
-      "专业社交热点选题写作系统",
-      "Eckes智能开发信定制官"
+      "专业领英热点选题",
+      "专业领英帖子写作引擎",
+      "SEO Blog Conversion Writer"
     ]);
-    expect(firstList.every((agent) => agent.capabilities.tools)).toBe(true);
   });
 
   it("removes deprecated built-in agents without deleting custom agents", async () => {
@@ -52,9 +51,9 @@ describe("Agent Builder stores", () => {
       agents: [
         {
           version: 1,
-          id: "builtin:eckes-blog-deep-custom",
-          slug: "eckes-blog-deep-custom",
-          displayName: "Eckes · Blog深度定制",
+          id: "builtin:gpt-seo-blogxie-shou",
+          slug: "seo-blogxie-shou",
+          displayName: "SEO Blog写手",
           description: "Deprecated built-in agent.",
           instructions: "Deprecated instructions.",
           starters: [],

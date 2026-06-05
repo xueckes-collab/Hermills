@@ -24,12 +24,9 @@ A fully signed and notarized installer will be published after Developer ID cert
   - A compact step-by-step quest UI for company data, customer input, research, draft review, mailbox setup, and sending.
   - Mailbox provider presets, authorization-code helper links, SMTP login test, test email, and "I received it" confirmation.
   - Server-side sending guard: real outreach cannot be sent until mailbox delivery is confirmed.
-- Bundled 3 imported GPT agents:
-  - SEO Blog写手
-  - 专业社交热点选题写作系统
-  - Eckes智能开发信定制官
-- Removed the old 10 bundled agents from the built-in seed list.
-- Existing local installs prune those deprecated built-ins while preserving user-created agents.
+- Removed the previous 3 imported GPT agents from the built-in seed list.
+- Added 3 newly imported GPT agents as built-ins: `专业领英热点选题`, `专业领英帖子写作引擎`, and `SEO Blog Conversion Writer`.
+- Existing local installs prune the deprecated built-ins while preserving user-created agents.
 - Rebuilt the macOS Apple Silicon DMG and ZIP.
 - Fixed the unsigned preview package startup crash caused by Electron helper library validation.
 
