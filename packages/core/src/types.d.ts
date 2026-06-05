@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachCampaignRecipientSchema, OutreachCampaignSchema, OutreachDraftSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
+import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, CustomerResearchSummarySchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachResearchDepthSchema, OutreachCampaignRecipientSchema, OutreachCampaignSchema, OutreachDraftSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
 export type AgentCapabilities = z.infer<typeof CapabilitySchema>;
 export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
@@ -19,6 +19,8 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
+export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
+export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;
 export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
 export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
 export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;

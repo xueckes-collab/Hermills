@@ -218,18 +218,6 @@ export type UiCopy = {
       draft: string
       send: string
     }
-    quest: {
-      title: string
-      subtitle: string
-      nextLabel: string
-      progress: (done: number, total: number) => string
-      steps: Record<'company' | 'lead' | 'research' | 'draft' | 'mailbox' | 'send', {
-        label: string
-        hint: string
-        detail: string
-        action: string
-      }>
-    }
     fields: {
       companyName: string
       website: string
@@ -346,11 +334,22 @@ export type UiCopy = {
       subtitle: string
       defaultName: string
       customerList: string
+      chooseTitle: string
+      chooseHint: string
+      reviewTitle: string
+      reviewHint: string
+      researchDepthTitle: string
+      researchDepthHint: string
+      researchDepth: Record<'quick' | 'standard' | 'deep', { label: string; description: string }>
+      agentQueueHint: (depth: string) => string
+      researchScore: (score: number, angle: string) => string
+      selectedCount: (count: number) => string
       noCampaign: string
       emptyReview: string
       reviewing: string
       missingEmail: string
       missingWebsite: string
+      summary: Record<'selected' | 'review' | 'ready' | 'sent', string>
       fields: {
         name: string
       }
@@ -853,50 +852,6 @@ const en: UiCopy = {
     quickSubtitle: 'Hermes checks the customer website, finds useful context, and writes the first email for you.',
     navAria: 'Open outreach writer',
     steps: { auto: 'One-step flow', leads: 'Lead', draft: 'Draft', send: 'Send' },
-    quest: {
-      title: 'Outreach quest',
-      subtitle: 'Finish one small step at a time. Hermes keeps the next action visible.',
-      nextLabel: 'Next step',
-      progress: (done, total) => `${done}/${total} ready`,
-      steps: {
-        company: {
-          label: 'Company brain',
-          hint: 'Your products and proof',
-          detail: 'Add your company profile or files once, so every email sounds like your business.',
-          action: 'Open company docs',
-        },
-        lead: {
-          label: 'Customer',
-          hint: 'Website and email',
-          detail: 'Paste the customer website and buyer email. That is enough to start the research.',
-          action: 'Fill customer',
-        },
-        research: {
-          label: 'Research',
-          hint: 'Buyer context',
-          detail: 'Let Hermes research the customer, build ICP and USP angles, then write the sequence.',
-          action: 'Research and write',
-        },
-        draft: {
-          label: 'Draft',
-          hint: 'Review the email',
-          detail: 'Read the subject and body, edit anything you want, then save or copy the draft.',
-          action: 'Review draft',
-        },
-        mailbox: {
-          label: 'Mailbox',
-          hint: 'Safe sending',
-          detail: 'Connect a sender mailbox, run the login test, send a test email, then confirm it arrived.',
-          action: 'Connect mailbox',
-        },
-        send: {
-          label: 'Send',
-          hint: 'Final confirmation',
-          detail: 'When the draft and mailbox are ready, Hermes will ask once more before sending the real email.',
-          action: 'Send email',
-        },
-      },
-    },
     fields: {
       companyName: 'Company',
       website: 'Website',
@@ -1016,32 +971,47 @@ const en: UiCopy = {
       singleMode: 'One customer',
       campaignMode: 'Batch customers',
       eyebrow: 'Batch outreach',
-      title: 'Batch first-email quest',
-      subtitle: 'Select customers, generate drafts, review each first email, then send only approved emails.',
-      defaultName: 'Batch outreach campaign',
+      title: 'Write emails for several customers',
+      subtitle: 'Choose customers first. Hermes only creates drafts. Nothing is sent until you approve each email.',
+      defaultName: 'Batch email draft',
       customerList: 'Customer list',
-      noCampaign: 'Create a batch task first.',
-      emptyReview: 'Generate drafts, then choose a customer to review.',
-      reviewing: 'Reviewing',
+      chooseTitle: 'Choose customers',
+      chooseHint: 'Pick customers with a website and email. Missing customers stay disabled.',
+      reviewTitle: 'Check emails',
+      reviewHint: 'Generate drafts, open each customer, then approve only the emails you want to send.',
+      researchDepthTitle: 'Research depth',
+      researchDepthHint: 'Standard is the default. Use deep only for important customers.',
+      researchDepth: {
+        quick: { label: 'Save tokens', description: 'Fast website scan' },
+        standard: { label: 'Standard', description: 'Balanced research' },
+        deep: { label: 'Deep', description: 'Slower, richer buyer logic' },
+      },
+      agentQueueHint: (depth) => `${depth} research · hidden agents run in the background`,
+      researchScore: (score, angle) => `${score}/100 · ${angle}`,
+      selectedCount: (count) => `${count} selected`,
+      noCampaign: 'Choose customers on the left, then prepare this batch.',
+      emptyReview: 'Drafts will appear here after you generate them.',
+      reviewing: 'Checking email',
       missingEmail: 'missing email',
       missingWebsite: 'missing website',
-      fields: { name: 'Task name' },
+      summary: { selected: 'In this batch', review: 'Need check', ready: 'Can send', sent: 'Sent' },
+      fields: { name: 'Batch name' },
       actions: {
-        create: 'Create task',
-        generate: 'Research and write',
+        create: 'Prepare batch',
+        generate: 'Generate drafts',
         generating: 'Generating...',
-        approve: 'Approve draft',
+        approve: 'Looks good',
         skip: 'Skip',
-        send: 'Send approved',
+        send: 'Send approved emails',
         pause: 'Pause',
         resume: 'Resume',
         stop: 'Stop',
       },
-      campaignStatus: { draft: 'Draft', generating: 'Generating', ready: 'Ready', sending: 'Sending', paused: 'Paused', completed: 'Completed', failed: 'Failed', stopped: 'Stopped' },
-      recipientStatus: { pending: 'Waiting', researching: 'Researching', generated: 'Needs review', approved: 'Approved', queued: 'Queued', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' },
+      campaignStatus: { draft: 'Not generated', generating: 'Writing drafts', ready: 'Ready to review', sending: 'Sending', paused: 'Paused', completed: 'Done', failed: 'Needs attention', stopped: 'Stopped' },
+      recipientStatus: { pending: 'Not generated', researching: 'Researching', generated: 'Needs your check', approved: 'Ready to send', queued: 'Waiting to send', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' },
       status: {
-        created: (count) => `Task created with ${count} customer${count === 1 ? '' : 's'}.`,
-        generated: (count) => `${count} draft${count === 1 ? '' : 's'} ready for review.`,
+        created: (count) => `${count} customer${count === 1 ? '' : 's'} prepared. You can generate drafts now.`,
+        generated: (count) => `${count} draft${count === 1 ? '' : 's'} generated. Check them before sending.`,
         approved: 'Draft approved.',
         skipped: 'Customer skipped.',
         sent: (count) => `${count} email${count === 1 ? '' : 's'} sent.`,
@@ -1313,50 +1283,6 @@ const zhCN = withOverrides(en, {
     quickSubtitle: 'Hermes 会读取客户官网，整理客户背景和可能需求，然后按你的公司资料写第一封邮件。',
     navAria: '打开开发信工具',
     steps: { auto: '一键流程', leads: '客户', draft: '草稿', send: '发送' },
-    quest: {
-      title: '开发信闯关',
-      subtitle: '一次只做一小步。下一步永远放在最显眼的位置。',
-      nextLabel: '下一步',
-      progress: (done, total) => `${done}/${total} 已完成`,
-      steps: {
-        company: {
-          label: '公司大脑',
-          hint: '产品和优势',
-          detail: '先放入你的公司资料，之后每封开发信都会更像你公司的人写的。',
-          action: '打开公司资料',
-        },
-        lead: {
-          label: '客户',
-          hint: '官网和邮箱',
-          detail: '填客户官网和邮箱就够了。Hermes 会自己去背调客户公司。',
-          action: '填写客户',
-        },
-        research: {
-          label: '背调',
-          hint: '客户背景',
-          detail: '让 Hermes 查客户、整理 ICP 和 USP，然后生成首封邮件和跟进邮件。',
-          action: '背调并生成',
-        },
-        draft: {
-          label: '草稿',
-          hint: '读一遍',
-          detail: '看主题和正文，不合适就直接改，满意后保存或复制。',
-          action: '检查草稿',
-        },
-        mailbox: {
-          label: '邮箱',
-          hint: '安全发信',
-          detail: '连接发件邮箱，完成小测试，并确认测试邮件已经收到。',
-          action: '连接邮箱',
-        },
-        send: {
-          label: '发送',
-          hint: '最后确认',
-          detail: '草稿和邮箱都准备好后，Hermes 会再问一次，再发送真实邮件。',
-          action: '发送邮件',
-        },
-      },
-    },
     fields: {
       companyName: '客户公司',
       website: '客户网站',
@@ -1476,32 +1402,47 @@ const zhCN = withOverrides(en, {
       singleMode: '单个客户',
       campaignMode: '批量客户',
       eyebrow: '批量开发信',
-      title: '批量首封邮件闯关',
-      subtitle: '选客户，背调生成，逐条检查，只发送你通过的首封邮件。',
-      defaultName: '开发信批量任务',
+      title: '一次给多个客户写开发信',
+      subtitle: '先选客户，Hermes 只生成草稿。每封邮件都要你点“通过”后才会发送。',
+      defaultName: '批量邮件草稿',
       customerList: '客户名单',
-      noCampaign: '先创建一个批量任务。',
-      emptyReview: '先生成草稿，再选择客户检查。',
-      reviewing: '正在检查',
+      chooseTitle: '选择客户',
+      chooseHint: '选择有官网和邮箱的客户。资料不完整的客户先不会加入。',
+      reviewTitle: '检查邮件',
+      reviewHint: '先生成草稿，再点客户名字检查。确认没问题后点“通过”。',
+      researchDepthTitle: '背调强度',
+      researchDepthHint: '标准最省心。重点客户再用深度，能省 token。',
+      researchDepth: {
+        quick: { label: '省钱', description: '快速扫官网' },
+        standard: { label: '标准', description: '默认最合适' },
+        deep: { label: '深度', description: '更慢更细' },
+      },
+      agentQueueHint: (depth) => `${depth}背调 · 后台 Agent 自动处理`,
+      researchScore: (score, angle) => `${score}分 · ${angle}`,
+      selectedCount: (count) => `已选 ${count} 个客户`,
+      noCampaign: '先在左边选择客户，再点“准备这批邮件”。',
+      emptyReview: '生成草稿后，邮件会出现在这里。',
+      reviewing: '正在检查这封邮件',
       missingEmail: '缺邮箱',
       missingWebsite: '缺网站',
-      fields: { name: '任务名称' },
+      summary: { selected: '这批客户', review: '需要检查', ready: '可以发送', sent: '已发送' },
+      fields: { name: '这批邮件名称' },
       actions: {
-        create: '创建任务',
-        generate: '背调并生成',
+        create: '准备这批邮件',
+        generate: '生成邮件草稿',
         generating: '生成中...',
-        approve: '通过草稿',
+        approve: '通过，可以发送',
         skip: '跳过',
-        send: '发送已通过',
+        send: '发送通过的邮件',
         pause: '暂停',
         resume: '继续',
         stop: '停止',
       },
-      campaignStatus: { draft: '草稿', generating: '生成中', ready: '可发送', sending: '发送中', paused: '已暂停', completed: '已完成', failed: '有失败', stopped: '已停止' },
-      recipientStatus: { pending: '等待', researching: '背调中', generated: '待检查', approved: '已通过', queued: '排队中', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过' },
+      campaignStatus: { draft: '还没生成', generating: '正在写草稿', ready: '可以检查', sending: '发送中', paused: '已暂停', completed: '已完成', failed: '需要处理', stopped: '已停止' },
+      recipientStatus: { pending: '还没生成', researching: '正在背调', generated: '等你检查', approved: '可以发送', queued: '等待发送', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过' },
       status: {
-        created: (count) => `已创建任务，共 ${count} 个客户。`,
-        generated: (count) => `${count} 封草稿待检查。`,
+        created: (count) => `已准备 ${count} 个客户，现在可以生成邮件草稿。`,
+        generated: (count) => `已生成 ${count} 封草稿，请逐封检查。`,
         approved: '草稿已通过。',
         skipped: '已跳过这个客户。',
         sent: (count) => `已发送 ${count} 封邮件。`,

@@ -41,7 +41,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
 
@@ -85,6 +85,7 @@ const providerPresets = [
   {
     id: 'openai',
     label: 'OpenAI',
+    kind: 'openai',
     displayName: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4o-mini',
@@ -93,14 +94,88 @@ const providerPresets = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
+    kind: 'openai-compatible',
     displayName: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     defaultModel: 'openai/gpt-4o-mini',
     keyPlaceholder: 'sk-or-...',
   },
   {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    kind: 'openai-compatible',
+    displayName: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    defaultModel: 'deepseek-v4-flash',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'claude',
+    label: 'Claude',
+    kind: 'anthropic',
+    displayName: 'Anthropic Claude',
+    baseUrl: 'https://api.anthropic.com/v1',
+    defaultModel: 'claude-sonnet-4-20250514',
+    keyPlaceholder: 'sk-ant-...',
+  },
+  {
+    id: 'qwen',
+    label: 'Qwen',
+    kind: 'openai-compatible',
+    displayName: 'Alibaba Qwen',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultModel: 'qwen-plus',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi',
+    kind: 'openai-compatible',
+    displayName: 'Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    defaultModel: 'kimi-k2.6',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    kind: 'openai-compatible',
+    displayName: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    defaultModel: 'gemini-3.5-flash',
+    keyPlaceholder: 'AIza...',
+  },
+  {
+    id: 'zhipu',
+    label: 'GLM',
+    kind: 'openai-compatible',
+    displayName: 'Zhipu GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    defaultModel: 'glm-4-flash',
+    keyPlaceholder: 'zhipu key',
+  },
+  {
+    id: 'xiaomi',
+    label: 'Xiaomi',
+    kind: 'openai-compatible',
+    displayName: 'Xiaomi MiMo',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    defaultModel: 'mimo-v2-flash',
+    keyPlaceholder: 'xiaomi key',
+  },
+  {
+    id: 'agnes',
+    label: 'Agnes',
+    kind: 'openai-compatible',
+    displayName: 'Agnes AI',
+    baseUrl: 'https://apihub.agnes-ai.com/v1',
+    defaultModel: 'agnes-2.0-flash',
+    keyPlaceholder: 'agnes key',
+  },
+  {
     id: 'custom',
     label: 'Custom',
+    kind: 'openai-compatible',
     displayName: 'Custom provider',
     baseUrl: 'https://provider.example/v1',
     defaultModel: 'model-name',
@@ -108,10 +183,13 @@ const providerPresets = [
   },
 ] as const
 
+type ProviderKind = 'openai-compatible' | 'openai' | 'anthropic' | 'local'
 type ProviderPresetId = (typeof providerPresets)[number]['id']
 type SenderProviderId = 'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom'
+const researchDepthOptions: OutreachResearchDepth[] = ['quick', 'standard', 'deep']
 
 type ProviderForm = {
+  kind: ProviderKind
   displayName: string
   baseUrl: string
   defaultModel: string
@@ -144,7 +222,7 @@ type OnboardingFeatureId = 'chat' | 'files' | 'memory' | 'assistants' | 'diagnos
 
 type OnboardingProviderInput = {
   id?: string
-  kind?: 'openai-compatible' | 'openai' | 'anthropic' | 'local'
+  kind?: ProviderKind
   displayName: string
   baseUrl?: string
   defaultModel?: string
@@ -363,6 +441,7 @@ function isProviderPresetId(value: string | undefined): value is ProviderPresetI
 function providerFormFromPreset(id: ProviderPresetId): ProviderForm {
   const preset = providerPresets.find((item) => item.id === id) ?? providerPresets[0]
   return {
+    kind: preset.kind,
     displayName: preset.displayName,
     baseUrl: preset.baseUrl,
     defaultModel: preset.defaultModel,
@@ -384,6 +463,7 @@ function draftFromOnboarding(state: OnboardingState): OnboardingDraft {
     providerChoice,
     provider: normalized.provider
       ? {
+          kind: normalized.provider.kind ?? providerDefaults.kind,
           displayName: normalized.provider.displayName || providerDefaults.displayName,
           baseUrl: normalized.provider.baseUrl || providerDefaults.baseUrl,
           defaultModel: normalized.provider.defaultModel || providerDefaults.defaultModel,
@@ -400,7 +480,7 @@ function onboardingInputFromDraft(draft: OnboardingDraft): OnboardingInput {
   const provider: OnboardingProviderInput | null = draft.providerChoice === 'skip'
     ? null
     : {
-        kind: 'openai-compatible',
+        kind: draft.provider.kind,
         displayName: draft.provider.displayName.trim(),
         baseUrl: draft.provider.baseUrl.trim(),
         defaultModel: draft.provider.defaultModel.trim(),
@@ -1193,7 +1273,6 @@ type SenderFormDraft = {
   password: string
 }
 
-type OutreachQuestStepId = 'company' | 'lead' | 'research' | 'draft' | 'mailbox' | 'send'
 type OutreachMode = 'single' | 'campaign'
 
 function DevelopmentLetterPage({
@@ -1228,6 +1307,7 @@ function DevelopmentLetterPage({
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
   const [campaignName, setCampaignName] = useState('开发信批量任务')
+  const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('standard')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
   const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
@@ -1269,27 +1349,11 @@ function DevelopmentLetterPage({
   const senderProvider = senderProviderPresets.find((provider) => provider.id === senderProviderId) ?? senderProviderPresets[0]
   const senderAuthGuide = senderAuthGuides[senderProviderId]
   const quickLeadReady = Boolean(quickWebsite.trim() && quickEmail.trim())
-  const companyReady = Boolean(companyProfile.name || companyMaterials.length)
-  const researchReady = Boolean(workflow)
-  const draftReady = Boolean(activeDraftId && draftSubject.trim() && draftBody.trim())
-  const sendReady = Boolean(draftReady && senderDeliveryReady && activeDraftStatus !== 'sent')
-  const questSteps: Array<{
-    id: OutreachQuestStepId
-    icon: LucideIcon
-    done: boolean
-    action?: () => void | Promise<void>
-    disabled?: boolean
-  }> = [
-    { id: 'company', icon: Building2, done: companyReady, action: onOpenCompanyKnowledge },
-    { id: 'lead', icon: Mail, done: quickLeadReady, action: focusQuickLead },
-    { id: 'research', icon: Search, done: researchReady, action: autoGenerateDraft, disabled: !quickLeadReady || busy === 'auto' },
-    { id: 'draft', icon: Pencil, done: draftReady, action: focusDraft },
-    { id: 'mailbox', icon: KeyRound, done: senderDeliveryReady, action: focusSender },
-    { id: 'send', icon: Send, done: activeDraftStatus === 'sent', action: sendDraft, disabled: !sendReady || busy === 'send' },
-  ]
-  const currentQuestStep = (questSteps.find((step) => !step.done) ?? questSteps[questSteps.length - 1])!
-  const CurrentQuestIcon = currentQuestStep.icon
-  const completedQuestSteps = questSteps.filter((step) => step.done).length
+  const campaignSelectedCount = selectedCampaignLeadIds.length || selectedCampaign?.recipients.length || 0
+  const campaignReviewCount = selectedCampaign?.stats.generated ?? 0
+  const campaignReadyCount = selectedCampaign?.stats.approved ?? 0
+  const campaignSentCount = selectedCampaign?.stats.sent ?? 0
+  const visibleResearchDepth = selectedCampaign?.researchDepth ?? campaignResearchDepth
 
   useEffect(() => {
     if (!selectedLead) return
@@ -1380,21 +1444,6 @@ function DevelopmentLetterPage({
     })
   }
 
-  function focusQuickLead() {
-    quickWebsiteRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    quickWebsiteRef.current?.focus()
-  }
-
-  function focusDraft() {
-    draftBodyRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    draftBodyRef.current?.focus()
-  }
-
-  function focusSender() {
-    senderEmailRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    senderEmailRef.current?.focus()
-  }
-
   function replaceSenderAccount(sender: OutreachSenderAccount) {
     setSenderAccounts(senderAccounts.some((account) => account.id === sender.id)
       ? senderAccounts.map((account) => account.id === sender.id ? sender : account)
@@ -1442,6 +1491,7 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
+        researchDepth: campaignResearchDepth,
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
       replaceCampaign(campaign)
@@ -1882,44 +1932,82 @@ function DevelopmentLetterPage({
 
       {outreachMode === 'campaign' ? (
         <section className="quiet-panel outreach-campaign-panel">
-          <div className="panel-heading-row">
+          <div className="campaign-simple-hero">
             <div>
               <span>{copy.devLetter.batch.eyebrow}</span>
               <h3>{copy.devLetter.batch.title}</h3>
               <p>{copy.devLetter.batch.subtitle}</p>
+              <small className="campaign-agent-hint">{copy.devLetter.batch.agentQueueHint(copy.devLetter.batch.researchDepth[visibleResearchDepth].label)}</small>
             </div>
-            <div className="outreach-actions">
-              <button className="soft-button compact" type="button" disabled={busy === 'campaignGenerate' || !selectedCampaign} onClick={generateCampaign}>
-                <Search size={14} />
-                {busy === 'campaignGenerate' ? copy.devLetter.batch.actions.generating : copy.devLetter.batch.actions.generate}
-              </button>
-              <button className="primary-button compact" type="button" disabled={busy === 'campaignSend' || !selectedCampaign || !selectedCampaign.stats.approved} onClick={startCampaign}>
-                <Send size={14} />
-                {busy === 'campaignSend' ? copy.devLetter.actions.sending : copy.devLetter.batch.actions.send}
-              </button>
-            </div>
+            {selectedCampaign ? (
+              <div className="campaign-primary-actions">
+                <button className="soft-button compact" type="button" disabled={busy === 'campaignGenerate'} onClick={generateCampaign}>
+                  <Search size={14} />
+                  {busy === 'campaignGenerate' ? copy.devLetter.batch.actions.generating : copy.devLetter.batch.actions.generate}
+                </button>
+                <button className="primary-button compact" type="button" disabled={busy === 'campaignSend' || !selectedCampaign.stats.approved} onClick={startCampaign}>
+                  <Send size={14} />
+                  {busy === 'campaignSend' ? copy.devLetter.actions.sending : copy.devLetter.batch.actions.send}
+                </button>
+              </div>
+            ) : null}
           </div>
 
           <div className="campaign-summary-strip">
-            {(['pending', 'generated', 'approved', 'sent', 'failed'] as const).map((status) => (
-              <span className={`campaign-stat ${status}`} key={status}>
-                <strong>{selectedCampaign?.stats[status] ?? 0}</strong>
-                {copy.devLetter.batch.recipientStatus[status]}
-              </span>
-            ))}
+            <span className="campaign-stat selected">
+              <strong>{campaignSelectedCount}</strong>
+              {copy.devLetter.batch.summary.selected}
+            </span>
+            <span className="campaign-stat generated">
+              <strong>{campaignReviewCount}</strong>
+              {copy.devLetter.batch.summary.review}
+            </span>
+            <span className="campaign-stat approved">
+              <strong>{campaignReadyCount}</strong>
+              {copy.devLetter.batch.summary.ready}
+            </span>
+            <span className="campaign-stat sent">
+              <strong>{campaignSentCount}</strong>
+              {copy.devLetter.batch.summary.sent}
+            </span>
           </div>
 
           <div className="campaign-setup-grid">
             <div className="campaign-create-box">
+              <div className="campaign-box-heading">
+                <h4>{copy.devLetter.batch.chooseTitle}</h4>
+                <p>{copy.devLetter.batch.chooseHint}</p>
+              </div>
               <Field label={copy.devLetter.batch.fields.name}>
                 <input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} />
               </Field>
+              <div className="campaign-depth-picker">
+                <div>
+                  <strong>{copy.devLetter.batch.researchDepthTitle}</strong>
+                  <small>{copy.devLetter.batch.researchDepthHint}</small>
+                </div>
+                <div className="campaign-depth-options" role="radiogroup" aria-label={copy.devLetter.batch.researchDepthTitle}>
+                  {researchDepthOptions.map((depth) => (
+                    <button
+                      className={campaignResearchDepth === depth ? 'active' : ''}
+                      key={depth}
+                      type="button"
+                      role="radio"
+                      aria-checked={campaignResearchDepth === depth}
+                      onClick={() => setCampaignResearchDepth(depth)}
+                    >
+                      <strong>{copy.devLetter.batch.researchDepth[depth].label}</strong>
+                      <span>{copy.devLetter.batch.researchDepth[depth].description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="campaign-lead-list" aria-label={copy.devLetter.batch.customerList}>
                 {leads.length ? leads.map((lead) => {
                   const ready = Boolean(lead.website && lead.email)
                   const selected = selectedCampaignLeadIds.includes(lead.id)
                   return (
-                    <button className={`campaign-lead-row ${selected ? 'active' : ''} ${ready ? '' : 'incomplete'}`} key={lead.id} type="button" onClick={() => toggleCampaignLead(lead.id)}>
+                    <button className={`campaign-lead-row ${selected ? 'active' : ''} ${ready ? '' : 'incomplete'}`} disabled={!ready} key={lead.id} type="button" onClick={() => toggleCampaignLead(lead.id)}>
                       <span className="check-dot">{selected ? <CheckCircle2 size={15} /> : null}</span>
                       <span>
                         <strong>{lead.companyName}</strong>
@@ -1929,15 +2017,18 @@ function DevelopmentLetterPage({
                   )
                 }) : <div className="empty-state">{copy.devLetter.status.noLeads}</div>}
               </div>
-              <div className="outreach-actions">
-                <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
-                  <Upload size={14} />
-                  {copy.devLetter.actions.importCsv}
-                </button>
-                <button className="primary-button compact" type="button" disabled={busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
-                  <Plus size={14} />
-                  {busy === 'campaignCreate' ? copy.common.creating : copy.devLetter.batch.actions.create}
-                </button>
+              <div className="campaign-create-footer">
+                <span className="campaign-selected-count">{copy.devLetter.batch.selectedCount(selectedCampaignLeadIds.length)}</span>
+                <div className="outreach-actions">
+                  <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
+                    <Upload size={14} />
+                    {copy.devLetter.actions.importCsv}
+                  </button>
+                  <button className="primary-button compact" type="button" disabled={busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
+                    <Plus size={14} />
+                    {busy === 'campaignCreate' ? copy.common.creating : copy.devLetter.batch.actions.create}
+                  </button>
+                </div>
               </div>
               {csvOpen ? (
                 <div className="csv-import-box compact">
@@ -1948,64 +2039,78 @@ function DevelopmentLetterPage({
             </div>
 
             <div className="campaign-review-box">
-              <div className="campaign-list-tabs">
+              <div className="campaign-box-heading">
+                <h4>{copy.devLetter.batch.reviewTitle}</h4>
+                <p>{selectedCampaign ? copy.devLetter.batch.reviewHint : copy.devLetter.batch.noCampaign}</p>
+              </div>
+
+              {campaigns.length ? <div className="campaign-list-tabs">
                 {campaigns.length ? campaigns.slice(0, 5).map((campaign) => (
                   <button className={selectedCampaign?.id === campaign.id ? 'active' : ''} key={campaign.id} type="button" onClick={() => setSelectedCampaignId(campaign.id)}>
                     <strong>{campaign.name}</strong>
                     <small>{copy.devLetter.batch.campaignStatus[campaign.status]}</small>
                   </button>
-                )) : <span className="state-hint">{copy.devLetter.batch.noCampaign}</span>}
-              </div>
-
-              <div className="campaign-recipient-grid">
-                <div className="campaign-recipient-list">
-                  {campaignRecipients.map((recipient) => (
-                    <button className={`campaign-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`} key={recipient.id} type="button" onClick={() => setSelectedCampaignRecipientId(recipient.id)}>
-                      <span className={`status-dot ${recipient.status}`} />
-                      <span>
-                        <strong>{recipient.companyName}</strong>
-                        <small>{copy.devLetter.batch.recipientStatus[recipient.status]} · {recipient.email}</small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <div className="campaign-draft-review">
-                  {selectedCampaignRecipient?.draft ? (
-                    <>
-                      <div className="campaign-review-heading">
-                        <span>{copy.devLetter.batch.reviewing}</span>
-                        <strong>{selectedCampaignRecipient.companyName}</strong>
-                      </div>
-                      <Field label={copy.devLetter.fields.subject}><input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></Field>
-                      <Field label={copy.devLetter.fields.body}><textarea className="campaign-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></Field>
-                      <div className="outreach-actions">
-                        <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>
-                          <CheckCircle2 size={14} />
-                          {copy.devLetter.batch.actions.approve}
-                        </button>
-                        <button className="soft-button compact" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>
-                          <X size={14} />
-                          {copy.devLetter.batch.actions.skip}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="empty-state">{copy.devLetter.batch.emptyReview}</div>
-                  )}
-                </div>
-              </div>
+                )) : null}
+              </div> : null}
 
               {selectedCampaign ? (
+                <>
+                  <div className="campaign-recipient-grid">
+                    <div className="campaign-recipient-list">
+                      {campaignRecipients.map((recipient) => (
+                        <button className={`campaign-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`} key={recipient.id} type="button" onClick={() => setSelectedCampaignRecipientId(recipient.id)}>
+                          <span className={`status-dot ${recipient.status}`} />
+                          <span>
+                            <strong>{recipient.companyName}</strong>
+                            <small>{copy.devLetter.batch.recipientStatus[recipient.status]} · {recipient.email}</small>
+                            {recipient.researchSummary ? (
+                              <em>{copy.devLetter.batch.researchScore(recipient.researchSummary.confidenceScore, recipient.researchSummary.primaryAngle || recipient.researchSummary.likelyNeed || recipient.researchSummary.buyerType)}</em>
+                            ) : null}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="campaign-draft-review">
+                      {selectedCampaignRecipient?.draft ? (
+                        <>
+                          <div className="campaign-review-heading">
+                            <span>{copy.devLetter.batch.reviewing}</span>
+                            <strong>{selectedCampaignRecipient.companyName}</strong>
+                          </div>
+                          <Field label={copy.devLetter.fields.subject}><input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></Field>
+                          <Field label={copy.devLetter.fields.body}><textarea className="campaign-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></Field>
+                          <div className="outreach-actions">
+                            <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>
+                              <CheckCircle2 size={14} />
+                              {copy.devLetter.batch.actions.approve}
+                            </button>
+                            <button className="soft-button compact" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>
+                              <X size={14} />
+                              {copy.devLetter.batch.actions.skip}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="empty-state">{copy.devLetter.batch.emptyReview}</div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">{copy.devLetter.batch.noCampaign}</div>
+              )}
+
+              {selectedCampaign && (selectedCampaign.status === 'sending' || selectedCampaign.status === 'paused') ? (
                 <div className="campaign-control-row">
                   <button className="soft-button compact" type="button" disabled={busy === 'campaignPause' || selectedCampaign.status !== 'sending'} onClick={pauseCampaign}>
                     <PauseCircle size={14} />
                     {copy.devLetter.batch.actions.pause}
                   </button>
-                  <button className="soft-button compact" type="button" disabled={busy === 'campaignResume' || selectedCampaign.status === 'stopped'} onClick={resumeCampaign}>
+                  <button className="soft-button compact" type="button" disabled={busy === 'campaignResume' || selectedCampaign.status !== 'paused'} onClick={resumeCampaign}>
                     <Play size={14} />
                     {copy.devLetter.batch.actions.resume}
                   </button>
-                  <button className="soft-button compact danger" type="button" disabled={busy === 'campaignStop' || selectedCampaign.status === 'stopped'} onClick={stopCampaign}>
+                  <button className="soft-button compact danger" type="button" disabled={busy === 'campaignStop'} onClick={stopCampaign}>
                     <Trash2 size={14} />
                     {copy.devLetter.batch.actions.stop}
                   </button>
@@ -2016,40 +2121,6 @@ function DevelopmentLetterPage({
         </section>
       ) : (
         <>
-      <section className="quiet-panel outreach-quest-panel" aria-label={copy.devLetter.quest.title}>
-        <div className="panel-heading-row">
-          <div>
-            <span>{copy.devLetter.quest.progress(completedQuestSteps, questSteps.length)}</span>
-            <h3>{copy.devLetter.quest.title}</h3>
-            <p>{copy.devLetter.quest.subtitle}</p>
-          </div>
-          {currentQuestStep.action ? (
-            <button className="primary-button compact" type="button" disabled={currentQuestStep.disabled} onClick={currentQuestStep.action}>
-              <CurrentQuestIcon size={14} />
-              {copy.devLetter.quest.steps[currentQuestStep.id].action}
-            </button>
-          ) : null}
-        </div>
-        <div className="quest-step-grid">
-          {questSteps.map((step) => {
-            const StepIcon = step.icon
-            const state = step.done ? 'done' : step.id === currentQuestStep.id ? 'active' : 'locked'
-            return (
-              <div className={`quest-step-card ${state}`} key={step.id}>
-                <span className="quest-step-icon">{step.done ? <CheckCircle2 size={15} /> : <StepIcon size={15} />}</span>
-                <strong>{copy.devLetter.quest.steps[step.id].label}</strong>
-                <small>{copy.devLetter.quest.steps[step.id].hint}</small>
-              </div>
-            )
-          })}
-        </div>
-        <div className="quest-current">
-          <span>{copy.devLetter.quest.nextLabel}</span>
-          <strong>{copy.devLetter.quest.steps[currentQuestStep.id].label}</strong>
-          <p>{copy.devLetter.quest.steps[currentQuestStep.id].detail}</p>
-        </div>
-      </section>
-
       <section className="quiet-panel outreach-quick-panel">
         <div className="panel-heading-row">
           <div>
@@ -2856,6 +2927,7 @@ function KeySetupNudge({
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [form, setForm] = useState<ProviderForm>({
+    kind: initialPreset.kind,
     displayName: initialPreset.displayName,
     baseUrl: initialPreset.baseUrl,
     defaultModel: initialPreset.defaultModel,
@@ -2866,6 +2938,7 @@ function KeySetupNudge({
     const preset = providerPresets.find((item) => item.id === presetId) ?? initialPreset
     setSelectedPreset(preset.id)
     setForm((current) => ({
+      kind: preset.kind,
       displayName: preset.displayName,
       baseUrl: preset.baseUrl,
       defaultModel: preset.defaultModel,
@@ -4511,6 +4584,7 @@ function SettingsPanel({
 }) {
   const initialPreset = providerPresets[0]
   const [form, setForm] = useState<ProviderForm>({
+    kind: initialPreset.kind,
     displayName: initialPreset.displayName,
     baseUrl: initialPreset.baseUrl,
     defaultModel: initialPreset.defaultModel,
@@ -4525,6 +4599,7 @@ function SettingsPanel({
     const preset = providerPresets.find((item) => item.id === presetId) ?? initialPreset
     setSelectedPreset(preset.id)
     setForm({
+      kind: preset.kind,
       displayName: preset.displayName,
       baseUrl: preset.baseUrl,
       defaultModel: preset.defaultModel,

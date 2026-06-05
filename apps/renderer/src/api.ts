@@ -444,9 +444,28 @@ export type OutreachSenderAccount = {
   updatedAt: string;
 };
 
+export type OutreachResearchDepth = "quick" | "standard" | "deep";
+
+export type CustomerResearchSummary = {
+  depth: OutreachResearchDepth;
+  confidenceScore: number;
+  buyerType: string;
+  likelyNeed: string;
+  primaryAngle: string;
+  riskNotes: string[];
+  checkedPages: number;
+};
+
 export type CustomerResearchSnapshot = {
   website: string;
   companyName: string;
+  depth: OutreachResearchDepth;
+  confidenceScore: number;
+  buyerType: string;
+  productSignals: string[];
+  buyingSignals: string[];
+  painSignals: string[];
+  recommendedAngle: string;
   industry: string;
   inferredNeed: string;
   title: string;
@@ -546,6 +565,7 @@ export type OutreachCampaignRecipient = {
   contactName?: string;
   contactTitle?: string;
   status: OutreachCampaignRecipientStatus;
+  researchSummary?: CustomerResearchSummary;
   approvedAt?: string;
   queuedAt?: string;
   sentAt?: string;
@@ -568,6 +588,7 @@ export type OutreachCampaign = {
   tone: string;
   providerId?: string;
   model?: string;
+  researchDepth: OutreachResearchDepth;
   rateLimit: OutreachCampaignRateLimit;
   stats: OutreachCampaignStats;
   recipients: OutreachCampaignRecipient[];
@@ -872,10 +893,10 @@ export const api = {
     const providers = await request<RawProvider[]>("/api/settings/providers");
     return providers.map(mapProvider);
   },
-  async saveProvider(input: { displayName: string; baseUrl: string; defaultModel: string; apiKey: string }): Promise<Provider> {
+  async saveProvider(input: { kind?: NonNullable<OnboardingProviderInput["kind"]>; displayName: string; baseUrl: string; defaultModel: string; apiKey: string }): Promise<Provider> {
     const provider = await request<RawProvider>("/api/settings/providers", {
       method: "POST",
-      body: JSON.stringify({ kind: "openai-compatible", ...input, apiKey: input.apiKey.trim() || undefined })
+      body: JSON.stringify({ ...input, kind: input.kind ?? "openai-compatible", apiKey: input.apiKey.trim() || undefined })
     });
     return mapProvider(provider);
   },
@@ -1106,6 +1127,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    researchDepth?: OutreachResearchDepth;
     rateLimit?: Partial<OutreachCampaignRateLimit>;
   }): Promise<OutreachCampaign> {
     return request<OutreachCampaign>("/api/outreach/campaigns", { method: "POST", body: JSON.stringify(input) });

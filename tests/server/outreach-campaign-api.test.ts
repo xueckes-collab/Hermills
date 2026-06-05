@@ -91,10 +91,11 @@ describe("outreach campaign API", () => {
       method: "POST",
       url: "/api/outreach/campaigns",
       headers,
-      payload: { name: "June outreach", leadIds: [leadA.id, leadB.id], language: "English", tone: "warm" }
+      payload: { name: "June outreach", leadIds: [leadA.id, leadB.id], language: "English", tone: "warm", researchDepth: "deep" }
     });
     expect(createResponse.statusCode, createResponse.body).toBe(200);
     expect(createResponse.json().stats).toMatchObject({ total: 2, pending: 2, sent: 0 });
+    expect(createResponse.json().researchDepth).toBe("deep");
     expect(runtime.requests).toHaveLength(0);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
@@ -103,6 +104,8 @@ describe("outreach campaign API", () => {
     expect(generatedResponse.statusCode).toBe(200);
     expect(generatedResponse.json().stats).toMatchObject({ generated: 2, sent: 0 });
     expect(generatedResponse.json().recipients.every((recipient: { draft?: unknown; status: string }) => recipient.status === "generated" && recipient.draft)).toBe(true);
+    expect(generatedResponse.json().recipients.every((recipient: { researchSummary?: { depth?: string; confidenceScore?: number } }) => recipient.researchSummary?.depth === "deep" && Number(recipient.researchSummary.confidenceScore) > 0)).toBe(true);
+    expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Research depth: deep"))).toBe(true);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
     const senderResponse = await server.inject({

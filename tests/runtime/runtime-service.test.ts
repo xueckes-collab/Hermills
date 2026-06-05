@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { chatCompletionsUrl, modelsUrl, RuntimeService } from "@hermills/runtime";
+import { anthropicMessagesUrl, buildAnthropicMessages, chatCompletionsUrl, modelsUrl, RuntimeService } from "@hermills/runtime";
 
 describe("RuntimeService", () => {
   it("resolves the official installer and latest release metadata", async () => {
@@ -169,7 +169,67 @@ describe("RuntimeService", () => {
     expect(chatCompletionsUrl("https://api.openai.com/v1")).toBe("https://api.openai.com/v1/chat/completions");
     expect(chatCompletionsUrl("https://provider.example")).toBe("https://provider.example/v1/chat/completions");
     expect(chatCompletionsUrl("https://provider.example/v1/chat/completions")).toBe("https://provider.example/v1/chat/completions");
+    expect(chatCompletionsUrl("https://generativelanguage.googleapis.com/v1beta/openai")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
+    expect(chatCompletionsUrl("https://open.bigmodel.cn/api/paas/v4")).toBe("https://open.bigmodel.cn/api/paas/v4/chat/completions");
     expect(modelsUrl("https://provider.example/v1/chat/completions")).toBe("https://provider.example/v1/models");
+    expect(modelsUrl("https://generativelanguage.googleapis.com/v1beta/openai")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/models");
+    expect(anthropicMessagesUrl("https://api.anthropic.com/v1")).toBe("https://api.anthropic.com/v1/messages");
+    expect(anthropicMessagesUrl("https://api.anthropic.com")).toBe("https://api.anthropic.com/v1/messages");
+  });
+
+  it("sends Anthropic providers through the Messages API", async () => {
+    let requestUrl = "";
+    let requestBody: { model?: string; system?: string; messages?: Array<{ role: string; content: string }> } | undefined;
+    let requestHeaders: HeadersInit | undefined;
+    const service = new RuntimeService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-anthropic-")),
+      fetchImpl: async (url, init) => {
+        requestUrl = String(url);
+        requestHeaders = init?.headers;
+        requestBody = JSON.parse(String(init?.body));
+        return Response.json({ content: [{ type: "text", text: "claude reply" }] });
+      }
+    });
+
+    await expect(service.createHermesReply({
+      messages: [
+        { id: "m1", role: "system", content: "Use the company knowledge.", createdAt: new Date().toISOString() },
+        { id: "m2", role: "user", content: "hello", createdAt: new Date().toISOString() }
+      ],
+      model: "claude-sonnet-4-20250514",
+      instructions: "Answer as Hermes.",
+      provider: {
+        kind: "anthropic",
+        baseUrl: "https://api.anthropic.com/v1",
+        apiKey: "sk-ant-test"
+      }
+    })).resolves.toBe("claude reply");
+
+    expect(requestUrl).toBe("https://api.anthropic.com/v1/messages");
+    expect(requestBody?.model).toBe("claude-sonnet-4-20250514");
+    expect(requestBody?.system).toBe("Answer as Hermes.\n\nUse the company knowledge.");
+    expect(requestBody?.messages).toEqual([{ role: "user", content: "hello" }]);
+    expect(requestHeaders).toMatchObject({
+      "x-api-key": "sk-ant-test",
+      "anthropic-version": "2023-06-01"
+    });
+  });
+
+  it("converts Hermills messages into Anthropic message shape", () => {
+    expect(buildAnthropicMessages({
+      instructions: "System guide",
+      messages: [
+        { id: "m1", role: "system", content: "Hidden note", createdAt: new Date().toISOString() },
+        { id: "m2", role: "user", content: "Question", createdAt: new Date().toISOString() },
+        { id: "m3", role: "assistant", content: "Answer", createdAt: new Date().toISOString() }
+      ]
+    })).toEqual({
+      system: "System guide\n\nHidden note",
+      messages: [
+        { role: "user", content: "Question" },
+        { role: "assistant", content: "Answer" }
+      ]
+    });
   });
 
   it("installs a fake runtime, starts the gateway, and returns chat replies", async () => {

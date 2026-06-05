@@ -29,7 +29,9 @@ import {
   LogLevelSchema,
   LogSourceSchema,
   previewSecret,
+  CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
+  OutreachResearchDepthSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
@@ -58,6 +60,7 @@ import {
   type OutreachCampaignRecipient,
   type OutreachDraft,
   type OutreachLead,
+  type OutreachResearchDepth,
   type OutreachSenderAccount,
   type OutreachWorkflow,
   type ProviderCredential,
@@ -419,6 +422,7 @@ const CreateOutreachCampaignBody = z.object({
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
+  researchDepth: OutreachResearchDepthSchema.default("standard"),
   rateLimit: OutreachCampaignRateLimitBody.optional()
 }).strict();
 
@@ -895,6 +899,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       tone: body.tone,
       providerId: body.providerId,
       model: body.model,
+      researchDepth: body.researchDepth,
       rateLimit: body.rateLimit,
       leads
     });
@@ -2009,8 +2014,26 @@ interface OutreachListOptions {
   q?: string;
 }
 
+function createWriteLock() {
+  let queue: Promise<void> = Promise.resolve();
+  return async function withWriteLock<T>(task: () => Promise<T>): Promise<T> {
+    const previous = queue;
+    let release!: () => void;
+    queue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous.catch(() => undefined);
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
+
 class OutreachLeadRepository {
   private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
 
   constructor(baseDir?: string) {
     this.filePath = path.join(getDataHome(baseDir), "outreach-leads.json");
@@ -2047,27 +2070,29 @@ class OutreachLeadRepository {
   }
 
   async create(input: z.infer<typeof CreateOutreachLeadBody> & { profileId: string }): Promise<OutreachLead> {
-    const now = new Date().toISOString();
-    const lead = OutreachLeadSchema.parse({
-      id: randomUUID(),
-      profileId: input.profileId,
-      companyName: input.companyName,
-      website: input.website,
-      country: input.country,
-      industry: input.industry,
-      contactName: input.contactName,
-      contactTitle: input.contactTitle,
-      email: input.email,
-      need: input.need ?? "",
-      notes: input.notes ?? "",
-      tags: input.tags ?? [],
-      createdAt: now,
-      updatedAt: now
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const lead = OutreachLeadSchema.parse({
+        id: randomUUID(),
+        profileId: input.profileId,
+        companyName: input.companyName,
+        website: input.website,
+        country: input.country,
+        industry: input.industry,
+        contactName: input.contactName,
+        contactTitle: input.contactTitle,
+        email: input.email,
+        need: input.need ?? "",
+        notes: input.notes ?? "",
+        tags: input.tags ?? [],
+        createdAt: now,
+        updatedAt: now
+      });
+      const document = await this.read();
+      document.leads.unshift(lead);
+      await this.write(document);
+      return lead;
     });
-    const document = await this.read();
-    document.leads.unshift(lead);
-    await this.write(document);
-    return lead;
   }
 
   async importCsv(csvText: string, profileId: string): Promise<{ imported: OutreachLead[]; skipped: Array<{ row: number; reason: string }> }> {
@@ -2090,24 +2115,28 @@ class OutreachLeadRepository {
   }
 
   async update(id: string, input: z.infer<typeof UpdateOutreachLeadBody>): Promise<OutreachLead> {
-    const document = await this.read();
-    const index = document.leads.findIndex((lead) => lead.id === id);
-    if (index === -1) throw new ClientInputError(`Lead not found: ${id}`);
-    const next = OutreachLeadSchema.parse({
-      ...document.leads[index],
-      ...input,
-      updatedAt: new Date().toISOString()
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.leads.findIndex((lead) => lead.id === id);
+      if (index === -1) throw new ClientInputError(`Lead not found: ${id}`);
+      const next = OutreachLeadSchema.parse({
+        ...document.leads[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.leads[index] = next;
+      await this.write(document);
+      return next;
     });
-    document.leads[index] = next;
-    await this.write(document);
-    return next;
   }
 
   async remove(id: string): Promise<void> {
-    const document = await this.read();
-    const leads = document.leads.filter((lead) => lead.id !== id);
-    if (leads.length === document.leads.length) throw new ClientInputError(`Lead not found: ${id}`);
-    await this.write({ leads });
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const leads = document.leads.filter((lead) => lead.id !== id);
+      if (leads.length === document.leads.length) throw new ClientInputError(`Lead not found: ${id}`);
+      await this.write({ leads });
+    });
   }
 
   private async read(): Promise<OutreachLeadStoreDocument> {
@@ -2127,6 +2156,7 @@ class OutreachLeadRepository {
 
 class OutreachDraftRepository {
   private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
 
   constructor(baseDir?: string) {
     this.filePath = path.join(getDataHome(baseDir), "outreach-drafts.json");
@@ -2152,32 +2182,36 @@ class OutreachDraftRepository {
   }
 
   async create(input: Omit<OutreachDraft, "id" | "status" | "createdAt" | "updatedAt"> & Partial<Pick<OutreachDraft, "status">>): Promise<OutreachDraft> {
-    const now = new Date().toISOString();
-    const draft = OutreachDraftSchema.parse({
-      ...input,
-      id: randomUUID(),
-      status: input.status ?? "draft",
-      createdAt: now,
-      updatedAt: now
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const draft = OutreachDraftSchema.parse({
+        ...input,
+        id: randomUUID(),
+        status: input.status ?? "draft",
+        createdAt: now,
+        updatedAt: now
+      });
+      const document = await this.read();
+      document.drafts.unshift(draft);
+      await this.write(document);
+      return draft;
     });
-    const document = await this.read();
-    document.drafts.unshift(draft);
-    await this.write(document);
-    return draft;
   }
 
   async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError">>): Promise<OutreachDraft> {
-    const document = await this.read();
-    const index = document.drafts.findIndex((draft) => draft.id === id);
-    if (index === -1) throw new ClientInputError(`Outreach draft not found: ${id}`);
-    const next = OutreachDraftSchema.parse({
-      ...document.drafts[index],
-      ...input,
-      updatedAt: new Date().toISOString()
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.drafts.findIndex((draft) => draft.id === id);
+      if (index === -1) throw new ClientInputError(`Outreach draft not found: ${id}`);
+      const next = OutreachDraftSchema.parse({
+        ...document.drafts[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.drafts[index] = next;
+      await this.write(document);
+      return next;
     });
-    document.drafts[index] = next;
-    await this.write(document);
-    return next;
   }
 
   private async read(): Promise<OutreachDraftStoreDocument> {
@@ -2197,6 +2231,7 @@ class OutreachDraftRepository {
 
 class OutreachWorkflowRepository {
   private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
 
   constructor(baseDir?: string) {
     this.filePath = path.join(getDataHome(baseDir), "outreach-workflows.json");
@@ -2229,31 +2264,35 @@ class OutreachWorkflowRepository {
   }
 
   async create(input: Omit<OutreachWorkflow, "id" | "createdAt" | "updatedAt">): Promise<OutreachWorkflow> {
-    const now = new Date().toISOString();
-    const workflow = OutreachWorkflowSchema.parse({
-      ...input,
-      id: randomUUID(),
-      createdAt: now,
-      updatedAt: now
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const workflow = OutreachWorkflowSchema.parse({
+        ...input,
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now
+      });
+      const document = await this.read();
+      document.workflows.unshift(workflow);
+      await this.write(document);
+      return workflow;
     });
-    const document = await this.read();
-    document.workflows.unshift(workflow);
-    await this.write(document);
-    return workflow;
   }
 
   async update(id: string, input: Partial<Omit<OutreachWorkflow, "id" | "createdAt" | "updatedAt">>): Promise<OutreachWorkflow> {
-    const document = await this.read();
-    const index = document.workflows.findIndex((workflow) => workflow.id === id);
-    if (index === -1) throw new ClientInputError(`Outreach workflow not found: ${id}`);
-    const next = OutreachWorkflowSchema.parse({
-      ...document.workflows[index],
-      ...input,
-      updatedAt: new Date().toISOString()
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.workflows.findIndex((workflow) => workflow.id === id);
+      if (index === -1) throw new ClientInputError(`Outreach workflow not found: ${id}`);
+      const next = OutreachWorkflowSchema.parse({
+        ...document.workflows[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.workflows[index] = next;
+      await this.write(document);
+      return next;
     });
-    document.workflows[index] = next;
-    await this.write(document);
-    return next;
   }
 
   private async read(): Promise<OutreachWorkflowStoreDocument> {
@@ -2273,6 +2312,7 @@ class OutreachWorkflowRepository {
 
 class OutreachCampaignRepository {
   private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
 
   constructor(baseDir?: string) {
     this.filePath = path.join(getDataHome(baseDir), "outreach-campaigns.json");
@@ -2331,80 +2371,88 @@ class OutreachCampaignRepository {
     providerId?: string;
     model?: string;
     rateLimit?: z.infer<typeof OutreachCampaignRateLimitBody>;
+    researchDepth?: OutreachResearchDepth;
     leads: OutreachLead[];
   }): Promise<OutreachCampaignWithRecipients> {
-    const now = new Date().toISOString();
-    const id = randomUUID();
-    const seenLeadIds = new Set<string>();
-    const recipients: OutreachCampaignRecipient[] = input.leads.map((lead) => {
-      if (lead.profileId !== input.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
-      if (seenLeadIds.has(lead.id)) throw new ClientInputError(`Lead was selected twice: ${lead.companyName}`);
-      seenLeadIds.add(lead.id);
-      if (!lead.website || !lead.email) throw new ClientInputError(`Every batch customer needs website and email before campaign creation: ${lead.companyName}`);
-      return OutreachCampaignRecipientSchema.parse({
-        id: randomUUID(),
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      const seenLeadIds = new Set<string>();
+      const recipients: OutreachCampaignRecipient[] = input.leads.map((lead) => {
+        if (lead.profileId !== input.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
+        if (seenLeadIds.has(lead.id)) throw new ClientInputError(`Lead was selected twice: ${lead.companyName}`);
+        seenLeadIds.add(lead.id);
+        if (!lead.website || !lead.email) throw new ClientInputError(`Every batch customer needs website and email before campaign creation: ${lead.companyName}`);
+        return OutreachCampaignRecipientSchema.parse({
+          id: randomUUID(),
+          profileId: input.profileId,
+          campaignId: id,
+          leadId: lead.id,
+          email: lead.email,
+          companyName: lead.companyName,
+          website: lead.website,
+          contactName: lead.contactName,
+          contactTitle: lead.contactTitle,
+          status: "pending",
+          createdAt: now,
+          updatedAt: now
+        });
+      });
+      const campaign = OutreachCampaignSchema.parse({
+        id,
         profileId: input.profileId,
-        campaignId: id,
-        leadId: lead.id,
-        email: lead.email,
-        companyName: lead.companyName,
-        website: lead.website,
-        contactName: lead.contactName,
-        contactTitle: lead.contactTitle,
-        status: "pending",
+        name: input.name,
+        description: input.description ?? "",
+        senderAccountId: input.senderAccountId,
+        language: input.language,
+        tone: input.tone,
+        providerId: input.providerId,
+        model: input.model,
+        researchDepth: input.researchDepth ?? "standard",
+        rateLimit: input.rateLimit ?? {},
+        status: "draft",
         createdAt: now,
         updatedAt: now
       });
+      const document = await this.read();
+      document.campaigns.unshift(campaign);
+      document.recipients.unshift(...recipients);
+      const written = await this.write(document);
+      const saved = written.campaigns.find((item) => item.id === id)!;
+      return this.enrich(saved, written.recipients.filter((recipient) => recipient.campaignId === id), undefined);
     });
-    const campaign = OutreachCampaignSchema.parse({
-      id,
-      profileId: input.profileId,
-      name: input.name,
-      description: input.description ?? "",
-      senderAccountId: input.senderAccountId,
-      language: input.language,
-      tone: input.tone,
-      providerId: input.providerId,
-      model: input.model,
-      rateLimit: input.rateLimit ?? {},
-      status: "draft",
-      createdAt: now,
-      updatedAt: now
-    });
-    const document = await this.read();
-    document.campaigns.unshift(campaign);
-    document.recipients.unshift(...recipients);
-    const written = await this.write(document);
-    const saved = written.campaigns.find((item) => item.id === id)!;
-    return this.enrich(saved, written.recipients.filter((recipient) => recipient.campaignId === id), undefined);
   }
 
   async updateCampaign(id: string, input: Partial<Omit<OutreachCampaign, "id" | "profileId" | "createdAt" | "updatedAt" | "stats" | "mode">>): Promise<OutreachCampaign> {
-    const document = await this.read();
-    const index = document.campaigns.findIndex((campaign) => campaign.id === id);
-    if (index === -1) throw new ClientInputError(`Outreach campaign not found: ${id}`);
-    const next = OutreachCampaignSchema.parse({
-      ...document.campaigns[index],
-      ...input,
-      updatedAt: new Date().toISOString()
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.campaigns.findIndex((campaign) => campaign.id === id);
+      if (index === -1) throw new ClientInputError(`Outreach campaign not found: ${id}`);
+      const next = OutreachCampaignSchema.parse({
+        ...document.campaigns[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.campaigns[index] = next;
+      const written = await this.write(document);
+      return written.campaigns.find((campaign) => campaign.id === id)!;
     });
-    document.campaigns[index] = next;
-    const written = await this.write(document);
-    return written.campaigns.find((campaign) => campaign.id === id)!;
   }
 
   async updateRecipient(id: string, input: Partial<Omit<OutreachCampaignRecipient, "id" | "profileId" | "campaignId" | "leadId" | "createdAt" | "updatedAt">>): Promise<OutreachCampaignRecipient> {
-    const document = await this.read();
-    const index = document.recipients.findIndex((recipient) => recipient.id === id);
-    if (index === -1) throw new ClientInputError(`Campaign recipient not found: ${id}`);
-    const next = OutreachCampaignRecipientSchema.parse({
-      ...document.recipients[index],
-      ...input,
-      updatedAt: new Date().toISOString()
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.recipients.findIndex((recipient) => recipient.id === id);
+      if (index === -1) throw new ClientInputError(`Campaign recipient not found: ${id}`);
+      const next = OutreachCampaignRecipientSchema.parse({
+        ...document.recipients[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.recipients[index] = next;
+      const written = await this.write(document);
+      return written.recipients.find((recipient) => recipient.id === id)!;
     });
-    document.recipients[index] = next;
-    const written = await this.write(document);
-    return written.recipients.find((recipient) => recipient.id === id)!;
   }
 
   private async enrich(campaign: OutreachCampaign, recipients: OutreachCampaignRecipient[], drafts?: OutreachDraftRepository): Promise<OutreachCampaignWithRecipients> {
@@ -2759,6 +2807,13 @@ function leadInputFromCsv(headers: string[], row: string[]): z.input<typeof Outr
 interface CustomerResearchResult {
   website: string;
   companyName: string;
+  depth: OutreachResearchDepth;
+  confidenceScore: number;
+  buyerType: string;
+  productSignals: string[];
+  buyingSignals: string[];
+  painSignals: string[];
+  recommendedAngle: string;
   industry: string;
   inferredNeed: string;
   title: string;
@@ -2774,13 +2829,21 @@ interface WebsitePageResult {
   error?: string;
 }
 
-async function researchCustomerWebsite(rawWebsite: string): Promise<CustomerResearchResult> {
+async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "standard"): Promise<CustomerResearchResult> {
   const website = normalizeWebsiteUrl(rawWebsite);
+  const limits = researchDepthLimits(depth);
   const initial = await fetchWebsitePage(website);
   if (!initial.html) {
     return {
       website,
       companyName: companyNameFromWebsite(website),
+      depth,
+      confidenceScore: 12,
+      buyerType: "",
+      productSignals: [],
+      buyingSignals: [],
+      painSignals: [],
+      recommendedAngle: "",
       industry: "",
       inferredNeed: "",
       title: "",
@@ -2791,19 +2854,42 @@ async function researchCustomerWebsite(rawWebsite: string): Promise<CustomerRese
     };
   }
 
-  const urls = [website, ...pickResearchLinks(website, initial.html)].slice(0, 4);
+  const urls = [website, ...pickResearchLinks(website, initial.html, depth)].slice(0, limits.pages);
   const pages = [initial];
   for (const url of urls.slice(1)) pages.push(await fetchWebsitePage(url));
   const successfulPages = pages.filter((page): page is WebsitePageResult & { html: string } => Boolean(page.html));
   const title = extractHtmlTitle(initial.html);
   const description = extractMetaDescription(initial.html);
-  const textPreview = truncateForContext(successfulPages.map((page) => extractReadableHtmlText(page.html)).join("\n\n"), 12_000);
+  const textPreview = truncateForContext(successfulPages.map((page) => extractReadableHtmlText(page.html)).join("\n\n"), limits.textChars);
   const companyName = inferCompanyName(title, description, website);
+  const industry = inferIndustry(textPreview);
+  const inferredNeed = inferCustomerNeed(textPreview);
+  const productSignals = inferProductSignals(textPreview);
+  const buyingSignals = inferBuyingSignals(textPreview);
+  const painSignals = inferPainSignals(textPreview);
+  const buyerType = inferBuyerType(textPreview, industry);
+  const recommendedAngle = inferRecommendedAngle({ buyerType, industry, inferredNeed, productSignals, buyingSignals, painSignals });
   return {
     website,
     companyName,
-    industry: inferIndustry(textPreview),
-    inferredNeed: inferCustomerNeed(textPreview),
+    depth,
+    confidenceScore: scoreResearchConfidence({
+      fetchedPages: successfulPages.length,
+      title,
+      description,
+      industry,
+      inferredNeed,
+      productSignals,
+      buyingSignals,
+      painSignals
+    }),
+    buyerType,
+    productSignals,
+    buyingSignals,
+    painSignals,
+    recommendedAngle,
+    industry,
+    inferredNeed,
     title,
     description,
     fetchedUrls: successfulPages.map((page) => page.url),
@@ -2844,8 +2930,23 @@ function normalizeWebsiteUrl(value: string): string {
   }
 }
 
-function pickResearchLinks(baseUrl: string, html: string): string[] {
+function researchDepthLimits(depth: OutreachResearchDepth): { pages: number; textChars: number } {
+  if (depth === "quick") return { pages: 1, textChars: 3_500 };
+  if (depth === "deep") return { pages: 8, textChars: 12_000 };
+  return { pages: 4, textChars: 8_000 };
+}
+
+function researchConcurrency(depth: OutreachResearchDepth): number {
+  if (depth === "quick") return 6;
+  if (depth === "deep") return 2;
+  return 4;
+}
+
+function pickResearchLinks(baseUrl: string, html: string, depth: OutreachResearchDepth): string[] {
   const base = new URL(baseUrl);
+  const researchPattern = depth === "deep"
+    ? /about|company|product|solution|service|catalog|industr|contact|news|blog|case|customer|brand|category|collection|shop/i
+    : /about|company|product|solution|service|catalog|industr|contact/i;
   const candidates = Array.from(html.matchAll(/href=["']([^"']+)["']/gi))
     .map((match) => match[1]?.trim())
     .filter((href): href is string => Boolean(href))
@@ -2860,7 +2961,7 @@ function pickResearchLinks(baseUrl: string, html: string): string[] {
       if (!url) return false;
       const parsed = new URL(url);
       if (parsed.origin !== base.origin) return false;
-      return /about|company|product|solution|service|catalog|industr|contact/i.test(parsed.pathname);
+      return researchPattern.test(parsed.pathname);
     });
   return Array.from(new Set(candidates));
 }
@@ -2938,13 +3039,106 @@ function inferCustomerNeed(text: string): string {
   return "";
 }
 
+function inferBuyerType(text: string, industry: string): string {
+  const lower = text.toLowerCase();
+  if (/(importer|imports|distributor|distribution|wholesale|wholesaler)/.test(lower)) return "Importer / distributor";
+  if (/(retail|ecommerce|online store|shopify|marketplace|amazon)/.test(lower)) return "Retail / ecommerce buyer";
+  if (/(brand|private label|collection|catalog|category)/.test(lower)) return "Brand or category buyer";
+  if (/(manufacturer|factory|oem|production|assembly)/.test(lower)) return "Manufacturer / OEM buyer";
+  return industry || "Potential B2B buyer";
+}
+
+function inferProductSignals(text: string): string[] {
+  return collectKeywordSignals(text, [
+    ["Catalog / product range", ["catalog", "products", "collection", "categories", "range"]],
+    ["Private label / OEM", ["private label", "oem", "custom", "customized", "branding"]],
+    ["Samples / new arrivals", ["sample", "new arrival", "new product", "launch"]],
+    ["Certification sensitive", ["certified", "certification", "compliance", "ce", "fda", "rohs", "iso"]],
+    ["Bulk or wholesale buying", ["bulk", "wholesale", "distributor", "container", "pallet"]]
+  ]);
+}
+
+function inferBuyingSignals(text: string): string[] {
+  return collectKeywordSignals(text, [
+    ["Seasonal or launch planning", ["season", "holiday", "launch", "new collection", "new range"]],
+    ["Supplier comparison likely", ["supplier", "sourcing", "procurement", "vendor", "rfq"]],
+    ["Channel expansion", ["new store", "retail partners", "distribution network", "market expansion"]],
+    ["Compliance review", ["compliance", "certification", "testing", "audit", "quality control"]],
+    ["Repeat replenishment", ["reorder", "stock", "inventory", "warehouse", "supply chain"]]
+  ]);
+}
+
+function inferPainSignals(text: string): string[] {
+  return collectKeywordSignals(text, [
+    ["Needs stable lead time", ["lead time", "delivery", "ship", "logistics", "supply chain"]],
+    ["Needs proof before samples", ["quality", "inspection", "certification", "testing", "warranty"]],
+    ["Needs easier category selection", ["catalog", "range", "selection", "options", "sku"]],
+    ["Needs margin support", ["price", "cost", "margin", "value", "competitive"]],
+    ["Needs packaging or brand fit", ["packaging", "label", "brand", "retail ready", "display"]]
+  ]);
+}
+
+function collectKeywordSignals(text: string, groups: Array<[string, string[]]>): string[] {
+  const lower = text.toLowerCase();
+  return groups
+    .filter(([, keywords]) => keywords.some((keyword) => lower.includes(keyword)))
+    .map(([label]) => label)
+    .slice(0, 6);
+}
+
+function inferRecommendedAngle(input: {
+  buyerType: string;
+  industry: string;
+  inferredNeed: string;
+  productSignals: string[];
+  buyingSignals: string[];
+  painSignals: string[];
+}): string {
+  if (input.painSignals.some((signal) => /proof|certification|quality/i.test(signal))) return "Lead with proof: certifications, inspection process, or a small verification pack before discussing price.";
+  if (input.buyingSignals.some((signal) => /seasonal|launch|channel/i.test(signal))) return "Lead with a small category-fit check and sample-ready options for the next launch or buying window.";
+  if (input.productSignals.some((signal) => /catalog|range|selection/i.test(signal))) return "Lead with a short option list instead of a full catalog so the buyer can compare quickly.";
+  if (input.inferredNeed) return input.inferredNeed;
+  if (/ecommerce|retail/i.test(input.buyerType)) return "Lead with market-fit products, packaging, MOQ, and sell-through support.";
+  if (/import|distributor|wholesale/i.test(input.buyerType)) return "Lead with supply reliability, lead time, MOQ, and repeat-order ease.";
+  return "Lead with a low-friction question and ask whether this product category is handled by the right buyer.";
+}
+
+function scoreResearchConfidence(input: {
+  fetchedPages: number;
+  title: string;
+  description: string;
+  industry: string;
+  inferredNeed: string;
+  productSignals: string[];
+  buyingSignals: string[];
+  painSignals: string[];
+}): number {
+  let score = 10;
+  score += Math.min(input.fetchedPages, 8) * 7;
+  if (input.title) score += 8;
+  if (input.description) score += 8;
+  if (input.industry) score += 12;
+  if (input.inferredNeed) score += 10;
+  score += Math.min(input.productSignals.length, 4) * 5;
+  score += Math.min(input.buyingSignals.length, 4) * 5;
+  score += Math.min(input.painSignals.length, 4) * 4;
+  return Math.min(100, score);
+}
+
 function formatCustomerResearchNotes(research: CustomerResearchResult): string {
   return [
     "Auto customer research:",
+    `Depth: ${research.depth}`,
+    `Confidence: ${research.confidenceScore}/100`,
     research.title ? `Title: ${research.title}` : "",
     research.description ? `Description: ${research.description}` : "",
+    research.buyerType ? `Buyer type: ${research.buyerType}` : "",
     research.industry ? `Likely industry: ${research.industry}` : "",
     research.inferredNeed ? `Possible concern: ${research.inferredNeed}` : "",
+    research.productSignals.length ? `Product signals: ${research.productSignals.join("; ")}` : "",
+    research.buyingSignals.length ? `Buying signals: ${research.buyingSignals.join("; ")}` : "",
+    research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
+    research.recommendedAngle ? `Recommended angle: ${research.recommendedAngle}` : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
     research.error ? `Research note: ${research.error}` : ""
   ].filter(Boolean).join("\n");
@@ -2954,14 +3148,39 @@ function formatCustomerResearchContext(research: CustomerResearchResult): string
   return [
     "--- Customer website research ---",
     `Website: ${research.website}`,
+    `Research depth: ${research.depth}`,
+    `Research confidence: ${research.confidenceScore}/100`,
     research.title ? `Page title: ${research.title}` : "",
     research.description ? `Meta description: ${research.description}` : "",
+    research.buyerType ? `Buyer type: ${research.buyerType}` : "",
     research.industry ? `Likely industry: ${research.industry}` : "",
     research.inferredNeed ? `Possible customer concern: ${research.inferredNeed}` : "",
+    research.productSignals.length ? `Product signals: ${research.productSignals.join("; ")}` : "",
+    research.buyingSignals.length ? `Buying/procurement signals: ${research.buyingSignals.join("; ")}` : "",
+    research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
+    research.recommendedAngle ? `Recommended outreach angle: ${research.recommendedAngle}` : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
     research.textPreview ? `Website text preview:\n${research.textPreview}` : "",
     research.error ? `Research limitation: ${research.error}` : ""
   ].filter(Boolean).join("\n");
+}
+
+function summarizeCustomerResearch(research: CustomerResearchResult) {
+  return CustomerResearchSummarySchema.parse({
+    depth: research.depth,
+    confidenceScore: research.confidenceScore,
+    buyerType: research.buyerType,
+    likelyNeed: research.inferredNeed,
+    primaryAngle: research.recommendedAngle,
+    riskNotes: research.painSignals,
+    checkedPages: research.fetchedUrls.length
+  });
+}
+
+function researchDepthPromptGuidance(depth: OutreachResearchDepth): string {
+  if (depth === "quick") return "Keep analysis conservative and compact; use only the strongest website clues.";
+  if (depth === "deep") return "Use the full buyer-risk, procurement-trigger, and objection model, but still avoid unsupported claims.";
+  return "Use a balanced buyer profile and practical procurement-trigger reasoning.";
 }
 
 async function generateOutreachDraft(input: {
@@ -3022,8 +3241,10 @@ async function generateOutreachWorkflow(input: {
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
+  research?: CustomerResearchResult;
+  researchDepth?: OutreachResearchDepth;
 }): Promise<OutreachWorkflow> {
-  const research = await researchCustomerWebsite(input.body.website);
+  const research = input.research ?? await researchCustomerWebsite(input.body.website, input.researchDepth ?? "standard");
   const lead = input.lead ?? await input.leads.create({
     profileId: input.profileId,
     companyName: research.companyName || companyNameFromWebsite(research.website) || companyNameFromEmail(input.body.email),
@@ -3125,12 +3346,23 @@ async function generateOutreachCampaignWorkflows(input: {
   if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot generate new drafts.");
   await input.campaigns.updateCampaign(campaign.id, { status: "generating" });
   const detail = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
-  for (const recipient of detail.recipients) {
-    if (!["pending", "failed"].includes(recipient.status) || recipient.workflowId || recipient.initialDraftId) continue;
+  const recipients = detail.recipients.filter((recipient) => ["pending", "failed"].includes(recipient.status) && !recipient.workflowId && !recipient.initialDraftId);
+  const researchCache = new Map<string, Promise<CustomerResearchResult>>();
+  const getResearch = (website: string) => {
+    const normalized = normalizeWebsiteUrl(website);
+    const key = `${campaign.researchDepth}:${normalized}`;
+    const cached = researchCache.get(key);
+    if (cached) return cached;
+    const next = researchCustomerWebsite(normalized, campaign.researchDepth);
+    researchCache.set(key, next);
+    return next;
+  };
+  await mapWithConcurrency(recipients, researchConcurrency(campaign.researchDepth), async (recipient) => {
     await input.campaigns.updateRecipient(recipient.id, { status: "researching", sendError: undefined });
     try {
       const lead = await input.leads.require(recipient.leadId);
       if (lead.profileId !== campaign.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
+      const research = await getResearch(recipient.website);
       const workflow = await generateOutreachWorkflow({
         body: {
           website: recipient.website,
@@ -3148,12 +3380,15 @@ async function generateOutreachCampaignWorkflows(input: {
         materials: input.materials,
         leads: input.leads,
         drafts: input.drafts,
-        workflows: input.workflows
+        workflows: input.workflows,
+        research,
+        researchDepth: campaign.researchDepth
       });
       await input.campaigns.updateRecipient(recipient.id, {
         status: "generated",
         workflowId: workflow.id,
         initialDraftId: workflow.draftId,
+        researchSummary: summarizeCustomerResearch(research),
         sendError: undefined
       });
     } catch (error) {
@@ -3162,10 +3397,23 @@ async function generateOutreachCampaignWorkflows(input: {
         sendError: redactSecrets(error instanceof Error ? error.message : String(error))
       });
     }
-  }
+  });
   const refreshed = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
   await input.campaigns.updateCampaign(campaign.id, { status: nextCampaignStatus(refreshed) });
   return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+}
+
+async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let index = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const currentIndex = index;
+      index += 1;
+      if (currentIndex >= items.length) return;
+      await worker(items[currentIndex]);
+    }
+  }));
 }
 
 async function approveOutreachCampaignRecipient(input: {
@@ -3335,6 +3583,7 @@ function outreachInstructions(): string {
 function outreachWorkflowInstructions(): string {
   return [
     "You are Hermills Letter App, a senior B2B export sales strategist building Snov-style outreach workflows.",
+    "Internally act as a coordinated agent queue: Website Reader -> Buyer Psychology Analyst -> ICP/USP Matcher -> Email Writer -> QA Reviewer.",
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
     "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
@@ -3389,6 +3638,7 @@ function buildOutreachWorkflowPrompt(input: {
     "Build a complete Letter App style B2B outreach workflow for a China-based export/trading company.",
     `Target language: ${input.language}.`,
     `Tone: ${input.tone}.`,
+    `Research depth: ${input.research.depth}. ${researchDepthPromptGuidance(input.research.depth)}`,
     "",
     "Return JSON only with this shape:",
     "{",
@@ -3714,7 +3964,7 @@ async function discoverProviderModels(provider: ProviderCredential, apiKey: stri
   if (provider.kind !== "local" && !apiKey) return { models: provider.defaultModel ? [provider.defaultModel] : [], status: "missing-key", message: "Provider key is missing." };
   try {
     const response = await fetchImpl(modelsUrl(baseUrl), {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      headers: providerModelHeaders(provider, apiKey),
       signal: AbortSignal.timeout(10_000)
     });
     if (!response.ok) return { models: provider.defaultModel ? [provider.defaultModel] : [], status: "failed", message: `${response.status} ${response.statusText}` };
@@ -3724,6 +3974,17 @@ async function discoverProviderModels(provider: ProviderCredential, apiKey: stri
   } catch (error) {
     return { models: provider.defaultModel ? [provider.defaultModel] : [], status: "failed", message: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function providerModelHeaders(provider: ProviderCredential, apiKey: string | undefined): HeadersInit | undefined {
+  if (!apiKey) return undefined;
+  if (provider.kind === "anthropic") {
+    return {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    };
+  }
+  return { Authorization: `Bearer ${apiKey}` };
 }
 
 async function readMaterialUpload(request: FastifyRequest): Promise<MaterialUpload> {

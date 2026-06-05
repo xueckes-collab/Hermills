@@ -14,10 +14,12 @@ import type {
   LogEntrySchema,
   MaterialRecordSchema,
   MaterialScopeSchema,
+  CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
   EmailSequenceDraftSchema,
   GeneratedIcpSchema,
   GeneratedUspSchema,
+  OutreachResearchDepthSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
@@ -47,6 +49,8 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
+export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
+export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;
 export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
 export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
 export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;

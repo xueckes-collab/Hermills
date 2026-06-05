@@ -330,6 +330,10 @@ export class RuntimeService {
   async createHermesReply(request: HermesReplyRequest | ChatMessage[]): Promise<string> {
     const replyRequest = Array.isArray(request) ? { messages: request } : request;
     const target = await this.resolveCompletionTarget(replyRequest.provider);
+    if (isAnthropicProvider(replyRequest.provider)) {
+      return this.createAnthropicReply(replyRequest, target);
+    }
+
     const response = await this.fetchImpl(chatCompletionsUrl(target.baseUrl), {
       method: "POST",
       headers: { Authorization: `Bearer ${target.apiKey}`, "Content-Type": "application/json" },
@@ -345,6 +349,35 @@ export class RuntimeService {
     }
     const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
     return payload.choices?.[0]?.message?.content ?? "Hermes returned an empty response.";
+  }
+
+  private async createAnthropicReply(replyRequest: HermesReplyRequest, target: { baseUrl: string; apiKey: string }): Promise<string> {
+    const { system, messages } = buildAnthropicMessages(replyRequest);
+    const response = await this.fetchImpl(anthropicMessagesUrl(target.baseUrl), {
+      method: "POST",
+      headers: {
+        "x-api-key": target.apiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: resolveCompletionModel(replyRequest),
+        max_tokens: 2048,
+        ...(system ? { system } : {}),
+        messages
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Hermes API returned ${response.status}: ${redactSecrets(text)}`);
+    }
+    const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const text = (payload.content ?? [])
+      .filter((block) => block.type === "text" && typeof block.text === "string")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+    return text || "Hermes returned an empty response.";
   }
 
   private async runInstall(job: InstallJob, request: InstallRequest): Promise<void> {
@@ -727,19 +760,57 @@ export function buildCompletionMessages(request: HermesReplyRequest): Array<{ ro
   return instructions ? [{ role: "system", content: instructions }, ...messages] : messages;
 }
 
+export function buildAnthropicMessages(request: HermesReplyRequest): { system?: string; messages: Array<{ role: "user" | "assistant"; content: string }> } {
+  const systemParts = [
+    request.instructions?.trim(),
+    ...request.messages.filter((message) => message.role === "system").map((message) => message.content.trim())
+  ].filter((part): part is string => Boolean(part));
+  const messages = request.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content }));
+  return {
+    ...(systemParts.length ? { system: systemParts.join("\n\n") } : {}),
+    messages: messages.length ? messages : [{ role: "user", content: "" }]
+  };
+}
+
+function isAnthropicProvider(provider?: HermesReplyProvider): boolean {
+  return provider?.kind === "anthropic";
+}
+
 export function chatCompletionsUrl(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, "");
   if (/\/v1\/chat\/completions$/i.test(normalized)) return normalized;
+  if (/\/chat\/completions$/i.test(normalized)) return normalized;
   if (/\/v1$/i.test(normalized)) return `${normalized}/chat/completions`;
+  if (baseUrlHasPath(normalized)) return `${normalized}/chat/completions`;
   return `${normalized}/v1/chat/completions`;
+}
+
+export function anthropicMessagesUrl(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  if (/\/v1\/messages$/i.test(normalized)) return normalized;
+  if (/\/v1$/i.test(normalized)) return `${normalized}/messages`;
+  return `${normalized}/v1/messages`;
 }
 
 export function modelsUrl(baseUrl: string): string {
   const normalized = baseUrl.replace(/\/+$/, "");
   if (/\/v1\/models$/i.test(normalized)) return normalized;
+  if (/\/models$/i.test(normalized)) return normalized;
   if (/\/v1\/chat\/completions$/i.test(normalized)) return normalized.replace(/\/chat\/completions$/i, "/models");
+  if (/\/chat\/completions$/i.test(normalized)) return normalized.replace(/\/chat\/completions$/i, "/models");
   if (/\/v1$/i.test(normalized)) return `${normalized}/models`;
+  if (baseUrlHasPath(normalized)) return `${normalized}/models`;
   return `${normalized}/v1/models`;
+}
+
+function baseUrlHasPath(normalizedBaseUrl: string): boolean {
+  try {
+    return new URL(normalizedBaseUrl).pathname.replace(/\/+$/, "") !== "";
+  } catch {
+    return false;
+  }
 }
 
 async function pathExists(target: string): Promise<boolean> {

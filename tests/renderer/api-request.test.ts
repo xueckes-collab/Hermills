@@ -54,6 +54,36 @@ describe("renderer API request wrapper", () => {
     ]);
   });
 
+  it("keeps the selected provider kind when saving API keys", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({
+      id: "provider-claude",
+      kind: "anthropic",
+      displayName: "Anthropic Claude",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultModel: "claude-sonnet-4-20250514",
+      keyPreview: "sk-ant••••test",
+      enabled: true
+    }));
+    stubDesktop(fetchMock);
+
+    await api.saveProvider({
+      kind: "anthropic",
+      displayName: "Anthropic Claude",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultModel: "claude-sonnet-4-20250514",
+      apiKey: "sk-ant-test"
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      kind: "anthropic",
+      displayName: "Anthropic Claude",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultModel: "claude-sonnet-4-20250514",
+      apiKey: "sk-ant-test"
+    });
+  });
+
   it("creates outreach campaigns without a send confirmation flag", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "campaign-1", recipients: [], stats: {} }));
     stubDesktop(fetchMock);

@@ -258,9 +258,26 @@ export const OutreachSenderAccountSchema = z.object({
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
 }).strict();
+export const OutreachResearchDepthSchema = z.enum(["quick", "standard", "deep"]);
+export const CustomerResearchSummarySchema = z.object({
+    depth: OutreachResearchDepthSchema.default("standard"),
+    confidenceScore: z.number().int().min(0).max(100).default(0),
+    buyerType: z.string().trim().max(160).default(""),
+    likelyNeed: z.string().trim().max(800).default(""),
+    primaryAngle: z.string().trim().max(800).default(""),
+    riskNotes: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
+    checkedPages: z.number().int().nonnegative().max(20).default(0)
+}).strict();
 export const CustomerResearchSnapshotSchema = z.object({
     website: z.string().min(1).max(500),
     companyName: z.string().trim().min(1).max(180),
+    depth: OutreachResearchDepthSchema.default("standard"),
+    confidenceScore: z.number().int().min(0).max(100).default(0),
+    buyerType: z.string().trim().max(160).default(""),
+    productSignals: z.array(z.string().trim().min(1).max(220)).max(12).default([]),
+    buyingSignals: z.array(z.string().trim().min(1).max(220)).max(12).default([]),
+    painSignals: z.array(z.string().trim().min(1).max(220)).max(12).default([]),
+    recommendedAngle: z.string().trim().max(800).default(""),
     industry: z.string().trim().max(160).default(""),
     inferredNeed: z.string().trim().max(2000).default(""),
     title: z.string().trim().max(240).default(""),
@@ -352,6 +369,7 @@ export const OutreachCampaignSchema = z.object({
     tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).max(100).optional(),
+    researchDepth: OutreachResearchDepthSchema.default("standard"),
     rateLimit: OutreachCampaignRateLimitSchema.default({}),
     stats: OutreachCampaignStatsSchema.default({}),
     startedAt: z.string().datetime().optional(),
@@ -374,6 +392,7 @@ export const OutreachCampaignRecipientSchema = z.object({
     contactName: OptionalTrimmedString(160),
     contactTitle: OptionalTrimmedString(160),
     status: OutreachCampaignRecipientStatusSchema.default("pending"),
+    researchSummary: CustomerResearchSummarySchema.optional(),
     approvedAt: z.string().datetime().optional(),
     queuedAt: z.string().datetime().optional(),
     sentAt: z.string().datetime().optional(),
