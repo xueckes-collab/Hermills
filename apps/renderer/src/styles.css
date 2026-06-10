@@ -164,11 +164,27 @@ p {
 }
 
 .first-run-shell {
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --ink: #f7f7fb;
+  --muted: #9ca3af;
+  --green: #8b5cf6;
+  --green-soft: rgba(139, 92, 246, 0.16);
+  --gold: #c4b5fd;
+  --surface: rgba(17, 18, 26, 0.92);
+  --surface-solid: #11121a;
+  --shadow: 0 30px 90px rgba(0, 0, 0, 0.46);
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 100vh;
   padding: 62px 20px 20px;
+  background:
+    radial-gradient(circle at 78% 10%, rgba(139, 92, 246, 0.13), transparent 28%),
+    radial-gradient(circle at 24% 76%, rgba(20, 184, 166, 0.08), transparent 30%),
+    #07080d;
+  color: #f7f7fb;
+  color-scheme: dark;
 }
 
 .first-run-shell::before,
@@ -188,8 +204,14 @@ p {
   align-items: center;
   gap: 10px;
   width: fit-content;
-  color: var(--ink);
+  color: #f7f7fb;
   font-weight: 850;
+}
+
+.first-run-brand .brand-mark {
+  border-color: rgba(167, 139, 250, 0.34);
+  background: rgba(139, 92, 246, 0.16);
+  color: #ffffff;
 }
 
 .first-run-card {
@@ -201,7 +223,7 @@ p {
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(255, 253, 247, 0.88);
+  background: rgba(17, 18, 26, 0.92);
   box-shadow: var(--shadow);
 }
 
@@ -215,17 +237,60 @@ p {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .first-run-status strong {
-  color: var(--ink);
+  color: #f7f7fb;
   font-size: 13px;
 }
 
 .first-run-status span {
-  color: var(--muted);
+  color: #9ca3af;
   font-size: 12px;
+}
+
+.first-run-card .runtime-symbol {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(139, 92, 246, 0.14);
+  color: #c4b5fd;
+}
+
+.first-run-card .setup-hero span,
+.first-run-card .setup-hero p,
+.first-run-card .deploy-meta {
+  color: #9ca3af;
+}
+
+.first-run-card .setup-hero h2,
+.first-run-card .update-card strong,
+.first-run-card .repair-panel strong {
+  color: #f7f7fb;
+}
+
+.first-run-card .progress-rail {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.first-run-card .progress-rail span {
+  background: #8b5cf6;
+}
+
+.first-run-card .inline-alert,
+.first-run-card .repair-panel,
+.first-run-card .update-card {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.035);
+  color: #f7f7fb;
+}
+
+.first-run-card button:disabled,
+.hermills-dark-shell button:disabled,
+.advanced-backdrop.hermills-dark-overlay button:disabled {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  color: #8d91a3;
+  opacity: 0.74;
 }
 
 .onboarding-shell {
@@ -639,14 +704,6 @@ p {
   height: 24px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-}
-
-.theme-swatch.system {
-  background: linear-gradient(90deg, #fffdf8 0 50%, #172222 50% 100%);
-}
-
-.theme-swatch.warm {
-  background: linear-gradient(90deg, #fff8e8, #dff4eb);
 }
 
 .theme-swatch.night {
@@ -5096,6 +5153,374 @@ details[open] .complex-detail {
   right: 14px;
   background: rgba(244, 63, 94, 0.12);
   color: #ffe4e6;
+}
+
+.hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.hermills-dark-shell select,
+.hermills-dark-shell textarea {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0b0c12;
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder,
+.hermills-dark-shell textarea::placeholder {
+  color: #6f7482;
+}
+
+.hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.hermills-dark-shell select:focus,
+.hermills-dark-shell textarea:focus {
+  border-color: rgba(167, 139, 250, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+.hermills-dark-shell input:disabled,
+.hermills-dark-shell textarea:disabled,
+.hermills-dark-shell select:disabled {
+  opacity: 0.62;
+}
+
+.hermills-dark-shell input[type="checkbox"] {
+  accent-color: #8b5cf6;
+}
+
+.hermills-dark-shell .template-card,
+.hermills-dark-shell .assistant-role-card,
+.hermills-dark-shell .agent-preview,
+.hermills-dark-shell .agent-row,
+.hermills-dark-shell .agent-avatar,
+.hermills-dark-shell .check-row,
+.hermills-dark-shell .expert-toggle,
+.hermills-dark-shell .expert-mode-toggle,
+.hermills-dark-shell .expert-disclosure,
+.hermills-dark-shell .csv-import-box,
+.hermills-dark-shell .provider-help,
+.hermills-dark-shell .material-preview,
+.hermills-dark-shell .material-preview pre,
+.hermills-dark-shell .material-actions .icon-button,
+.hermills-dark-shell .file-action-button,
+.hermills-dark-shell .campaign-followup-guard,
+.hermills-dark-shell .campaign-followup-metrics span,
+.hermills-dark-shell .campaign-followup-chip,
+.hermills-dark-shell .campaign-followup-empty,
+.hermills-dark-shell .campaign-recipient-row,
+.hermills-dark-shell .campaign-list-tabs button,
+.hermills-dark-shell .campaign-draft-review,
+.hermills-dark-shell .status-hint,
+.hermills-dark-shell .key-nudge,
+.hermills-dark-shell .quick-provider-nudge,
+.hermills-dark-shell .agent-preview code,
+.hermills-dark-shell .provider-row code {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-dark-shell .template-card:hover,
+.hermills-dark-shell .assistant-role-card:hover,
+.hermills-dark-shell .template-card.active,
+.hermills-dark-shell .assistant-role-card.active,
+.hermills-dark-shell .assistant-role-card[aria-pressed="true"],
+.hermills-dark-shell .agent-row.active,
+.hermills-dark-shell .material-row.selected,
+.hermills-dark-shell .campaign-recipient-row.active,
+.hermills-dark-shell .campaign-list-tabs button.active,
+.hermills-dark-shell .status-hint.success {
+  border-color: rgba(167, 139, 250, 0.36);
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.hermills-dark-shell .assistant-role-icon,
+.hermills-dark-shell .runtime-symbol {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(139, 92, 246, 0.14);
+  color: #c4b5fd;
+}
+
+.hermills-dark-shell .template-card strong,
+.hermills-dark-shell .assistant-role-card strong,
+.hermills-dark-shell .agent-preview strong,
+.hermills-dark-shell .agent-row-main strong,
+.hermills-dark-shell .material-preview-header strong,
+.hermills-dark-shell .campaign-recipient-row strong,
+.hermills-dark-shell .campaign-list-tabs strong,
+.hermills-dark-shell .campaign-followup-heading h4,
+.hermills-dark-shell .panel-heading-row h3 {
+  color: #f7f7fb;
+}
+
+.hermills-dark-shell .template-card span,
+.hermills-dark-shell .assistant-role-card span,
+.hermills-dark-shell .agent-preview span,
+.hermills-dark-shell .agent-row-main small,
+.hermills-dark-shell .material-preview-header span,
+.hermills-dark-shell .campaign-recipient-row small,
+.hermills-dark-shell .campaign-list-tabs small,
+.hermills-dark-shell .campaign-followup-heading p,
+.hermills-dark-shell .status-hint,
+.hermills-dark-shell .key-nudge,
+.hermills-dark-shell .quick-provider-nudge {
+  color: #9ca3af;
+}
+
+/* Keep secondary surfaces on the same dark desktop shell. */
+.advanced-backdrop.hermills-dark-overlay {
+  --background: #07080d;
+  --foreground: #f7f7fb;
+  --card: #11121a;
+  --card-foreground: #f7f7fb;
+  --popover: #11121a;
+  --popover-foreground: #f7f7fb;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --secondary: #1a1b26;
+  --secondary-foreground: #f7f7fb;
+  --muted: #9ca3af;
+  --muted-foreground: #9ca3af;
+  --accent: #211936;
+  --accent-foreground: #f7f7fb;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #a78bfa;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --ink: #f7f7fb;
+  --green: #a78bfa;
+  --green-soft: rgba(139, 92, 246, 0.16);
+  --gold: #c4b5fd;
+  --surface: rgba(17, 18, 26, 0.92);
+  --surface-solid: #11121a;
+  --surface-subtle: rgba(255, 255, 255, 0.045);
+  --shadow: 0 30px 90px rgba(0, 0, 0, 0.46);
+  --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.28);
+  background: rgba(3, 4, 8, 0.76);
+  color: #f7f7fb;
+  color-scheme: dark;
+  backdrop-filter: blur(18px);
+}
+
+.hermills-dark-overlay .advanced-sheet {
+  border-left-color: rgba(255, 255, 255, 0.1);
+  background: #0b0c12;
+  color: #f7f7fb;
+  box-shadow: var(--shadow);
+}
+
+.hermills-dark-overlay .advanced-header,
+.hermills-dark-overlay .advanced-body,
+.hermills-dark-overlay .advanced-content {
+  background: #0b0c12;
+}
+
+.hermills-dark-overlay .advanced-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.hermills-dark-overlay .advanced-nav {
+  border-right-color: rgba(255, 255, 255, 0.08);
+  background: #0f1017;
+}
+
+.hermills-dark-overlay .advanced-nav button {
+  color: #9ca3af;
+}
+
+.hermills-dark-overlay .advanced-nav button.active,
+.hermills-dark-overlay .advanced-nav button:hover {
+  border-color: rgba(167, 139, 250, 0.32);
+  background: rgba(139, 92, 246, 0.16);
+  color: #ffffff;
+}
+
+.hermills-dark-overlay .advanced-header .mode-toggle,
+.hermills-dark-overlay .setup-panel,
+.hermills-dark-overlay .quiet-panel,
+.hermills-dark-overlay .settings-form,
+.hermills-dark-overlay .settings-section,
+.hermills-dark-overlay .settings-basic-section,
+.hermills-dark-overlay .basic-settings-section,
+.hermills-dark-overlay .settings-normal-section,
+.hermills-dark-overlay .normal-settings-section,
+.hermills-dark-overlay .settings-expert-section,
+.hermills-dark-overlay .expert-settings-section,
+.hermills-dark-overlay .provider-help,
+.hermills-dark-overlay .template-card,
+.hermills-dark-overlay .assistant-role-card,
+.hermills-dark-overlay .check-row,
+.hermills-dark-overlay .expert-toggle,
+.hermills-dark-overlay .expert-mode-toggle,
+.hermills-dark-overlay .expert-disclosure,
+.hermills-dark-overlay .company-upload-dropzone,
+.hermills-dark-overlay .upload-dropzone,
+.hermills-dark-overlay .material-row,
+.hermills-dark-overlay .profile-row,
+.hermills-dark-overlay .provider-row,
+.hermills-dark-overlay .preview-pane,
+.hermills-dark-overlay .policy-panel {
+  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.035);
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-dark-overlay .runtime-symbol,
+.hermills-dark-overlay .assistant-role-icon {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(139, 92, 246, 0.14);
+  color: #c4b5fd;
+}
+
+.hermills-dark-overlay .progress-rail {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.hermills-dark-overlay .progress-rail span,
+.hermills-dark-overlay .mode-toggle button.active {
+  background: #8b5cf6;
+  color: #ffffff;
+}
+
+.hermills-dark-overlay .template-card:hover,
+.hermills-dark-overlay .assistant-role-card:hover,
+.hermills-dark-overlay .template-card.active,
+.hermills-dark-overlay .assistant-role-card.active,
+.hermills-dark-overlay .assistant-role-card[aria-pressed="true"],
+.hermills-dark-overlay .profile-row.active {
+  border-color: rgba(167, 139, 250, 0.36);
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.hermills-dark-overlay input,
+.hermills-dark-overlay select,
+.hermills-dark-overlay textarea {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0b0c12;
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-dark-overlay input::placeholder,
+.hermills-dark-overlay textarea::placeholder {
+  color: #6f7482;
+}
+
+.hermills-dark-overlay input:focus,
+.hermills-dark-overlay select:focus,
+.hermills-dark-overlay textarea:focus {
+  border-color: rgba(167, 139, 250, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+.hermills-dark-overlay .advanced-header span,
+.hermills-dark-overlay .panel-header span,
+.hermills-dark-overlay .setup-hero span,
+.hermills-dark-overlay .setup-hero p,
+.hermills-dark-overlay .settings-section-header span,
+.hermills-dark-overlay .settings-section-title span,
+.hermills-dark-overlay .setting-row > span,
+.hermills-dark-overlay .setting-row label > span,
+.hermills-dark-overlay .quick-key-actions span,
+.hermills-dark-overlay .provider-help,
+.hermills-dark-overlay .template-card span,
+.hermills-dark-overlay .assistant-role-card span,
+.hermills-dark-overlay .builder-form label,
+.hermills-dark-overlay .settings-form label:not(.check-row),
+.hermills-dark-overlay .policy-panel label,
+.hermills-dark-overlay .company-category-select,
+.hermills-dark-overlay .status-row span,
+.hermills-dark-overlay .provider-row span,
+.hermills-dark-overlay small {
+  color: #9ca3af;
+}
+
+.hermills-dark-overlay .advanced-header strong,
+.hermills-dark-overlay .setup-hero h2,
+.hermills-dark-overlay .panel-header strong,
+.hermills-dark-overlay .panel-header h3,
+.hermills-dark-overlay .settings-section-header strong,
+.hermills-dark-overlay .settings-section-title strong,
+.hermills-dark-overlay .template-card strong,
+.hermills-dark-overlay .assistant-role-card strong,
+.hermills-dark-overlay .update-card strong,
+.hermills-dark-overlay .repair-panel strong,
+.hermills-dark-overlay .status-row em {
+  color: #f7f7fb;
+}
+
+.hermills-dark-overlay .soft-button,
+.hermills-dark-overlay .text-button {
+  color: #ddd6fe;
+}
+
+.hermills-dark-overlay .soft-button {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.hermills-dark-overlay .primary-button,
+.hermills-dark-overlay form button[type="submit"] {
+  border-color: #7c3aed;
+  background: #7c3aed;
+  color: #ffffff;
+}
+
+.hermills-dark-shell .outreach-quick-panel,
+.hermills-dark-shell .outreach-workflow-panel,
+.hermills-dark-shell .outreach-panel,
+.hermills-dark-shell .outreach-send-panel,
+.hermills-dark-shell .outreach-campaign-panel,
+.hermills-dark-shell .outreach-insight-card,
+.hermills-dark-shell .outreach-email-row,
+.hermills-dark-shell .mail-provider-card,
+.hermills-dark-shell .mail-auth-assistant,
+.hermills-dark-shell .csv-import-box,
+.hermills-dark-shell .quality-review-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-dark-shell .outreach-email-row.active,
+.hermills-dark-shell .mail-provider-card.active,
+.hermills-dark-shell .quality-review-card.pass {
+  border-color: rgba(167, 139, 250, 0.36);
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.hermills-dark-shell .quality-review-card.blocked,
+.hermills-dark-shell .quality-review-card.needs-work,
+.hermills-dark-shell .mail-auth-assistant {
+  border-color: rgba(244, 181, 72, 0.24);
+  background: rgba(244, 181, 72, 0.09);
+  color: #f5d48b;
+}
+
+.hermills-dark-shell .quality-review-checks span {
+  background: rgba(255, 255, 255, 0.06);
+  color: #9ca3af;
+}
+
+.hermills-dark-shell .quality-review-checks span.passed {
+  background: rgba(16, 185, 129, 0.14);
+  color: #86efac;
+}
+
+.hermills-dark-shell .quality-review-checks span.failed {
+  background: rgba(244, 63, 94, 0.14);
+  color: #fda4af;
+}
+
+.first-run-card button:disabled,
+.hermills-dark-shell button:disabled,
+.advanced-backdrop.hermills-dark-overlay button:disabled {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #8d91a3 !important;
+  opacity: 0.74;
 }
 
 @media (max-width: 1180px) {

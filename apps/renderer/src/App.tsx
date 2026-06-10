@@ -226,7 +226,7 @@ const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: stri
 type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
 type OnboardingLanguage = 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'en'
 type OnboardingProviderChoice = ProviderPresetId | 'skip'
-type OnboardingTheme = 'warm' | 'night' | 'plain' | 'system'
+type OnboardingTheme = 'night' | 'plain'
 type OnboardingFeatureId = 'chat' | 'files' | 'memory' | 'assistants' | 'diagnostics'
 
 type OnboardingProviderInput = {
@@ -305,10 +305,8 @@ const languageOptions: Array<{ id: OnboardingLanguage; label: string }> = [
 ]
 
 const themeOptions: Array<{ id: OnboardingTheme }> = [
-  { id: 'warm' },
   { id: 'night' },
   { id: 'plain' },
-  { id: 'system' },
 ]
 
 const featureOptions: Array<{ id: OnboardingFeatureId; icon: LucideIcon }> = [
@@ -328,7 +326,7 @@ const fallbackOnboarding: OnboardingState = {
   agentName: 'Hermes',
   memoryEnabled: true,
   provider: null,
-  theme: 'warm',
+  theme: 'night',
   workspacePath: '~/Desktop/Hermills-Workspace',
   features: defaultOnboardingFeatures,
 }
@@ -460,6 +458,7 @@ function normalizeOnboardingState(state?: Partial<OnboardingState>): OnboardingS
   return {
     ...fallbackOnboarding,
     ...state,
+    theme: state?.theme === 'plain' ? 'plain' : 'night',
     completed: Boolean(state?.completed || state?.onboardingCompletedAt),
     features: state?.features?.length ? state.features : defaultOnboardingFeatures,
   }
@@ -501,7 +500,7 @@ function draftFromOnboarding(state: OnboardingState, companyProfile: CompanyProf
           apiKey: normalized.provider.apiKey ?? '',
         }
       : providerDefaults,
-    theme: normalized.theme ?? 'warm',
+    theme: normalized.theme ?? 'night',
     workspacePath: normalized.workspacePath ?? '~/Desktop/Hermills-Workspace',
     features: normalized.features?.length ? normalized.features : defaultOnboardingFeatures,
     company: companyDraftFromProfile(companyProfile),
@@ -4482,7 +4481,7 @@ function AdvancedOverlay({
   }, [activePanel, setActivePanel, uiMode])
 
   return (
-    <div className="advanced-backdrop" role="dialog" aria-modal="true">
+    <div className="advanced-backdrop hermills-dark-overlay" role="dialog" aria-modal="true">
       <section className={`advanced-sheet ${uiMode === 'expert' ? 'expert-mode' : ''}`} data-expert-mode={uiMode === 'expert'}>
         <header className="advanced-header">
           <div>
@@ -4770,7 +4769,7 @@ function PersonalizationPanel({
     userDisplayName: onboardingState.userDisplayName ?? '',
     agentName: onboardingState.agentName ?? 'Hermes',
     memoryEnabled: onboardingState.memoryEnabled ?? false,
-    theme: onboardingState.theme ?? 'warm',
+    theme: onboardingState.theme === 'plain' ? 'plain' : 'night',
     workspacePath: onboardingState.workspacePath ?? '',
   })
   const [busy, setBusy] = useState(false)
@@ -4784,7 +4783,7 @@ function PersonalizationPanel({
       userDisplayName: onboardingState.userDisplayName ?? '',
       agentName: onboardingState.agentName ?? 'Hermes',
       memoryEnabled: onboardingState.memoryEnabled ?? false,
-      theme: onboardingState.theme ?? 'warm',
+      theme: onboardingState.theme === 'plain' ? 'plain' : 'night',
       workspacePath: onboardingState.workspacePath ?? '',
     })
   }, [onboardingState])
