@@ -17,6 +17,8 @@ async function fileMode(filePath: string): Promise<number> {
   return (await stat(filePath)).mode & 0o777;
 }
 
+const supportsPosixModes = process.platform !== "win32";
+
 describe("Agent Builder stores", () => {
   it("creates custom agents and slugs", async () => {
     const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-agent-"));
@@ -110,18 +112,24 @@ describe("Agent Builder stores", () => {
     const keyPath = path.join(secureDir, "vault.key");
     const secretPath = secretFilePath(baseDir, ref);
 
-    expect(await fileMode(secureDir)).toBe(0o700);
-    expect(await fileMode(keyPath)).toBe(0o600);
-    expect(await fileMode(secretPath)).toBe(0o600);
+    if (supportsPosixModes) {
+      expect(await fileMode(secureDir)).toBe(0o700);
+      expect(await fileMode(keyPath)).toBe(0o600);
+      expect(await fileMode(secretPath)).toBe(0o600);
+    }
 
-    await chmod(secureDir, 0o755);
-    await chmod(keyPath, 0o000);
-    await chmod(secretPath, 0o000);
+    if (supportsPosixModes) {
+      await chmod(secureDir, 0o755);
+      await chmod(keyPath, 0o000);
+      await chmod(secretPath, 0o000);
+    }
 
     expect(await vault.readSecret(ref)).toBe("sk-repair-secret");
-    expect(await fileMode(secureDir)).toBe(0o700);
-    expect(await fileMode(keyPath)).toBe(0o600);
-    expect(await fileMode(secretPath)).toBe(0o600);
+    if (supportsPosixModes) {
+      expect(await fileMode(secureDir)).toBe(0o700);
+      expect(await fileMode(keyPath)).toBe(0o600);
+      expect(await fileMode(secretPath)).toBe(0o600);
+    }
   });
 
   it("deletes provider secret files when providers are removed", async () => {
@@ -135,7 +143,7 @@ describe("Agent Builder stores", () => {
     const secretPath = secretFilePath(baseDir, requireCredentialRef(provider));
 
     expect(await providers.readApiKey(provider)).toBe("sk-delete-secret-value");
-    expect(await fileMode(secretPath)).toBe(0o600);
+    if (supportsPosixModes) expect(await fileMode(secretPath)).toBe(0o600);
 
     await providers.remove(provider.id);
 

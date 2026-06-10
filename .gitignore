@@ -3,5 +3,6 @@ dist/
 release/
 coverage/
 tmp/
+build/icon.ico
 *.log
 .DS_Store

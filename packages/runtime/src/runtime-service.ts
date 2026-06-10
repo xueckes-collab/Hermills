@@ -19,7 +19,8 @@ import {
 
 const OFFICIAL_DOCS_URL = "https://hermes-agent.nousresearch.com/docs/";
 const GITHUB_RELEASE_URL = "https://api.github.com/repos/NousResearch/hermes-agent/releases/latest";
-const DEFAULT_INSTALLER_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh";
+const DEFAULT_UNIX_INSTALLER_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh";
+const DEFAULT_WINDOWS_INSTALLER_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1";
 const DEFAULT_LICENSE_URL = "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/LICENSE";
 const DEFAULT_API_PORT = 8642;
 
@@ -120,13 +121,13 @@ export class RuntimeService {
   async getLatest(): Promise<RuntimeLatest> {
     const latest: RuntimeLatest = {
       sourceUrl: OFFICIAL_DOCS_URL,
-      installerUrl: DEFAULT_INSTALLER_URL,
+      installerUrl: defaultInstallerUrl(),
       licenseUrl: DEFAULT_LICENSE_URL,
       fetchedAt: new Date().toISOString()
     };
 
     const docs = await this.fetchText(OFFICIAL_DOCS_URL).catch(() => "");
-    const installerMatch = docs.match(/https:\/\/raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/[^"'\s)]+\/scripts\/install\.sh/);
+    const installerMatch = docs.match(defaultInstallerRegex());
     if (installerMatch) latest.installerUrl = installerMatch[0];
 
     const release = await this.fetchJson<{ tag_name?: string; name?: string }>(GITHUB_RELEASE_URL).catch(() => undefined);
@@ -190,7 +191,7 @@ export class RuntimeService {
       installMetadata,
       gateway,
       checks: [
-        { id: "platform", label: "macOS first-release target", ok: process.platform === "darwin", detail: `${process.platform}/${process.arch}` },
+        { id: "platform", label: "Supported desktop platform", ok: isSupportedDesktopPlatform(), detail: `${process.platform}/${process.arch}` },
         { id: "runtime-home", label: "Managed install directory", ok: await pathExists(this.runtimeHome), detail: this.runtimeHome },
         { id: "hermes-home", label: "Managed Hermes home", ok: await pathExists(this.hermesHome), detail: this.hermesHome },
         { id: "executable", label: "Hermes command", ok: installed, detail: executablePath },
@@ -268,7 +269,7 @@ export class RuntimeService {
     const logStream = createWriteStream(logPath, { flags: "a" });
     this.gatewayFailed = false;
     this.gatewayMessage = `Starting gateway. Log: ${logPath}`;
-    const child = spawn(executablePath, ["gateway", "run", "--replace"], {
+    const child = spawnHermes(executablePath, ["gateway", "run", "--replace"], {
       cwd: this.hermesHome,
       env: {
         ...process.env,
@@ -387,7 +388,7 @@ export class RuntimeService {
     this.pushEvent(job, "info", "checking", 8, "Checking the official Hermes Agent installer.");
     const latest: RuntimeLatest = await this.getLatest().catch(() => ({
       sourceUrl: OFFICIAL_DOCS_URL,
-      installerUrl: request.installerUrl ?? DEFAULT_INSTALLER_URL,
+      installerUrl: request.installerUrl ?? defaultInstallerUrl(),
       licenseUrl: request.licenseUrl ?? DEFAULT_LICENSE_URL,
       fetchedAt: new Date().toISOString()
     }));
@@ -411,9 +412,9 @@ export class RuntimeService {
     this.pushEvent(job, "info", "downloading", 34, `Installer SHA256 verified: ${installerSha256}.`);
     const stagingDir = path.join(this.baseDir, "runtime", "staging");
     await mkdir(stagingDir, { recursive: true });
-    const installerPath = path.join(stagingDir, "install-hermes-agent.sh");
+    const installerPath = path.join(stagingDir, installerFileName(installerUrl));
     await writeFile(installerPath, installerBody, "utf8");
-    await chmod(installerPath, 0o700);
+    await makeExecutableIfSupported(installerPath);
 
     if (request.dryRun) {
       job.status = "done";
@@ -423,8 +424,10 @@ export class RuntimeService {
 
     await this.prepareRuntimeDirectoryForInstaller(job);
     this.pushEvent(job, "info", "installing", 40, "Installing Hermes Agent into the Hermills-managed local folder.");
-    const installerArgs = ["--skip-setup", "--dir", this.runtimeHome, "--hermes-home", this.hermesHome];
-    if (request.skipBrowser) installerArgs.push("--skip-browser");
+    const installerArgs = process.platform === "win32"
+      ? ["-SkipSetup", "-NonInteractive", "-Json", "-InstallDir", this.runtimeHome, "-HermesHome", this.hermesHome]
+      : ["--skip-setup", "--dir", this.runtimeHome, "--hermes-home", this.hermesHome];
+    if (request.skipBrowser && process.platform !== "win32") installerArgs.push("--skip-browser");
     await this.runInstaller(installerPath, installerArgs, path.join(this.logHome, `install-${Date.now()}.log`), job);
 
     const executablePath = await this.findExecutable();
@@ -503,6 +506,8 @@ export class RuntimeService {
   }
 
   private runInstaller(installerPath: string, installerArgs: string[], logPath: string, job: InstallJob): Promise<void> {
+    if (process.platform === "win32") return this.runWindowsInstaller(installerPath, logPath, job);
+
     return new Promise((resolve, reject) => {
       const logStream = createWriteStream(logPath, { flags: "a" });
       const child = spawn("bash", [installerPath, ...installerArgs], {
@@ -529,6 +534,68 @@ export class RuntimeService {
     });
   }
 
+  private async runWindowsInstaller(installerPath: string, logPath: string, job: InstallJob): Promise<void> {
+    const baseArgs = [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      installerPath,
+      "-InstallDir",
+      this.runtimeHome,
+      "-HermesHome",
+      this.hermesHome
+    ];
+    const manifest = await this.runWindowsInstallerCommand([...baseArgs, "-Manifest"], logPath, job, 42);
+    const parsedManifest = parseJsonLine<{ stages?: Array<{ name?: string; title?: string; needs_user_input?: boolean }> }>(manifest.stdout);
+    const stages = (parsedManifest?.stages ?? []).filter((stage) => stage.name && !stage.needs_user_input);
+
+    if (stages.length === 0) {
+      await this.runWindowsInstallerCommand([...baseArgs, "-SkipSetup", "-NonInteractive", "-Json"], logPath, job, 55);
+      return;
+    }
+
+    for (const [index, stage] of stages.entries()) {
+      const progress = 42 + Math.floor((index / Math.max(stages.length, 1)) * 26);
+      this.pushEvent(job, "info", "installing", progress, stage.title ?? `Running installer stage ${stage.name}.`);
+      const result = await this.runWindowsInstallerCommand([...baseArgs, "-Stage", String(stage.name), "-NonInteractive", "-Json"], logPath, job, progress);
+      const stageResult = parseJsonLine<{ ok?: boolean; skipped?: boolean; reason?: string }>(result.stdout);
+      if (stageResult?.ok === false) throw new Error(stageResult.reason ?? `Installer stage failed: ${stage.name}`);
+      if (stageResult?.skipped) this.pushEvent(job, "warn", "installing", progress, stageResult.reason ?? `Installer stage skipped: ${stage.name}.`);
+    }
+  }
+
+  private runWindowsInstallerCommand(args: string[], logPath: string, job: InstallJob, progress: number): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const logStream = createWriteStream(logPath, { flags: "a" });
+      const child = spawn(windowsPowerShellCommand(), args, {
+        cwd: this.baseDir,
+        env: { ...process.env, HERMILLS_HOME: this.baseDir, HERMES_HOME: this.hermesHome, HERMES_AGENT_HOME: this.runtimeHome },
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      let stdout = "";
+      let stderr = "";
+      const onChunk = (chunk: Buffer, stream: "stdout" | "stderr") => {
+        const line = redactSecrets(chunk.toString("utf8"));
+        logStream.write(line);
+        if (stream === "stdout") stdout += line;
+        else stderr += line;
+        const trimmed = line.trim();
+        if (trimmed && !looksLikeJson(trimmed)) this.pushEvent(job, "info", "installing", progress, trimmed);
+      };
+      child.stdout?.on("data", (chunk) => onChunk(chunk, "stdout"));
+      child.stderr?.on("data", (chunk) => onChunk(chunk, "stderr"));
+      child.on("error", (error) => {
+        logStream.end();
+        reject(error);
+      });
+      child.on("close", (code) => {
+        logStream.end();
+        code === 0 ? resolve({ stdout, stderr }) : reject(new Error(`Installer exited with code ${code ?? "unknown"}. Log: ${logPath}`));
+      });
+    });
+  }
+
   private async prepareRuntimeDirectoryForInstaller(job: InstallJob): Promise<void> {
     if (!(await pathExists(this.runtimeHome))) return;
     if (await pathExists(path.join(this.runtimeHome, ".git"))) return;
@@ -546,14 +613,7 @@ export class RuntimeService {
   }
 
   private async findExecutable(): Promise<string | undefined> {
-    for (const candidate of [
-      path.join(this.runtimeHome, "venv", "bin", "hermes"),
-      path.join(this.runtimeHome, ".venv", "bin", "hermes"),
-      path.join(this.runtimeHome, "bin", "hermes"),
-      path.join(this.runtimeHome, "bin", "hermes-agent"),
-      path.join(this.runtimeHome, "hermes"),
-      path.join(this.runtimeHome, "hermes-agent")
-    ]) {
+    for (const candidate of executableCandidates(this.runtimeHome)) {
       if (await pathExists(candidate)) return candidate;
     }
     return undefined;
@@ -561,9 +621,9 @@ export class RuntimeService {
 
   private readVersion(executablePath: string): Promise<string | undefined> {
     return new Promise((resolve) => {
-      const child = spawn(executablePath, ["--version"], { env: { ...process.env, HERMES_HOME: this.hermesHome }, stdio: ["ignore", "pipe", "ignore"] });
+      const child = spawnHermes(executablePath, ["--version"], { env: { ...process.env, HERMES_HOME: this.hermesHome }, stdio: ["ignore", "pipe", "ignore"] });
       let output = "";
-      child.stdout.on("data", (chunk) => {
+      child.stdout?.on("data", (chunk) => {
         output += chunk.toString("utf8");
       });
       child.on("close", () => resolve(output.trim() || undefined));
@@ -638,7 +698,7 @@ export class RuntimeService {
     const parts = parsed.pathname.split("/").filter(Boolean);
     const repoOk = parsed.protocol === "https:" && parsed.hostname === "raw.githubusercontent.com" && parts[0] === "NousResearch" && parts[1] === "hermes-agent";
     const filePath = parts.slice(3).join("/");
-    const expectedPath = kind === "installer" ? "scripts/install.sh" : "LICENSE";
+    const expectedPath = kind === "installer" ? defaultInstallerScriptPath() : "LICENSE";
     if (!repoOk || filePath !== expectedPath) {
       throw new Error(`Refusing untrusted Hermes Agent ${kind} URL. Expected official NousResearch/hermes-agent ${expectedPath}.`);
     }
@@ -729,6 +789,84 @@ function optionalDate<Key extends string>(key: Key, value: unknown): Partial<Rec
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function defaultInstallerUrl(): string {
+  return process.platform === "win32" ? DEFAULT_WINDOWS_INSTALLER_URL : DEFAULT_UNIX_INSTALLER_URL;
+}
+
+function defaultInstallerScriptPath(): string {
+  return process.platform === "win32" ? "scripts/install.ps1" : "scripts/install.sh";
+}
+
+function defaultInstallerRegex(): RegExp {
+  return process.platform === "win32"
+    ? /https:\/\/raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/[^"'\s)]+\/scripts\/install\.ps1/
+    : /https:\/\/raw\.githubusercontent\.com\/NousResearch\/hermes-agent\/[^"'\s)]+\/scripts\/install\.sh/;
+}
+
+function installerFileName(installerUrl: string): string {
+  return /\.ps1(?:$|[?#])/i.test(installerUrl) ? "install-hermes-agent.ps1" : "install-hermes-agent.sh";
+}
+
+async function makeExecutableIfSupported(filePath: string): Promise<void> {
+  if (process.platform === "win32") return;
+  await chmod(filePath, 0o700);
+}
+
+function isSupportedDesktopPlatform(): boolean {
+  return process.platform === "darwin" || process.platform === "win32";
+}
+
+function executableCandidates(runtimeHome: string): string[] {
+  const windowsCandidates = [
+    path.join(runtimeHome, "venv", "Scripts", "hermes.exe"),
+    path.join(runtimeHome, ".venv", "Scripts", "hermes.exe"),
+    path.join(runtimeHome, "Scripts", "hermes.exe"),
+    path.join(runtimeHome, "hermes.exe"),
+    path.join(runtimeHome, "venv", "Scripts", "hermes.cmd"),
+    path.join(runtimeHome, ".venv", "Scripts", "hermes.cmd"),
+    path.join(runtimeHome, "Scripts", "hermes.cmd"),
+    path.join(runtimeHome, "hermes.cmd")
+  ];
+  const unixCandidates = [
+    path.join(runtimeHome, "venv", "bin", "hermes"),
+    path.join(runtimeHome, ".venv", "bin", "hermes"),
+    path.join(runtimeHome, "bin", "hermes"),
+    path.join(runtimeHome, "bin", "hermes-agent"),
+    path.join(runtimeHome, "hermes"),
+    path.join(runtimeHome, "hermes-agent")
+  ];
+  return process.platform === "win32" ? [...windowsCandidates, ...unixCandidates] : unixCandidates;
+}
+
+function spawnHermes(executablePath: string, args: string[], options: Parameters<typeof spawn>[2]): ChildProcess {
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executablePath)) {
+    return spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "call", executablePath, ...args], options);
+  }
+  return spawn(executablePath, args, options);
+}
+
+function windowsPowerShellCommand(): string {
+  const systemRoot = process.env.SystemRoot;
+  return systemRoot ? path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "powershell.exe";
+}
+
+function looksLikeJson(value: string): boolean {
+  return value.startsWith("{") && value.endsWith("}");
+}
+
+function parseJsonLine<T>(value: string): T | undefined {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (!looksLikeJson(lines[index])) continue;
+    try {
+      return JSON.parse(lines[index]) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 function isHermesUpdateAvailable(latestReleaseTag: string | undefined, installMetadata: InstallMetadata | undefined, installedVersion: string | undefined): boolean {

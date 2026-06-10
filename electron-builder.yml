@@ -42,6 +42,27 @@ mac:
   target:
     - dmg
     - zip
+win:
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Hermills-${version}-${arch}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hermills
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
 dmg:
   sign: true
   title: Hermills Installer

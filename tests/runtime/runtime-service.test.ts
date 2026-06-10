@@ -15,7 +15,7 @@ describe("RuntimeService", () => {
       }
     });
     const latest = await service.getLatest();
-    expect(latest.installerUrl).toContain("scripts/install.sh");
+    expect(latest.installerUrl).toContain(process.platform === "win32" ? "scripts/install.ps1" : "scripts/install.sh");
     expect(latest.latestReleaseTag).toBe("v0.14.0");
     expect(latest.installerSha256).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -24,9 +24,9 @@ describe("RuntimeService", () => {
     const service = new RuntimeService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-")),
       allowCustomInstaller: true,
-      fetchImpl: async (url) => new Response(String(url).endsWith("LICENSE") ? "MIT License" : "#!/usr/bin/env bash\necho ok\n")
+      fetchImpl: async (url) => new Response(String(url).endsWith("LICENSE") ? "MIT License" : fakeInstallerScript())
     });
-    const { jobId } = await service.startInstall({ dryRun: true, installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+    const { jobId } = await service.startInstall({ dryRun: true, installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
     await waitFor(() => service.getEvents(jobId).some((event) => event.level === "done"));
     expect(service.getEvents(jobId).map((event) => event.message).join("\n")).toContain("Dry-run complete");
     expect(service.getEvents(jobId).some((event) => event.step === "downloading" && typeof event.progress === "number")).toBe(true);
@@ -37,9 +37,9 @@ describe("RuntimeService", () => {
   it("refuses custom installer URLs unless explicitly enabled", async () => {
     const service = new RuntimeService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-untrusted-")),
-      fetchImpl: async (url) => new Response(String(url).endsWith("LICENSE") ? "MIT License" : "#!/usr/bin/env bash\necho ok\n")
+      fetchImpl: async (url) => new Response(String(url).endsWith("LICENSE") ? "MIT License" : fakeInstallerScript())
     });
-    const { jobId } = await service.startInstall({ dryRun: true, installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+    const { jobId } = await service.startInstall({ dryRun: true, installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
     await waitFor(() => service.getEvents(jobId).some((event) => event.level === "error"));
     expect(service.getEvents(jobId).at(-1)?.message).toContain("Refusing untrusted Hermes Agent installer URL");
   });
@@ -62,11 +62,11 @@ describe("RuntimeService", () => {
       allowCustomInstaller: true,
       fetchImpl: async (url) => {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        return new Response(String(url).endsWith("LICENSE") ? "MIT License" : "#!/usr/bin/env bash\necho ok\n");
+        return new Response(String(url).endsWith("LICENSE") ? "MIT License" : fakeInstallerScript());
       }
     });
-    const first = await service.startInstall({ dryRun: true, installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
-    const second = await service.startInstall({ dryRun: true, installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+    const first = await service.startInstall({ dryRun: true, installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
+    const second = await service.startInstall({ dryRun: true, installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
     expect(second.jobId).toBe(first.jobId);
     await waitFor(() => service.getEvents(first.jobId).some((event) => event.level === "done"));
   });
@@ -86,7 +86,7 @@ describe("RuntimeService", () => {
     });
 
     try {
-      const { jobId } = await service.startInstall({ installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+      const { jobId } = await service.startInstall({ installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
       await waitFor(() => service.getEvents(jobId).some((event) => event.step === "verifying"), 20_000);
       expect(service.getEvents(jobId).map((event) => event.message).join("\n")).toContain("Removed an empty partial Hermes install directory");
       await expect(service.getStatus()).resolves.toMatchObject({ installed: true, state: "ready" });
@@ -114,7 +114,7 @@ describe("RuntimeService", () => {
     });
 
     try {
-      const { jobId } = await service.startInstall({ installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+      const { jobId } = await service.startInstall({ installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
       await waitFor(() => service.getEvents(jobId).some((event) => event.step === "verifying"), 20_000);
 
       const current = await service.getUpdateCheck(true);
@@ -251,7 +251,7 @@ describe("RuntimeService", () => {
     });
 
     try {
-      const { jobId } = await service.startInstall({ installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+      const { jobId } = await service.startInstall({ installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
       await waitFor(() => service.getEvents(jobId).some((event) => event.step === "verifying"), 20_000);
 
       const status = await service.getStatus();
@@ -297,7 +297,7 @@ describe("RuntimeService", () => {
     const service = new RuntimeService({ baseDir, allowCustomInstaller: true, fetchImpl });
 
     try {
-      const { jobId } = await service.startInstall({ installerUrl: "https://example.com/install.sh", licenseUrl: "https://example.com/LICENSE" });
+      const { jobId } = await service.startInstall({ installerUrl: fakeInstallerUrl(), licenseUrl: "https://example.com/LICENSE" });
       await waitFor(() => service.getEvents(jobId).some((event) => event.step === "verifying"), 20_000);
     } finally {
       await service.dispose();
@@ -342,6 +342,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 function fakeInstallerScript(): string {
+  if (process.platform === "win32") return fakeWindowsInstallerScript(false);
   return `#!/usr/bin/env bash
 set -euo pipefail
 RUNTIME_DIR=""
@@ -377,6 +378,7 @@ chmod +x "$RUNTIME_DIR/bin/hermes"
 }
 
 function fakeOfficialStyleInstallerScript(): string {
+  if (process.platform === "win32") return fakeWindowsInstallerScript(true);
   return `#!/usr/bin/env bash
 set -euo pipefail
 RUNTIME_DIR=""
@@ -412,5 +414,72 @@ process.on("SIGTERM", () => process.exit(0));
 setInterval(() => undefined, 1000);
 NODE
 chmod +x "$RUNTIME_DIR/bin/hermes"
+`;
+}
+
+function fakeInstallerUrl(): string {
+  return process.platform === "win32" ? "https://example.com/install.ps1" : "https://example.com/install.sh";
+}
+
+function fakeWindowsInstallerScript(requiresGitRepo: boolean): string {
+  return `
+param(
+  [switch]$Manifest,
+  [string]$Stage = "",
+  [switch]$NonInteractive,
+  [switch]$Json,
+  [switch]$SkipSetup,
+  [string]$InstallDir = "",
+  [string]$HermesHome = ""
+)
+$stages = @(
+  @{ name = "repository"; title = "Cloning Hermes repository"; category = "install"; needs_user_input = $false },
+  @{ name = "venv"; title = "Creating Python virtual environment"; category = "install"; needs_user_input = $false },
+  @{ name = "configure"; title = "Configuring API keys and models"; category = "post-install"; needs_user_input = $true },
+  @{ name = "gateway"; title = "Starting messaging gateway"; category = "post-install"; needs_user_input = $true }
+)
+if ($Manifest) {
+  @{ protocol_version = 1; stages = $stages } | ConvertTo-Json -Depth 5 -Compress
+  exit 0
+}
+if ($Stage -eq "repository") {
+  if (${requiresGitRepo ? "$true" : "$false"} -and (Test-Path -LiteralPath $InstallDir) -and !(Test-Path -LiteralPath (Join-Path $InstallDir ".git"))) {
+    Write-Error "Directory exists but is not a git repository: $InstallDir"
+    @{ stage = $Stage; ok = $false; skipped = $false; reason = "Directory exists but is not a git repository"; duration_ms = 1 } | ConvertTo-Json -Compress
+    exit 31
+  }
+  New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir ".git") | Out-Null
+}
+if ($Stage -eq "venv") {
+  $bin = Join-Path $InstallDir "venv\\Scripts"
+  New-Item -ItemType Directory -Force -Path $bin | Out-Null
+  $nodeScript = Join-Path $bin "hermes-fake.js"
+  Set-Content -LiteralPath $nodeScript -Encoding UTF8 -Value @'
+if (process.argv.includes("--version")) {
+  console.log("hermes-agent fake-v1");
+  process.exit(0);
+}
+if (process.argv[2] !== "gateway" || process.argv[3] !== "run") {
+  console.error("unsupported fake hermes command");
+  process.exit(2);
+}
+process.on("SIGTERM", () => process.exit(0));
+setInterval(() => undefined, 1000);
+'@
+  Set-Content -LiteralPath (Join-Path $bin "hermes.cmd") -Encoding ASCII -Value '@echo off
+node "%~dp0hermes-fake.js" %*
+'
+}
+if ($Stage) {
+  @{ stage = $Stage; ok = $true; skipped = $false; reason = $null; duration_ms = 1 } | ConvertTo-Json -Compress
+  exit 0
+}
+foreach ($item in $stages) {
+  if (-not $item.needs_user_input) {
+    & $PSCommandPath -Stage $item.name -NonInteractive -Json -InstallDir $InstallDir -HermesHome $HermesHome
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  }
+}
+@{ ok = $true; protocol_version = 1 } | ConvertTo-Json -Compress
 `;
 }
