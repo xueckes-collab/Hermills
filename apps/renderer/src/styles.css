@@ -697,6 +697,317 @@ p {
   color: #f7fbf8;
 }
 
+.hermills-onboarding-shell {
+  --bg: #07080d;
+  --surface: #101119;
+  --surface-solid: #12131b;
+  --surface-subtle: rgba(255, 255, 255, 0.045);
+  --ink: #f7f7fb;
+  --muted: #9ca3b5;
+  --soft: #74798c;
+  --line: rgba(255, 255, 255, 0.085);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --green: #a78bfa;
+  --green-soft: rgba(139, 92, 246, 0.16);
+  --shadow: none;
+  --shadow-soft: none;
+  gap: 16px;
+  padding: 54px 18px 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 220px),
+    #07080d;
+  color: #f7f7fb;
+}
+
+.hermills-onboarding-shell .onboarding-brand {
+  position: relative;
+  z-index: 1;
+  margin-left: 4px;
+  color: #f7f7fb;
+}
+
+.hermills-onboarding-shell .brand-mark {
+  border-color: rgba(167, 139, 250, 0.34);
+  background: rgba(139, 92, 246, 0.16);
+  color: #ddd6fe;
+  box-shadow: none;
+}
+
+.hermills-onboarding-shell .onboarding-brand strong {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.hermills-onboarding-shell .onboarding-brand span {
+  color: #8e94a8;
+}
+
+.hermills-onboarding-shell .onboarding-card {
+  grid-template-columns: 232px minmax(0, 760px);
+  align-self: center;
+  width: min(1060px, 100%);
+  min-height: min(720px, calc(100vh - 96px));
+  max-height: calc(100vh - 96px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 24px;
+  background: #0b0c12;
+  box-shadow: none;
+}
+
+.hermills-onboarding-shell .onboarding-card.loading {
+  width: min(560px, 100%);
+  min-height: auto;
+  max-height: none;
+  padding: 24px;
+  background: #11121a;
+}
+
+.hermills-onboarding-shell .onboarding-steps {
+  gap: 8px;
+  padding: 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.075);
+  background: #0f1017;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill {
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 12px;
+  color: #8d91a3;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill svg {
+  color: #8b8fa3;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill.active,
+.hermills-onboarding-shell .onboarding-step-pill:hover {
+  border-color: rgba(167, 139, 250, 0.28);
+  background: rgba(139, 92, 246, 0.13);
+  color: #ffffff;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill.active svg,
+.hermills-onboarding-shell .onboarding-step-pill:hover svg {
+  color: #c4b5fd;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill.complete {
+  color: #d8d8e4;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill.complete svg,
+.hermills-onboarding-shell .onboarding-step-pill.complete svg:last-child {
+  color: #a78bfa;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill:disabled {
+  opacity: 0.54;
+}
+
+.hermills-onboarding-shell .onboarding-step-pill:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  color: #8d91a3;
+}
+
+.hermills-onboarding-shell .onboarding-panel {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 18px;
+  padding: 28px 32px;
+  background: #0b0c12;
+}
+
+.hermills-onboarding-shell .onboarding-progress {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.hermills-onboarding-shell .onboarding-progress span {
+  background: #a78bfa;
+}
+
+.hermills-onboarding-shell .onboarding-heading {
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.hermills-onboarding-shell .onboarding-icon {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(167, 139, 250, 0.26);
+  border-radius: 14px;
+  background: rgba(139, 92, 246, 0.14);
+  color: #c4b5fd;
+}
+
+.hermills-onboarding-shell .onboarding-heading span,
+.hermills-onboarding-shell .onboarding-loading span {
+  color: #a78bfa;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.hermills-onboarding-shell .onboarding-heading h1 {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: clamp(25px, 2.4vw, 38px);
+  font-weight: 760;
+  line-height: 1.04;
+}
+
+.hermills-onboarding-shell .onboarding-heading p {
+  margin-top: 6px;
+  color: #9ca3b5;
+  font-size: 14px;
+}
+
+.hermills-onboarding-shell .onboarding-content {
+  padding-right: 4px;
+}
+
+.hermills-onboarding-shell .onboarding-option-grid,
+.hermills-onboarding-shell .onboarding-form-grid,
+.hermills-onboarding-shell .feature-checklist {
+  gap: 12px;
+}
+
+.hermills-onboarding-shell .onboarding-option,
+.hermills-onboarding-shell .theme-choice,
+.hermills-onboarding-shell .feature-check,
+.hermills-onboarding-shell .onboarding-switch,
+.hermills-onboarding-shell .onboarding-note,
+.hermills-onboarding-shell .company-review-item {
+  border-color: rgba(255, 255, 255, 0.085);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-onboarding-shell .onboarding-option {
+  min-height: 76px;
+  padding: 13px 14px;
+}
+
+.hermills-onboarding-shell .onboarding-option svg,
+.hermills-onboarding-shell .feature-check svg,
+.hermills-onboarding-shell .company-upload-dropzone svg {
+  color: #a78bfa;
+}
+
+.hermills-onboarding-shell .onboarding-option strong,
+.hermills-onboarding-shell .theme-choice strong,
+.hermills-onboarding-shell .feature-check strong,
+.hermills-onboarding-shell .onboarding-switch strong,
+.hermills-onboarding-shell .company-review-item p {
+  color: #ffffff;
+}
+
+.hermills-onboarding-shell .onboarding-option small,
+.hermills-onboarding-shell .theme-choice small,
+.hermills-onboarding-shell .feature-check small,
+.hermills-onboarding-shell .onboarding-switch small,
+.hermills-onboarding-shell .onboarding-note,
+.hermills-onboarding-shell .company-review-item span {
+  color: #9ca3b5;
+}
+
+.hermills-onboarding-shell .onboarding-option.active,
+.hermills-onboarding-shell .theme-choice.active,
+.hermills-onboarding-shell .feature-check.active {
+  border-color: rgba(167, 139, 250, 0.34);
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.hermills-onboarding-shell .onboarding-form-grid label > span {
+  color: #9ca3b5;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.hermills-onboarding-shell input,
+.hermills-onboarding-shell select,
+.hermills-onboarding-shell textarea {
+  border-color: rgba(255, 255, 255, 0.095);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: #ffffff;
+  box-shadow: none !important;
+}
+
+.hermills-onboarding-shell input::placeholder,
+.hermills-onboarding-shell textarea::placeholder {
+  color: #6f7486;
+}
+
+.hermills-onboarding-shell input:focus,
+.hermills-onboarding-shell select:focus,
+.hermills-onboarding-shell textarea:focus {
+  border-color: rgba(167, 139, 250, 0.42);
+  outline: none;
+}
+
+.hermills-onboarding-shell .onboarding-switch input,
+.hermills-onboarding-shell .feature-check input {
+  accent-color: #a78bfa;
+}
+
+.hermills-onboarding-shell .upload-dropzone.company-upload-dropzone {
+  min-height: 184px;
+  border-color: rgba(167, 139, 250, 0.22);
+  border-radius: 18px;
+  background: rgba(139, 92, 246, 0.08);
+  color: #f7f7fb;
+}
+
+.hermills-onboarding-shell .company-review-list {
+  gap: 10px;
+}
+
+.hermills-onboarding-shell .company-review-item {
+  padding: 13px 14px;
+}
+
+.hermills-onboarding-shell .company-review-item .text-button {
+  color: #c4b5fd;
+}
+
+.hermills-onboarding-shell .onboarding-actions {
+  padding-top: 2px;
+}
+
+.hermills-onboarding-shell .onboarding-actions .primary-button,
+.hermills-onboarding-shell .primary-button {
+  border-color: rgba(167, 139, 250, 0.42);
+  background: #7c3aed;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.hermills-onboarding-shell .soft-button {
+  border-color: rgba(255, 255, 255, 0.095);
+  background: rgba(255, 255, 255, 0.045);
+  color: #f7f7fb;
+  box-shadow: none;
+}
+
+.hermills-onboarding-shell .soft-button:hover {
+  border-color: rgba(167, 139, 250, 0.32);
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.hermills-onboarding-shell .inline-alert {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fef3c7;
+}
+
 .brand-block,
 .sidebar-header,
 .sidebar-actions,

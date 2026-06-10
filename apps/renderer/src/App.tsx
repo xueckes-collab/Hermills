@@ -3391,7 +3391,7 @@ function FirstRunDeployPage({
 
 function OnboardingLoadingPage({ serviceError, copy }: { serviceError: string; copy: UiCopy }) {
   return (
-    <main className="onboarding-shell">
+    <main className="onboarding-shell hermills-onboarding-shell">
       <header className="onboarding-brand">
         <div className="brand-mark">H</div>
         <div>
@@ -3594,7 +3594,7 @@ function OnboardingWizard({
   }
 
   return (
-    <main className={`onboarding-shell onboarding-theme-${draft.theme}`}>
+    <main className={`onboarding-shell hermills-onboarding-shell onboarding-theme-${draft.theme}`}>
       <header className="onboarding-brand">
         <div className="brand-mark">H</div>
         <div>
