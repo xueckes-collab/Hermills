@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, ReactNode } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from 'react'
+import { motion } from 'motion/react'
 import {
   AlertCircle,
   Bot,
@@ -40,8 +41,16 @@ import {
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatSession, CompanyMaterialCategory, CompanyProfile, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
 
@@ -196,13 +205,13 @@ type ProviderForm = {
   apiKey: string
 }
 
-const senderProviderPresets: Array<{ id: SenderProviderId; label: string; host: string; port: string; secure: boolean }> = [
-  { id: 'gmail', label: 'Gmail', host: 'smtp.gmail.com', port: '587', secure: false },
-  { id: 'outlook', label: 'Outlook', host: 'smtp.office365.com', port: '587', secure: false },
-  { id: 'tencent', label: 'Tencent', host: 'smtp.exmail.qq.com', port: '465', secure: true },
-  { id: 'aliyun', label: 'Aliyun', host: 'smtp.mxhichina.com', port: '465', secure: true },
-  { id: 'zoho', label: 'Zoho', host: 'smtp.zoho.com', port: '465', secure: true },
-  { id: 'custom', label: 'Custom', host: '', port: '587', secure: false },
+const senderProviderPresets: Array<{ id: SenderProviderId; label: string; host: string; port: string; secure: boolean; imapHost: string; imapPort: string; imapSecure: boolean }> = [
+  { id: 'gmail', label: 'Gmail', host: 'smtp.gmail.com', port: '587', secure: false, imapHost: 'imap.gmail.com', imapPort: '993', imapSecure: true },
+  { id: 'outlook', label: 'Outlook', host: 'smtp.office365.com', port: '587', secure: false, imapHost: 'outlook.office365.com', imapPort: '993', imapSecure: true },
+  { id: 'tencent', label: 'Tencent', host: 'smtp.exmail.qq.com', port: '465', secure: true, imapHost: 'imap.exmail.qq.com', imapPort: '993', imapSecure: true },
+  { id: 'aliyun', label: 'Aliyun', host: 'smtp.mxhichina.com', port: '465', secure: true, imapHost: 'imap.mxhichina.com', imapPort: '993', imapSecure: true },
+  { id: 'zoho', label: 'Zoho', host: 'smtp.zoho.com', port: '465', secure: true, imapHost: 'imap.zoho.com', imapPort: '993', imapSecure: true },
+  { id: 'custom', label: 'Custom', host: '', port: '587', secure: false, imapHost: '', imapPort: '993', imapSecure: true },
 ]
 
 const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: string }> = {
@@ -214,7 +223,7 @@ const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: stri
   custom: { smtpLabel: 'SMTP' },
 }
 
-type OnboardingStepId = 'language' | 'identity' | 'provider' | 'theme' | 'workspace' | 'features'
+type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
 type OnboardingLanguage = 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'en'
 type OnboardingProviderChoice = ProviderPresetId | 'skip'
 type OnboardingTheme = 'warm' | 'night' | 'plain' | 'system'
@@ -257,13 +266,35 @@ type OnboardingDraft = Omit<OnboardingInput, 'provider' | 'providerSkipped'> & {
   providerChoice: OnboardingProviderChoice
   provider: ProviderForm
   features: OnboardingFeatureId[]
+  company: ReturnType<typeof companyDraftFromProfile>
 }
 
 const onboardingSteps: Array<{ id: OnboardingStepId; icon: LucideIcon }> = [
   { id: 'language', icon: Languages },
   { id: 'identity', icon: UserRound },
+  { id: 'companyBasics', icon: Building2 },
+  { id: 'companyProducts', icon: ListChecks },
+  { id: 'companyMarket', icon: Globe2 },
+  { id: 'companyTrust', icon: ShieldCheck },
+  { id: 'companyTrade', icon: Mail },
+  { id: 'companyFiles', icon: Upload },
   { id: 'workspace', icon: FolderOpen },
+  { id: 'companyReview', icon: CheckCircle2 },
 ]
+
+const companyOnboardingSteps: Array<{ id: OnboardingStepId; icon: LucideIcon }> = [
+  { id: 'companyBasics', icon: Building2 },
+  { id: 'companyProducts', icon: ListChecks },
+  { id: 'companyMarket', icon: Globe2 },
+  { id: 'companyTrust', icon: ShieldCheck },
+  { id: 'companyTrade', icon: Mail },
+  { id: 'companyFiles', icon: Upload },
+  { id: 'companyReview', icon: CheckCircle2 },
+]
+
+function isCompanyOnboardingStep(id: OnboardingStepId): boolean {
+  return companyOnboardingSteps.some((item) => item.id === id)
+}
 
 const languageOptions: Array<{ id: OnboardingLanguage; label: string }> = [
   { id: 'zh-CN', label: '简体中文' },
@@ -449,7 +480,7 @@ function providerFormFromPreset(id: ProviderPresetId): ProviderForm {
   }
 }
 
-function draftFromOnboarding(state: OnboardingState): OnboardingDraft {
+function draftFromOnboarding(state: OnboardingState, companyProfile: CompanyProfile = fallback.companyProfile): OnboardingDraft {
   const normalized = normalizeOnboardingState(state)
   const providerPreset = providerPresets.find((preset) => normalized.provider?.baseUrl === preset.baseUrl)?.id
   const providerChoice: OnboardingProviderChoice = normalized.provider ? (providerPreset ?? 'custom') : 'skip'
@@ -473,6 +504,7 @@ function draftFromOnboarding(state: OnboardingState): OnboardingDraft {
     theme: normalized.theme ?? 'warm',
     workspacePath: normalized.workspacePath ?? '~/Desktop/Hermills-Workspace',
     features: normalized.features?.length ? normalized.features : defaultOnboardingFeatures,
+    company: companyDraftFromProfile(companyProfile),
   }
 }
 
@@ -511,7 +543,11 @@ export default function App() {
   const localDeploymentComplete = !appState.data.shouldShowFirstDeploy
   const workspaceEnabled = !appState.loading && localDeploymentComplete
   const onboarding = useEndpoint(loadOnboardingState, fallbackOnboarding, workspaceEnabled)
-  const chatEnabled = workspaceEnabled && onboarding.data.completed
+  const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, workspaceEnabled)
+  const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, workspaceEnabled)
+  const companyReady = isCompanyProfileReady(companyProfile.data)
+  const setupCompleted = onboarding.data.completed && companyReady
+  const chatEnabled = workspaceEnabled && setupCompleted
   const agents = useEndpoint(api.agents, fallback.agents, chatEnabled)
   const providers = useEndpoint(api.providers, fallback.providers, chatEnabled)
   const profiles = useEndpoint(api.profiles, fallback.profiles, chatEnabled)
@@ -519,8 +555,6 @@ export default function App() {
   const analytics = useEndpoint(api.analyticsSummary, fallback.analytics, chatEnabled)
   const sessions = useEndpoint(api.chatSessions, fallback.sessions, chatEnabled)
   const materials = useEndpoint(api.materials, fallback.materials, chatEnabled)
-  const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, chatEnabled)
-  const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, chatEnabled)
   const outreachLeads = useEndpoint(api.outreachLeads, fallback.outreachLeads, chatEnabled)
   const outreachCampaigns = useEndpoint(api.outreachCampaigns, fallback.outreachCampaigns, chatEnabled)
   const outreachSenders = useEndpoint(api.outreachSenderAccounts, fallback.outreachSenderAccounts, chatEnabled)
@@ -597,16 +631,21 @@ export default function App() {
     )
   }
 
-  if (onboarding.loading) {
+  if (onboarding.loading || companyProfile.loading || companyMaterials.loading) {
     return (
       <OnboardingLoadingPage serviceError={serviceWarning} copy={copy} />
     )
   }
 
-  if (!onboarding.data.completed) {
+  if (!onboarding.data.completed || !companyReady) {
     return (
       <OnboardingWizard
         initialState={onboarding.data}
+        initialCompanyProfile={companyProfile.data}
+        companyMaterials={companyMaterials.data}
+        setCompanyProfile={companyProfile.setData}
+        setCompanyMaterials={companyMaterials.setData}
+        companyOnly={onboarding.data.completed}
         serviceError={serviceWarning}
         onFinished={(next) => onboarding.setData(next)}
       />
@@ -614,7 +653,7 @@ export default function App() {
   }
 
   return (
-    <div className={`client-shell client-theme-${onboarding.data.theme ?? 'warm'}`}>
+    <div className="client-shell hermills-dark-shell">
       {serviceWarning ? <div className="service-warning">{copy.topbar.serviceWarning(serviceWarning)}</div> : null}
 
       <ClientWorkspace
@@ -756,6 +795,8 @@ function ClientWorkspace({
   const [uploading, setUploading] = useState(false)
   const [sendError, setSendError] = useState('')
   const [uploadError, setUploadError] = useState('')
+  const [computerStatus, setComputerStatus] = useState<ComputerControlStatus>()
+  const [computerPermissionBusy, setComputerPermissionBusy] = useState(false)
   const streamRef = useRef<HTMLDivElement>(null)
   const streamBottomRef = useRef<HTMLDivElement>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
@@ -786,6 +827,28 @@ function ClientWorkspace({
     if (stickToBottomRef.current) streamBottomRef.current?.scrollIntoView({ block: 'end' })
   }, [activeSession?.id, activeSession?.messages.length, sending])
 
+  useEffect(() => {
+    if (!chatReady) {
+      setComputerStatus(undefined)
+      return
+    }
+    let cancelled = false
+    api.prepareComputerControl()
+      .then((result) => {
+        if (!cancelled) setComputerStatus(result.status)
+      })
+      .catch(() => {
+        api.computerControlStatus()
+          .then((status) => {
+            if (!cancelled) setComputerStatus(status)
+          })
+          .catch(() => undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chatReady])
+
   function updateScrollPreference() {
     const stream = streamRef.current
     if (!stream) return
@@ -794,6 +857,39 @@ function ClientWorkspace({
 
   function focusComposer() {
     window.setTimeout(() => composerInputRef.current?.focus(), 0)
+  }
+
+  async function refreshComputerControlStatus() {
+    try {
+      setComputerStatus(await api.computerControlStatus())
+    } catch {
+      // Computer control status is a convenience nudge; chat should stay usable if status polling fails.
+    }
+  }
+
+  async function requestComputerControlPermission() {
+    const permission = computerStatus?.permissions.find((item) => (
+      (item.id === 'screen-recording' || item.id === 'accessibility') && item.state === 'missing'
+    ))?.id
+    if (permission !== 'screen-recording' && permission !== 'accessibility') {
+      await refreshComputerControlStatus()
+      return
+    }
+    setComputerPermissionBusy(true)
+    try {
+      const result = await api.requestComputerControlPermission(permission)
+      setComputerStatus(result.status)
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+        const next = await api.computerControlStatus()
+        setComputerStatus(next)
+        if (next.readiness !== 'needs-permission') break
+      }
+    } catch (err) {
+      setSendError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setComputerPermissionBusy(false)
+    }
   }
 
   function handleEmptyChatAction(actionId: ChatEmptyEntryId) {
@@ -825,6 +921,13 @@ function ClientWorkspace({
     setDraft(`${action.prompt}\n\n${fileList}`)
     setSourcesOpen(false)
     focusComposer()
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    if (!draft.trim() || sending || !chatReady) return
+    event.currentTarget.form?.requestSubmit()
   }
 
   async function newSession() {
@@ -942,10 +1045,26 @@ function ClientWorkspace({
         setSessions(nextSessionList)
       }
       stickToBottomRef.current = true
+      const sentAt = new Date().toISOString()
+      const optimisticUserMessage: ChatMessage = {
+        id: `optimistic-user-${sentAt}`,
+        role: 'user',
+        content,
+        createdAt: sentAt
+      }
+      const optimisticSession: ChatSession = {
+        ...session,
+        messages: [...session.messages, optimisticUserMessage],
+        messageCount: (session.messageCount ?? session.messages.filter((message) => message.role !== 'system').length) + 1,
+        updatedAt: sentAt
+      }
+      nextSessionList = replaceSession(nextSessionList, optimisticSession)
+      setSessions(nextSessionList)
+      setActiveSessionId(optimisticSession.id)
+      setDraft('')
       const next = await api.sendChatMessage(session.id, content, selectedMaterialIds)
       setSessions(replaceSession(nextSessionList, next))
       setActiveSessionId(next.id)
-      setDraft('')
     } catch (err) {
       setSendError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -1037,31 +1156,41 @@ function ClientWorkspace({
     }
   }
 
-  return (
-    <main className={`client-layout ${sourcesOpen ? 'sources-visible' : ''}`}>
-      <SessionSidebar
-        runtime={runtime}
-        sessions={visibleSessions}
-        totalSessions={sessions.length}
-        activeSession={activeSession}
-        query={sessionQuery}
-        setQuery={setSessionQuery}
-        onSelect={selectSession}
-        onNew={newSession}
-        onRename={renameSession}
-        onDelete={deleteSession}
-        onOpenAssistants={() => setAssistantsOpen(true)}
-        onOpenFiles={() => setSourcesOpen(true)}
-        onOpenOutreach={() => setWorkspaceView('outreach')}
-        activeWorkspaceView={workspaceView}
-        onOpenSettings={() => openAdvanced('setup')}
-        onOpenUpdate={() => openAdvanced('setup')}
-        copy={copy}
-      />
+  const activeProvider = activeSession?.providerId
+    ? providers.find((provider) => provider.id === activeSession.providerId)
+    : defaultChatProvider
+  const activeModel = activeSession?.model || activeAgent?.model || activeProvider?.defaultModel || 'Hermes local'
+  const connectedProviders = providers.filter((provider) => provider.status === 'connected')
+  const selectedFileCount = selectedMaterialIds.length
 
-      {sessionsOpen ? (
-        <div className="mobile-session-overlay" onClick={() => setSessionsOpen(false)}>
-          <SessionSidebar
+  return (
+    <TooltipProvider>
+      <main className={`hermills-app-shell ${sourcesOpen ? 'sources-visible' : ''}`}>
+        <AppMenuSidebar
+          runtime={runtime}
+          sessions={visibleSessions}
+          totalSessions={sessions.length}
+          activeSession={activeSession}
+          query={sessionQuery}
+          setQuery={setSessionQuery}
+          onSelect={selectSession}
+          onNew={newSession}
+          onRename={renameSession}
+          onDelete={deleteSession}
+          onOpenAssistants={() => setAssistantsOpen(true)}
+          onOpenFiles={() => setSourcesOpen(true)}
+          onOpenOutreach={() => setWorkspaceView('outreach')}
+          activeWorkspaceView={workspaceView}
+          onOpenProviders={() => openAdvanced('keys')}
+          onOpenSettings={() => openAdvanced('setup')}
+          onOpenUpdate={() => openAdvanced('setup')}
+          copy={copy}
+        />
+
+        <Sheet open={sessionsOpen} onOpenChange={setSessionsOpen}>
+          <SheetContent side="left" className="hermills-mobile-sheet" showCloseButton={false}>
+            <SheetTitle className="sr-only">{copy.topbar.chats}</SheetTitle>
+            <AppMenuSidebar
             runtime={runtime}
             sessions={visibleSessions}
             totalSessions={sessions.length}
@@ -1077,29 +1206,30 @@ function ClientWorkspace({
             onOpenFiles={() => setSourcesOpen(true)}
             onOpenOutreach={() => setWorkspaceView('outreach')}
             activeWorkspaceView={workspaceView}
+            onOpenProviders={() => openAdvanced('keys')}
             onOpenSettings={() => openAdvanced('setup')}
             onOpenUpdate={() => openAdvanced('setup')}
-            className="mobile-session-panel"
+            className="mobile-session-panel hermills-mobile-sidebar"
             copy={copy}
           />
-        </div>
-      ) : null}
+          </SheetContent>
+        </Sheet>
 
-      <section className="conversation-surface">
-        <div className="mobile-workspace-toolbar">
-          <button className="icon-button" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
-            <Menu size={17} />
-          </button>
-          <button className={`icon-button ${workspaceView === 'outreach' ? 'active' : ''}`} aria-label={copy.devLetter.navAria} onClick={() => setWorkspaceView('outreach')}>
-            <Mail size={17} />
-          </button>
-          <button className="icon-button" aria-label={copy.topbar.files} onClick={() => setSourcesOpen(true)}>
-            <PanelRightOpen size={17} />
-          </button>
-          <button className="icon-button" aria-label={copy.topbar.settingsAria} onClick={() => openAdvanced('setup')}>
-            <Settings size={17} />
-          </button>
-        </div>
+        <section className="hermills-chat-panel">
+          <div className="mobile-workspace-toolbar">
+            <Button variant="ghost" size="icon-sm" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
+              <Menu />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label={copy.devLetter.navAria} onClick={() => setWorkspaceView('outreach')}>
+              <Mail />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label={copy.topbar.files} onClick={() => setSourcesOpen(true)}>
+              <PanelRightOpen />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label={copy.topbar.settingsAria} onClick={() => openAdvanced('setup')}>
+              <Settings />
+            </Button>
+          </div>
         {workspaceView === 'outreach' ? (
           <DevelopmentLetterPage
             companyProfile={companyProfile}
@@ -1116,144 +1246,543 @@ function ClientWorkspace({
           />
         ) : (
           <>
-        {!chatReady ? <GatewayBanner runtime={runtime} setRuntime={setRuntime} openAdvanced={openAdvanced} copy={copy} /> : null}
+            {!chatReady ? <GatewayBanner runtime={runtime} setRuntime={setRuntime} openAdvanced={openAdvanced} copy={copy} /> : null}
 
-        <div className="conversation-title">
-          <div className="conversation-heading">
-            <button className="icon-button mobile-session-trigger" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
-              <Menu size={17} />
-            </button>
-            <div>
-              <span>{copy.chat.sectionLabel}</span>
-              <h1>{activeSession?.title || copy.chat.defaultTitle}</h1>
-              <div className="conversation-meta">
-                <button className="assistant-chip" onClick={() => setAssistantsOpen(true)}>
-                  <Bot size={13} />
+            <header className="hermills-chat-header">
+              <div className="hermills-chat-title">
+                <Button className="mobile-session-trigger" variant="ghost" size="icon-sm" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
+                  <Menu />
+                </Button>
+                <div>
+                  <span>{copy.chat.sectionLabel}</span>
+                  <h1>{activeSession?.title || copy.chat.defaultTitle}</h1>
+                </div>
+              </div>
+              <div className="hermills-chat-context">
+                <Button variant="outline" size="sm" onClick={() => setAssistantsOpen(true)}>
+                  <Bot data-icon="inline-start" />
                   {activeAgent?.name || copy.chat.defaultAssistant}
-                </button>
+                </Button>
+                <Badge variant={activeProvider?.status === 'connected' ? 'default' : 'outline'}>
+                  {activeModel}
+                </Badge>
+                <Button variant="secondary" size="sm" onClick={() => setSourcesOpen(true)}>
+                  <Paperclip data-icon="inline-start" />
+                  {selectedFileCount ? copy.chat.selectedFiles(selectedFileCount) : copy.chat.addFile}
+                </Button>
               </div>
-            </div>
-          </div>
-          <button className="soft-button compact" onClick={() => setSourcesOpen(true)}>
-            <Paperclip size={15} />
-            {selectedMaterialIds.length ? copy.chat.selectedFiles(selectedMaterialIds.length) : copy.chat.addFile}
-          </button>
-        </div>
+            </header>
 
-        <div className="message-stream" ref={streamRef} onScroll={updateScrollPreference}>
-          {activeSession?.messages.length ? (
-            activeSession.messages.filter((message) => message.role !== 'system').map((message) => (
-              <div className={`message ${message.role === 'assistant' ? 'agent' : message.role}`} key={message.id}>
-                <span>{message.role === 'assistant' ? 'Hermes' : copy.chat.you}</span>
-                <MessageContent content={message.content} />
-              </div>
-            ))
-          ) : (
-            <div className="empty-chat">
-              <MessageCircle size={30} />
-              <strong>{copy.chat.emptyTitle}</strong>
-              <span>{copy.chat.emptyDescription}</span>
-              <div className="empty-chat-actions">
-                {chatEmptyActions.map((action) => {
+            <motion.div
+              className="hermills-message-stream"
+              ref={streamRef}
+              onScroll={updateScrollPreference}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22 }}
+            >
+              {activeSession?.messages.length || sending ? (
+                <>
+                  {activeSession?.messages.filter((message) => message.role !== 'system').map((message) => {
+                    const computerPayload = message.role === 'assistant' ? parseComputerControlMessage(message.content) : undefined
+                    return (
+                      <motion.div
+                        className={`message ${message.role === 'assistant' ? 'agent' : message.role} ${computerPayload ? 'computer-control-message' : ''}`}
+                        key={message.id}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.18 }}
+                      >
+                        <span className="message-role">{message.role === 'assistant' ? 'Hermes' : copy.chat.you}</span>
+                        {computerPayload ? (
+                          <ComputerControlInlinePanel payload={computerPayload} copy={copy} />
+                        ) : (
+                          <MessageContent content={message.content} />
+                        )}
+                      </motion.div>
+                    )
+                  })}
+                  {sending ? (
+                    <motion.div className="message agent pending" aria-live="polite" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+                      <span className="message-role">Hermes</span>
+                      <MessageContent content={copy.chat.thinking} />
+                    </motion.div>
+                  ) : null}
+                </>
+              ) : (
+                <Card className="empty-chat hermills-empty-chat">
+                  <CardHeader>
+                    <div className="hermills-empty-icon">
+                      <MessageCircle />
+                    </div>
+                    <CardTitle>{copy.chat.emptyTitle}</CardTitle>
+                    <CardDescription>{copy.chat.emptyDescription}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="empty-chat-actions">
+                      {chatEmptyActions.map((action) => {
+                        const Icon = action.icon
+                        const entry = copy.chat.emptyActions[action.id]
+                        return (
+                          <Button className="empty-chat-entry" variant="outline" type="button" key={action.id} onClick={() => handleEmptyChatAction(action.id)}>
+                            <Icon data-icon="inline-start" />
+                            <span>
+                              <strong>{entry.title}</strong>
+                              <span>{entry.description}</span>
+                            </span>
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              <div ref={streamBottomRef} />
+            </motion.div>
+
+            {selectedFileCount ? (
+              <div className="file-action-bar hermills-file-action-bar">
+                <span className="state-hint">{copy.files.attached(selectedFileCount)}</span>
+                {fileActionItems.map((action) => {
                   const Icon = action.icon
-                  const entry = copy.chat.emptyActions[action.id]
                   return (
-                    <button className="empty-chat-entry" type="button" key={action.id} onClick={() => handleEmptyChatAction(action.id)}>
-                      <Icon size={17} />
-                      <span>
-                        <strong>{entry.title}</strong>
-                        <span>{entry.description}</span>
-                      </span>
-                    </button>
+                    <Button variant="ghost" size="sm" type="button" key={action.id} onClick={() => applyFileAction(action.id)}>
+                      <Icon data-icon="inline-start" />
+                      {copy.files.actions[action.id].label}
+                    </Button>
                   )
                 })}
               </div>
-            </div>
-          )}
-          <div ref={streamBottomRef} />
-        </div>
+            ) : null}
 
-        {selectedMaterialIds.length ? (
-          <div className="file-action-bar">
-            <span className="state-hint">{copy.files.attached(selectedMaterialIds.length)}</span>
-            {fileActionItems.map((action) => {
-              const Icon = action.icon
-              return (
-                <button className="file-action-button" type="button" key={action.id} onClick={() => applyFileAction(action.id)}>
-                  <Icon size={15} />
-                  {copy.files.actions[action.id].label}
-                </button>
-              )
-            })}
-          </div>
-        ) : null}
+            {sendError ? (
+              <div className="inline-alert composer-alert">
+                <span>{sendError}</span>
+                {!chatReady ? <Button variant="link" onClick={() => openAdvanced('setup')}>{copy.chat.openSetup}</Button> : null}
+                {chatReady && !hasReadyProvider ? <Button variant="link" onClick={() => openAdvanced('keys')}>{copy.chat.addApiKey}</Button> : null}
+              </div>
+            ) : null}
 
-        {sendError ? (
-          <div className="inline-alert composer-alert">
-            <span>{sendError}</span>
-            {!chatReady ? <button className="text-button" onClick={() => openAdvanced('setup')}>{copy.chat.openSetup}</button> : null}
-            {chatReady && !hasReadyProvider ? <button className="text-button" onClick={() => openAdvanced('keys')}>{copy.chat.addApiKey}</button> : null}
-          </div>
-        ) : null}
+            {chatReady && computerStatus?.readiness === 'needs-permission' ? (
+              <ComputerPermissionNudge busy={computerPermissionBusy} onAllow={requestComputerControlPermission} copy={copy} />
+            ) : null}
 
-        {chatReady && !hasReadyProvider ? <KeySetupNudge onOpen={() => openAdvanced('keys')} onSaved={connectSavedProvider} copy={copy} /> : null}
+            {chatReady && !hasReadyProvider ? <KeySetupNudge onOpen={() => openAdvanced('keys')} onSaved={connectSavedProvider} copy={copy} /> : null}
 
-        <form className="composer" onSubmit={sendMessage}>
-          <button className="icon-button" type="button" aria-label={copy.chat.openSourcesAria} onClick={() => setSourcesOpen(true)}>
-            <Paperclip size={17} />
-          </button>
-          <textarea
-            className="composer-input"
-            ref={composerInputRef}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            aria-label={copy.chat.messageAria}
-            placeholder={chatReady ? copy.chat.placeholderReady : copy.chat.placeholderNotReady}
-            rows={1}
-            disabled={!chatReady || sending}
-          />
-          <button className="send-button" type="submit" disabled={!chatReady || sending || !draft.trim()}>
-            <Send size={16} />
-            {sending ? copy.common.sending : copy.common.send}
-          </button>
-        </form>
+            <form className="composer hermills-composer" onSubmit={sendMessage}>
+              <Button variant="ghost" size="icon-sm" type="button" aria-label={copy.chat.openSourcesAria} onClick={() => setSourcesOpen(true)}>
+                <Paperclip />
+              </Button>
+              <Textarea
+                className="composer-input"
+                ref={composerInputRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                aria-label={copy.chat.messageAria}
+                placeholder={chatReady ? copy.chat.placeholderReady : copy.chat.placeholderNotReady}
+                rows={1}
+                disabled={!chatReady || sending}
+              />
+              <Button className="send-button" type="submit" disabled={!chatReady || sending || !draft.trim()}>
+                <Send data-icon="inline-start" />
+                {sending ? copy.common.sending : copy.common.send}
+              </Button>
+            </form>
           </>
         )}
-      </section>
+        </section>
 
-      <SourcesDrawer
-        open={sourcesOpen}
-        materials={materials}
-        selectedMaterialIds={selectedMaterialIds}
-        setSelectedMaterialIds={setSelectedMaterialIds}
-        uploading={uploading}
-        uploadError={uploadError}
-        uploadFiles={uploadFiles}
-        deleteMaterial={deleteMaterial}
-        previewMaterial={previewMaterial}
-        renameMaterial={renameMaterial}
-        copyMaterial={copyMaterial}
-        downloadMaterial={downloadMaterial}
-        materialPreview={materialPreview}
-        clearMaterialPreview={() => setMaterialPreview(undefined)}
-        previewLoadingId={previewLoadingId}
-        onFileAction={applyFileAction}
-        onClose={() => setSourcesOpen(false)}
-        copy={copy}
-      />
+        <InspectorPanel
+          activeAgent={activeAgent}
+          activeProvider={activeProvider}
+          activeModel={activeModel}
+          connectedProviders={connectedProviders}
+          providers={providers}
+          materials={materials}
+          selectedMaterials={selectedMaterials}
+          computerStatus={computerStatus}
+          chatReady={chatReady}
+          onOpenAssistants={() => setAssistantsOpen(true)}
+          onOpenFiles={() => setSourcesOpen(true)}
+          onOpenProviders={() => openAdvanced('keys')}
+          onOpenOutreach={() => setWorkspaceView('outreach')}
+          onRequestComputerPermission={requestComputerControlPermission}
+          computerPermissionBusy={computerPermissionBusy}
+          copy={copy}
+        />
 
-      <AssistantDrawer
-        open={assistantsOpen}
-        agents={agents}
-        providers={providers}
-        selectedAgentId={selectedAgentId}
-        refresh={setAgents}
-        onUse={useAssistant}
-        onStartChat={startChatWithAssistant}
-        onClose={() => setAssistantsOpen(false)}
-        copy={copy}
-      />
-    </main>
+        <SourcesDrawer
+          open={sourcesOpen}
+          materials={materials}
+          selectedMaterialIds={selectedMaterialIds}
+          setSelectedMaterialIds={setSelectedMaterialIds}
+          uploading={uploading}
+          uploadError={uploadError}
+          uploadFiles={uploadFiles}
+          deleteMaterial={deleteMaterial}
+          previewMaterial={previewMaterial}
+          renameMaterial={renameMaterial}
+          copyMaterial={copyMaterial}
+          downloadMaterial={downloadMaterial}
+          materialPreview={materialPreview}
+          clearMaterialPreview={() => setMaterialPreview(undefined)}
+          previewLoadingId={previewLoadingId}
+          onFileAction={applyFileAction}
+          onClose={() => setSourcesOpen(false)}
+          copy={copy}
+        />
+
+        <AssistantDrawer
+          open={assistantsOpen}
+          agents={agents}
+          providers={providers}
+          selectedAgentId={selectedAgentId}
+          refresh={setAgents}
+          onUse={useAssistant}
+          onStartChat={startChatWithAssistant}
+          onClose={() => setAssistantsOpen(false)}
+          copy={copy}
+        />
+      </main>
+    </TooltipProvider>
+  )
+}
+
+function AppMenuSidebar({
+  runtime,
+  sessions,
+  totalSessions = sessions.length,
+  activeSession,
+  query,
+  setQuery,
+  onSelect,
+  onNew,
+  onRename,
+  onDelete,
+  onClose,
+  onOpenAssistants,
+  onOpenFiles,
+  onOpenOutreach,
+  activeWorkspaceView,
+  onOpenProviders,
+  onOpenSettings,
+  onOpenUpdate,
+  className = '',
+  copy,
+}: {
+  runtime: RuntimeStatus
+  sessions: ChatSession[]
+  totalSessions?: number
+  activeSession?: ChatSession
+  query: string
+  setQuery: (query: string) => void
+  onSelect: (id: string) => void
+  onNew: () => void
+  onRename: (id: string, title: string) => void | Promise<void>
+  onDelete: (id: string) => void | Promise<void>
+  onClose?: () => void
+  onOpenAssistants: () => void
+  onOpenFiles: () => void
+  onOpenOutreach: () => void
+  activeWorkspaceView: WorkspaceView
+  onOpenProviders: () => void
+  onOpenSettings: () => void
+  onOpenUpdate: () => void
+  className?: string
+  copy: UiCopy
+}) {
+  const [editingId, setEditingId] = useState('')
+  const [editingTitle, setEditingTitle] = useState('')
+
+  const navItems: Array<{ label: string; icon: LucideIcon; active?: boolean; action: () => void }> = [
+    { label: 'Chat', icon: MessageCircle, active: activeWorkspaceView === 'chat', action: () => onSelect(activeSession?.id ?? '') },
+    { label: 'Agents', icon: Bot, action: onOpenAssistants },
+    { label: 'Files', icon: FileText, action: onOpenFiles },
+    { label: 'Providers', icon: KeyRound, action: onOpenProviders },
+    { label: 'Settings', icon: Settings, action: onOpenSettings },
+  ]
+
+  function beginRename(session: ChatSession) {
+    setEditingId(session.id)
+    setEditingTitle(session.title)
+  }
+
+  async function submitRename(event: FormEvent, id: string) {
+    event.preventDefault()
+    const title = editingTitle.trim()
+    if (!title) return
+    await onRename(id, title)
+    setEditingId('')
+  }
+
+  return (
+    <aside className={`hermills-menu-sidebar ${className}`} onClick={(event) => event.stopPropagation()}>
+      <div className="window-drag-zone" aria-hidden="true" />
+      <div className="hermills-menu-brand">
+        <div className="brand-mark">H</div>
+        <div>
+          <strong>Hermills</strong>
+          <span>Desktop AI workspace</span>
+        </div>
+        {onClose ? (
+          <Button className="hermills-sidebar-close" variant="ghost" size="icon-sm" aria-label={copy.session.closeAria} onClick={onClose}>
+            <X />
+          </Button>
+        ) : null}
+      </div>
+
+      <Button className="hermills-new-chat" type="button" onClick={onNew}>
+        <Plus data-icon="inline-start" />
+        New Chat
+      </Button>
+
+      <nav className="hermills-nav-list" aria-label="Main navigation">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          return (
+            <Tooltip key={item.label}>
+              <TooltipTrigger asChild>
+                <Button
+                  className="hermills-nav-button"
+                  variant={item.active ? 'secondary' : 'ghost'}
+                  data-active={item.active ? 'true' : undefined}
+                  type="button"
+                  onClick={item.action}
+                >
+                  <Icon data-icon="inline-start" />
+                  {item.label}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </nav>
+
+      <Separator className="hermills-sidebar-separator" />
+
+      <div className="hermills-sidebar-status">
+        <span className={`status-dot ${runtime.state}`} />
+        <span>{runtimeStatusLabel(runtime, copy)}</span>
+        {runtime.updateAvailable ? (
+          <Button variant="ghost" size="xs" onClick={onOpenUpdate}>
+            <RefreshCw data-icon="inline-start" />
+            {copy.common.update}
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="hermills-recents">
+        <div className="hermills-recents-header">
+          <span>{copy.session.count(totalSessions)}</span>
+          <Button variant="ghost" size="icon-xs" aria-label={copy.devLetter.navAria} onClick={onOpenOutreach}>
+            <Mail />
+          </Button>
+        </div>
+        <label className="hermills-search-field">
+          <Search />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} aria-label={copy.session.searchAria} placeholder={copy.session.searchPlaceholder} />
+        </label>
+        <div className="hermills-session-list">
+          {sessions.length ? (
+            sessions.map((session) => (
+              <article className={`hermills-session-row ${activeSession?.id === session.id ? 'active' : ''}`} key={session.id}>
+                {editingId === session.id ? (
+                  <form className="session-edit" onSubmit={(event) => submitRename(event, session.id)}>
+                    <Input value={editingTitle} autoFocus onChange={(event) => setEditingTitle(event.target.value)} aria-label={copy.session.titleAria} />
+                    <Button variant="ghost" size="icon-sm" type="submit" aria-label={copy.session.saveTitleAria}>
+                      <CheckCircle2 />
+                    </Button>
+                  </form>
+                ) : (
+                  <>
+                    <button className="session-main" onClick={() => onSelect(session.id)}>
+                      <strong>{session.title}</strong>
+                      <span>{copy.session.messages(session.messageCount || session.messages.length || 0)}</span>
+                    </button>
+                    <div className="row-actions">
+                      <Button variant="ghost" size="icon-xs" aria-label={copy.session.renameAria(session.title)} onClick={() => beginRename(session)}>
+                        <Pencil />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" aria-label={copy.session.deleteAria(session.title)} onClick={() => onDelete(session.id)}>
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </article>
+            ))
+          ) : (
+            <button className="hermills-session-row empty-session-row active" onClick={onNew}>
+              <strong>{query ? copy.session.noMatch : copy.session.newConversation}</strong>
+              <span>{query ? copy.session.tryAnother : copy.session.startWithHermes}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+function InspectorPanel({
+  activeAgent,
+  activeProvider,
+  activeModel,
+  connectedProviders,
+  providers,
+  materials,
+  selectedMaterials,
+  computerStatus,
+  chatReady,
+  onOpenAssistants,
+  onOpenFiles,
+  onOpenProviders,
+  onOpenOutreach,
+  onRequestComputerPermission,
+  computerPermissionBusy,
+  copy,
+}: {
+  activeAgent?: Agent
+  activeProvider?: Provider
+  activeModel: string
+  connectedProviders: Provider[]
+  providers: Provider[]
+  materials: Material[]
+  selectedMaterials: Material[]
+  computerStatus?: ComputerControlStatus
+  chatReady: boolean
+  onOpenAssistants: () => void
+  onOpenFiles: () => void
+  onOpenProviders: () => void
+  onOpenOutreach: () => void
+  onRequestComputerPermission: () => void
+  computerPermissionBusy: boolean
+  copy: UiCopy
+}) {
+  const providerStatus = activeProvider?.status ?? (connectedProviders.length ? 'connected' : 'missing')
+  const toolsReady = computerStatus?.readiness === 'ready'
+  const needsPermission = computerStatus?.readiness === 'needs-permission'
+
+  return (
+    <aside className="hermills-inspector">
+      <Card className="hermills-inspector-card">
+        <CardHeader>
+          <CardTitle>Current Agent</CardTitle>
+          <CardDescription>{activeAgent?.name || copy.chat.defaultAssistant}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="hermills-agent-avatar">
+            <Bot />
+          </div>
+          <p>{activeAgent?.description || copy.assistant.defaultForm.description}</p>
+          <div className="hermills-mini-stack">
+            <Badge variant="outline">{activeModel}</Badge>
+            <Badge variant={chatReady ? 'default' : 'outline'}>{chatReady ? copy.runtime.meta.ready : copy.runtime.meta.notStarted}</Badge>
+          </div>
+          <Button variant="outline" size="sm" onClick={onOpenAssistants}>
+            <Bot data-icon="inline-start" />
+            Agents
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="hermills-inspector-card">
+        <CardHeader>
+          <CardTitle>Files</CardTitle>
+          <CardDescription>{selectedMaterials.length ? copy.files.attached(selectedMaterials.length) : `${materials.length} local files`}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="hermills-file-stack">
+            {(selectedMaterials.length ? selectedMaterials : materials.slice(0, 3)).map((material) => (
+              <div className="hermills-file-pill" key={material.id}>
+                <FileText />
+                <span>{material.name}</span>
+              </div>
+            ))}
+            {!materials.length ? <span className="hermills-muted-line">{copy.files.attachLocalFiles}</span> : null}
+          </div>
+          <Button variant="outline" size="sm" onClick={onOpenFiles}>
+            <Paperclip data-icon="inline-start" />
+            Files
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="hermills-inspector-card">
+        <CardHeader>
+          <CardTitle>Tools</CardTitle>
+          <CardDescription>{toolsReady ? 'Computer use ready' : needsPermission ? 'Permission needed' : 'Local tools'}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="hermills-tool-list">
+            <span><Cpu /> Computer control</span>
+            <Badge variant={toolsReady ? 'default' : 'outline'}>{toolsReady ? 'Ready' : computerStatus?.readiness ?? 'Checking'}</Badge>
+          </div>
+          <div className="hermills-tool-list">
+            <span><Mail /> Outreach</span>
+            <Button variant="ghost" size="xs" onClick={onOpenOutreach}>Open</Button>
+          </div>
+          {needsPermission ? (
+            <Button variant="secondary" size="sm" onClick={onRequestComputerPermission} disabled={computerPermissionBusy}>
+              <ShieldCheck data-icon="inline-start" />
+              {computerPermissionBusy ? copy.computerControl.permissionNudgeChecking : copy.computerControl.permissionNudgeAction}
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="hermills-inspector-card">
+        <CardHeader>
+          <CardTitle>Provider Status</CardTitle>
+          <CardDescription>{connectedProviders.length ? `${connectedProviders.length}/${providers.length} connected` : copy.keys.noProviders}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="hermills-provider-row">
+            <span>{activeProvider?.name || copy.assistant.localHermes}</span>
+            <Badge variant={providerStatus === 'connected' ? 'default' : 'outline'}>{providerStatusLabel(providerStatus, copy)}</Badge>
+          </div>
+          <Button variant="outline" size="sm" onClick={onOpenProviders}>
+            <KeyRound data-icon="inline-start" />
+            Providers
+          </Button>
+        </CardContent>
+      </Card>
+    </aside>
+  )
+}
+
+type ComputerControlChatState = 'ready' | 'needs-tools' | 'needs-driver' | 'not-installed' | 'unsupported' | 'failed'
+type ComputerControlPayload = {
+  state: ComputerControlChatState
+  message: string
+  createdAt?: string
+}
+
+function ComputerPermissionNudge({ busy, onAllow, copy }: { busy: boolean; onAllow: () => void; copy: UiCopy }) {
+  return (
+    <div className="computer-permission-nudge">
+      <ShieldCheck size={16} />
+      <span>
+        <strong>{copy.computerControl.permissionNudgeTitle}</strong>
+        <span>{copy.computerControl.permissionNudgeDetail}</span>
+      </span>
+      <button className="soft-button compact" type="button" onClick={onAllow} disabled={busy}>
+        {busy ? copy.computerControl.permissionNudgeChecking : copy.computerControl.permissionNudgeAction}
+      </button>
+    </div>
+  )
+}
+
+function ComputerControlInlinePanel({ payload, copy }: { payload: ComputerControlPayload; copy: UiCopy }) {
+  return (
+    <div className={`computer-inline-note ${payload.state}`}>
+      <Cpu size={15} />
+      <div>
+        <strong>{copy.computerControl.inlineTitle}</strong>
+        <span>{copy.computerControl.inlineSubtitle}</span>
+      </div>
+    </div>
   )
 }
 
@@ -1269,6 +1798,10 @@ type SenderFormDraft = {
   host: string
   port: string
   secure: boolean
+  imapHost: string
+  imapPort: string
+  imapSecure: boolean
+  imapUsername: string
   username: string
   password: string
 }
@@ -1313,6 +1846,7 @@ function DevelopmentLetterPage({
   const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
   const [campaignDraftSubject, setCampaignDraftSubject] = useState('')
   const [campaignDraftBody, setCampaignDraftBody] = useState('')
+  const [followUps, setFollowUps] = useState<OutreachFollowUpJob[]>([])
   const [csvText, setCsvText] = useState('')
   const [csvOpen, setCsvOpen] = useState(false)
   const [draft, setDraft] = useState<OutreachDraft>()
@@ -1335,6 +1869,17 @@ function DevelopmentLetterPage({
   const selectedSender = selectedSenderId ? senderAccounts.find((account) => account.id === selectedSenderId) : undefined
   const selectedCampaign = selectedCampaignId ? campaigns.find((campaign) => campaign.id === selectedCampaignId) : campaigns[0]
   const campaignRecipients = selectedCampaign?.recipients ?? []
+  const selectedCampaignFollowUps = useMemo(() => (
+    selectedCampaign ? followUps.filter((job) => job.campaignId === selectedCampaign.id) : []
+  ), [followUps, selectedCampaign?.id])
+  const campaignFollowUpStats = useMemo(() => ({
+    scheduled: selectedCampaignFollowUps.filter((job) => job.status === 'scheduled').length,
+    ready: selectedCampaignFollowUps.filter((job) => job.status === 'ready').length,
+    sent: selectedCampaignFollowUps.filter((job) => job.status === 'sent').length,
+    stopped: selectedCampaignFollowUps.filter((job) => job.status === 'stopped').length,
+    failed: selectedCampaignFollowUps.filter((job) => job.status === 'failed').length,
+  }), [selectedCampaignFollowUps])
+  const nextFollowUps = selectedCampaignFollowUps.filter((job) => job.status === 'scheduled' || job.status === 'ready').slice(0, 3)
   const selectedCampaignRecipient = selectedCampaignRecipientId
     ? campaignRecipients.find((recipient) => recipient.id === selectedCampaignRecipientId)
     : campaignRecipients.find((recipient) => recipient.status === 'generated' || recipient.status === 'failed') ?? campaignRecipients[0]
@@ -1349,11 +1894,22 @@ function DevelopmentLetterPage({
   const senderProvider = senderProviderPresets.find((provider) => provider.id === senderProviderId) ?? senderProviderPresets[0]
   const senderAuthGuide = senderAuthGuides[senderProviderId]
   const quickLeadReady = Boolean(quickWebsite.trim() && quickEmail.trim())
+  const companyReady = isCompanyProfileReady(companyProfile)
   const campaignSelectedCount = selectedCampaignLeadIds.length || selectedCampaign?.recipients.length || 0
   const campaignReviewCount = selectedCampaign?.stats.generated ?? 0
   const campaignReadyCount = selectedCampaign?.stats.approved ?? 0
   const campaignSentCount = selectedCampaign?.stats.sent ?? 0
   const visibleResearchDepth = selectedCampaign?.researchDepth ?? campaignResearchDepth
+  const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
+  const singleDraftChanged = selectedWorkflowEmail
+    ? selectedWorkflowEmail.subject !== draftSubject || selectedWorkflowEmail.body !== draftBody
+    : Boolean(draft && (draft.subject !== draftSubject || draft.body !== draftBody))
+  const campaignQualityReview = selectedCampaignRecipient?.draft?.qualityReview
+  const campaignDraftChanged = Boolean(selectedCampaignRecipient?.draft && (
+    selectedCampaignRecipient.draft.subject !== campaignDraftSubject ||
+    selectedCampaignRecipient.draft.body !== campaignDraftBody
+  ))
+  const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
 
   useEffect(() => {
     if (!selectedLead) return
@@ -1373,6 +1929,24 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!selectedCampaignId && campaigns[0]) setSelectedCampaignId(campaigns[0].id)
   }, [selectedCampaignId, campaigns])
+
+  useEffect(() => {
+    if (!selectedCampaign?.id) {
+      setFollowUps([])
+      return
+    }
+    let cancelled = false
+    api.outreachFollowUps(selectedCampaign.id)
+      .then((jobs) => {
+        if (!cancelled) setFollowUps(jobs)
+      })
+      .catch(() => {
+        if (!cancelled) setFollowUps([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCampaign?.id])
 
   useEffect(() => {
     if (!selectedCampaignRecipient?.draft) {
@@ -1422,6 +1996,10 @@ function DevelopmentLetterPage({
       host: preset.host,
       port: preset.port,
       secure: preset.secure,
+      imapHost: preset.imapHost,
+      imapPort: preset.imapPort,
+      imapSecure: preset.imapSecure,
+      imapUsername: current.imapUsername || current.username || current.email,
       username: current.username || current.email,
     }
   }
@@ -1439,6 +2017,7 @@ function DevelopmentLetterPage({
         ...current,
         email,
         username: current.username && current.username !== current.email ? current.username : email,
+        imapUsername: current.imapUsername && current.imapUsername !== current.email ? current.imapUsername : email,
       }
       return detected ? applySenderProviderToDraft(next, detected) : next
     })
@@ -1462,13 +2041,29 @@ function DevelopmentLetterPage({
     if (reviewCandidate) setSelectedCampaignRecipientId(reviewCandidate.id)
   }
 
+  async function refreshCampaignFollowUps(campaignId = selectedCampaign?.id) {
+    if (!campaignId) {
+      setFollowUps([])
+      return
+    }
+    setFollowUps(await api.outreachFollowUps(campaignId))
+  }
+
   function toggleCampaignLead(leadId: string) {
     setSelectedCampaignLeadIds((current) => current.includes(leadId)
       ? current.filter((id) => id !== leadId)
       : [...current, leadId])
   }
 
+  function requireCompanyKnowledge() {
+    if (companyReady) return true
+    setError(copy.devLetter.status.companyMissing)
+    onOpenCompanyKnowledge()
+    return false
+  }
+
   async function createCampaign() {
+    if (!requireCompanyKnowledge()) return
     if (!selectedCampaignLeadIds.length) {
       setError(copy.devLetter.batch.warnings.noCustomers)
       return
@@ -1506,6 +2101,7 @@ function DevelopmentLetterPage({
 
   async function generateCampaign() {
     if (!selectedCampaign) return
+    if (!requireCompanyKnowledge()) return
     setBusy('campaignGenerate')
     setError('')
     setNotice('')
@@ -1524,6 +2120,11 @@ function DevelopmentLetterPage({
     if (!selectedCampaign || !selectedCampaignRecipient) return
     if (!campaignDraftSubject.trim() || !campaignDraftBody.trim()) {
       setError(copy.devLetter.warnings.draftRequired)
+      return
+    }
+    const review = campaignQualityPassed ? campaignQualityReview : await reviewCampaignRecipient()
+    if (!review?.passed) {
+      setError(copy.devLetter.quality.blockedApprove)
       return
     }
     setBusy('campaignApprove')
@@ -1581,7 +2182,68 @@ function DevelopmentLetterPage({
     try {
       const campaign = await api.startOutreachCampaign(selectedCampaign.id, { senderAccountId: sender.id })
       replaceCampaign(campaign)
+      await refreshCampaignFollowUps(campaign.id)
       setNotice(copy.devLetter.batch.status.sent(campaign.stats.sent))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function scheduleCampaignFollowUps() {
+    if (!selectedCampaign) return
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) {
+      setError(copy.devLetter.warnings.senderRequired)
+      return
+    }
+    setBusy('followUpsSchedule')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.scheduleOutreachFollowUps(selectedCampaign.id, { senderAccountId: sender.id, mode: 'confirm' })
+      setFollowUps(result.jobs)
+      setNotice(copy.devLetter.batch.status.followUpsScheduled(result.created))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runFollowUpTick() {
+    setBusy('followUpsTick')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.tickOutreachFollowUps({ limit: 20 })
+      await refreshCampaignFollowUps()
+      setNotice(copy.devLetter.batch.status.followUpsChecked(result.ready + result.sent, result.stopped))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function checkCampaignInbox() {
+    if (!selectedCampaign) return
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) {
+      setError(copy.devLetter.warnings.senderRequired)
+      return
+    }
+    setBusy('inboxCheck')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.checkOutreachInbox({ senderAccountId: sender.id, campaignId: selectedCampaign.id })
+      replaceSenderAccount(result.sender)
+      replaceCampaign(await api.outreachCampaign(selectedCampaign.id))
+      await refreshCampaignFollowUps(selectedCampaign.id)
+      if (result.ok) setNotice(copy.devLetter.batch.status.inboxChecked(result.matched.length, result.stopped))
+      else setError(result.message)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -1679,6 +2341,7 @@ function DevelopmentLetterPage({
   }
 
   async function generateDraft() {
+    if (!requireCompanyKnowledge()) return
     let lead = selectedLead
     if (!lead) lead = await saveLead()
     if (!lead) return
@@ -1706,6 +2369,7 @@ function DevelopmentLetterPage({
   }
 
   async function autoGenerateDraft() {
+    if (!requireCompanyKnowledge()) return
     if (!quickWebsite.trim() || !quickEmail.trim()) {
       setError(copy.devLetter.warnings.quickRequired)
       return
@@ -1752,13 +2416,126 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const next = await api.updateOutreachDraft(activeDraftId, { subject: draftSubject, body: draftBody, language, tone })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError, qualityReview: next.qualityReview })
       else setDraft(next)
       setNotice(copy.devLetter.status.draftSaved)
       return next
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
       return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function applyActiveQualityReview(review: OutreachEmailQualityReview) {
+    if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { qualityReview: review })
+    else setDraft((current) => current ? { ...current, qualityReview: review, updatedAt: new Date().toISOString() } : current)
+  }
+
+  async function reviewCurrentDraft() {
+    if (!activeDraftId) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return undefined
+    }
+    const saved = singleDraftChanged ? await saveDraftEdits() : undefined
+    if (singleDraftChanged && !saved) return undefined
+    const draftId = saved?.id ?? activeDraftId
+    setBusy('reviewDraft')
+    setError('')
+    setNotice('')
+    try {
+      const review = await api.reviewOutreachDraft(draftId)
+      applyActiveQualityReview(review)
+      setNotice(review.passed ? copy.devLetter.quality.passed : copy.devLetter.quality.needsRewrite)
+      return review
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function rewriteCurrentDraft() {
+    if (!activeDraftId) {
+      setError(copy.devLetter.warnings.draftRequired)
+      return
+    }
+    const saved = singleDraftChanged ? await saveDraftEdits() : undefined
+    if (singleDraftChanged && !saved) return
+    const draftId = saved?.id ?? activeDraftId
+    setBusy('rewriteDraft')
+    setError('')
+    setNotice('')
+    try {
+      const rewritten = await api.rewriteOutreachDraft(draftId, { providerId: defaultProvider?.id, model: defaultProvider?.defaultModel })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview })
+      else setDraft(rewritten)
+      setDraftSubject(rewritten.subject)
+      setDraftBody(rewritten.body)
+      setNotice(rewritten.qualityReview?.passed ? copy.devLetter.quality.rewrittenPassed : copy.devLetter.quality.rewrittenNeedsReview)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function reviewCampaignRecipient() {
+    if (!selectedCampaign || !selectedCampaignRecipient) return undefined
+    if (campaignDraftChanged && selectedCampaignRecipient.draft) {
+      try {
+        await api.updateOutreachDraft(selectedCampaignRecipient.draft.id, {
+          subject: campaignDraftSubject.trim(),
+          body: campaignDraftBody.trim()
+        })
+      } catch (err) {
+        setError(humanizeErrorMessage(err, copy, 'message'))
+        return undefined
+      }
+    }
+    setBusy('campaignReviewQuality')
+    setError('')
+    setNotice('')
+    try {
+      const review = await api.reviewOutreachCampaignRecipient(selectedCampaign.id, selectedCampaignRecipient.id)
+      const next = await api.outreachCampaign(selectedCampaign.id)
+      replaceCampaign(next)
+      setSelectedCampaignRecipientId(selectedCampaignRecipient.id)
+      setNotice(review.passed ? copy.devLetter.quality.passed : copy.devLetter.quality.needsRewrite)
+      return review
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function rewriteCampaignRecipient() {
+    if (!selectedCampaign || !selectedCampaignRecipient) return
+    if (campaignDraftChanged && selectedCampaignRecipient.draft) {
+      try {
+        await api.updateOutreachDraft(selectedCampaignRecipient.draft.id, {
+          subject: campaignDraftSubject.trim(),
+          body: campaignDraftBody.trim()
+        })
+      } catch (err) {
+        setError(humanizeErrorMessage(err, copy, 'message'))
+        return
+      }
+    }
+    setBusy('campaignRewriteQuality')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.rewriteOutreachCampaignRecipient(selectedCampaign.id, selectedCampaignRecipient.id, { providerId: defaultProvider?.id, model: defaultProvider?.defaultModel })
+      replaceCampaign(next)
+      setSelectedCampaignRecipientId(selectedCampaignRecipient.id)
+      setNotice(copy.devLetter.quality.rewrittenPassed)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
       setBusy('')
     }
@@ -1790,6 +2567,10 @@ function DevelopmentLetterPage({
         host: senderDraft.host.trim(),
         port: Number(senderDraft.port || 587),
         secure: senderDraft.secure,
+        imapHost: senderDraft.imapHost.trim() || undefined,
+        imapPort: Number(senderDraft.imapPort || 993),
+        imapSecure: senderDraft.imapSecure,
+        imapUsername: senderDraft.imapUsername.trim() || senderDraft.username.trim() || senderDraft.email.trim(),
         username: senderDraft.username.trim() || undefined,
         password: senderDraft.password.trim() || undefined,
         enabled: true
@@ -1879,6 +2660,11 @@ function DevelopmentLetterPage({
       setError(copy.devLetter.warnings.senderNotConfirmed)
       return
     }
+    const review = activeQualityReview?.passed && !singleDraftChanged ? activeQualityReview : await reviewCurrentDraft()
+    if (!review?.passed) {
+      setError(copy.devLetter.quality.blockedSend)
+      return
+    }
     if (!window.confirm(copy.devLetter.warnings.confirmSend)) return
     setBusy('send')
     setError('')
@@ -1912,9 +2698,9 @@ function DevelopmentLetterPage({
         </button>
       </header>
 
-      <div className={`status-hint ${companyProfile.name || companyMaterials.length ? 'success' : 'warning'}`}>
+      <div className={`status-hint ${companyReady ? 'success' : 'warning'}`}>
         <Building2 size={15} />
-        {companyProfile.name || companyMaterials.length
+        {companyReady
           ? copy.devLetter.status.companyReady(companyProfile.name, companyMaterials.length)
           : copy.devLetter.status.companyMissing}
       </div>
@@ -1941,7 +2727,7 @@ function DevelopmentLetterPage({
             </div>
             {selectedCampaign ? (
               <div className="campaign-primary-actions">
-                <button className="soft-button compact" type="button" disabled={busy === 'campaignGenerate'} onClick={generateCampaign}>
+                <button className="soft-button compact" type="button" disabled={!companyReady || busy === 'campaignGenerate'} onClick={generateCampaign}>
                   <Search size={14} />
                   {busy === 'campaignGenerate' ? copy.devLetter.batch.actions.generating : copy.devLetter.batch.actions.generate}
                 </button>
@@ -2024,7 +2810,7 @@ function DevelopmentLetterPage({
                     <Upload size={14} />
                     {copy.devLetter.actions.importCsv}
                   </button>
-                  <button className="primary-button compact" type="button" disabled={busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
+                  <button className="primary-button compact" type="button" disabled={!companyReady || busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
                     <Plus size={14} />
                     {busy === 'campaignCreate' ? copy.common.creating : copy.devLetter.batch.actions.create}
                   </button>
@@ -2055,6 +2841,44 @@ function DevelopmentLetterPage({
 
               {selectedCampaign ? (
                 <>
+                  <div className="campaign-followup-guard">
+                    <div className="campaign-followup-heading">
+                      <div>
+                        <h4>{copy.devLetter.batch.followUpTitle}</h4>
+                        <p>{copy.devLetter.batch.followUpSummary(campaignFollowUpStats.scheduled, campaignFollowUpStats.ready, campaignFollowUpStats.stopped)}</p>
+                      </div>
+                      <div className="campaign-followup-actions">
+                        <button className="soft-button compact" type="button" disabled={busy === 'followUpsSchedule' || !selectedCampaign.stats.sent} onClick={scheduleCampaignFollowUps}>
+                          <ListChecks size={14} />
+                          {copy.devLetter.batch.actions.scheduleFollowUps}
+                        </button>
+                        <button className="soft-button compact" type="button" disabled={busy === 'followUpsTick'} onClick={runFollowUpTick}>
+                          <RefreshCw size={14} />
+                          {copy.devLetter.batch.actions.checkFollowUps}
+                        </button>
+                        <button className="soft-button compact" type="button" disabled={busy === 'inboxCheck'} onClick={checkCampaignInbox}>
+                          <Mail size={14} />
+                          {copy.devLetter.batch.actions.checkInbox}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="campaign-followup-metrics">
+                      <span><strong>{campaignFollowUpStats.scheduled}</strong>{copy.devLetter.batch.followUpMetrics.scheduled}</span>
+                      <span><strong>{campaignFollowUpStats.ready}</strong>{copy.devLetter.batch.followUpMetrics.ready}</span>
+                      <span><strong>{campaignFollowUpStats.sent}</strong>{copy.devLetter.batch.followUpMetrics.sent}</span>
+                      <span><strong>{campaignFollowUpStats.stopped}</strong>{copy.devLetter.batch.followUpMetrics.stopped}</span>
+                    </div>
+                    <div className="campaign-followup-list">
+                      {nextFollowUps.length ? nextFollowUps.map((job) => (
+                        <span className={`campaign-followup-chip ${job.status}`} key={job.id}>
+                          {copy.devLetter.batch.followUpNext(job.step, job.companyName, new Date(job.sendAt).toLocaleDateString())}
+                          <em>{copy.devLetter.batch.followUpStatus[job.status]}</em>
+                        </span>
+                      )) : (
+                        <span className="campaign-followup-empty">{copy.devLetter.batch.followUpEmpty}</span>
+                      )}
+                    </div>
+                  </div>
                   <div className="campaign-recipient-grid">
                     <div className="campaign-recipient-list">
                       {campaignRecipients.map((recipient) => (
@@ -2063,6 +2887,7 @@ function DevelopmentLetterPage({
                           <span>
                             <strong>{recipient.companyName}</strong>
                             <small>{copy.devLetter.batch.recipientStatus[recipient.status]} · {recipient.email}</small>
+                            {recipient.draft?.qualityReview ? <small>{copy.devLetter.quality.score(recipient.draft.qualityReview.score)}</small> : null}
                             {recipient.researchSummary ? (
                               <em>{copy.devLetter.batch.researchScore(recipient.researchSummary.confidenceScore, recipient.researchSummary.primaryAngle || recipient.researchSummary.likelyNeed || recipient.researchSummary.buyerType)}</em>
                             ) : null}
@@ -2079,8 +2904,17 @@ function DevelopmentLetterPage({
                           </div>
                           <Field label={copy.devLetter.fields.subject}><input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></Field>
                           <Field label={copy.devLetter.fields.body}><textarea className="campaign-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></Field>
+                          <QualityReviewCard review={campaignQualityReview} stale={campaignDraftChanged} copy={copy} />
                           <div className="outreach-actions">
-                            <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>
+                            <button className="soft-button compact" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>
+                              <ListChecks size={14} />
+                              {busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}
+                            </button>
+                            <button className="soft-button compact" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>
+                              <RefreshCw size={14} />
+                              {busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}
+                            </button>
+                            <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove' || !campaignQualityPassed} onClick={approveCampaignRecipient}>
                               <CheckCircle2 size={14} />
                               {copy.devLetter.batch.actions.approve}
                             </button>
@@ -2128,7 +2962,7 @@ function DevelopmentLetterPage({
             <h3>{copy.devLetter.quickTitle}</h3>
             <p>{copy.devLetter.quickSubtitle}</p>
           </div>
-          <button className="primary-button compact" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
+          <button className="primary-button compact" type="button" disabled={!companyReady || !quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
             <Mail size={14} />
             {busy === 'auto' ? copy.devLetter.actions.researching : copy.devLetter.actions.researchGenerate}
           </button>
@@ -2201,7 +3035,7 @@ function DevelopmentLetterPage({
               <span>{copy.devLetter.steps.draft}</span>
               <h3>{selectedWorkflowEmail ? selectedWorkflowEmail.strategy : copy.devLetter.fields.body}</h3>
             </div>
-            <button className="soft-button compact" type="button" disabled={busy === 'generate'} onClick={generateDraft}>
+            <button className="soft-button compact" type="button" disabled={!companyReady || busy === 'generate'} onClick={generateDraft}>
               {busy === 'generate' ? copy.devLetter.actions.generating : copy.devLetter.actions.generate}
             </button>
           </div>
@@ -2211,9 +3045,18 @@ function DevelopmentLetterPage({
           </div>
           <Field label={copy.devLetter.fields.subject}><input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></Field>
           <Field label={copy.devLetter.fields.body}><textarea ref={draftBodyRef} className="outreach-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></Field>
+          <QualityReviewCard review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
           <div className="outreach-actions">
             {activeDraftStatus ? <span className={`status-pill ${activeDraftStatus}`}>{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
             <button className="soft-button compact" type="button" disabled={!activeDraftId} onClick={saveDraftEdits}>{copy.devLetter.actions.saveDraft}</button>
+            <button className="soft-button compact" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>
+              <ListChecks size={14} />
+              {busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}
+            </button>
+            <button className="soft-button compact" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>
+              <RefreshCw size={14} />
+              {busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}
+            </button>
             <button className="soft-button compact" type="button" disabled={!draftSubject || !draftBody} onClick={copyDraft}>
               <Copy size={14} />
               {copy.devLetter.actions.copyDraft}
@@ -2229,7 +3072,7 @@ function DevelopmentLetterPage({
               <p>{copy.devLetter.mailSetup.subtitle}</p>
             </div>
             <div className="outreach-actions">
-              <button className="primary-button compact" type="button" disabled={busy === 'send' || activeDraftStatus === 'sent' || !senderDeliveryReady} onClick={sendDraft}>
+              <button className="primary-button compact" type="button" disabled={busy === 'send' || activeDraftStatus === 'sent' || !senderDeliveryReady || !activeQualityReview?.passed || singleDraftChanged} onClick={sendDraft}>
                 <Send size={14} />
                 {busy === 'send' ? copy.devLetter.actions.sending : copy.devLetter.actions.send}
               </button>
@@ -2292,9 +3135,16 @@ function DevelopmentLetterPage({
               }} /></Field>
               <Field label={copy.devLetter.fields.port}><input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></Field>
               <Field label={copy.devLetter.fields.username}><input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.imapHost}><input value={senderDraft.imapHost} onChange={(event) => updateSender('imapHost', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.imapPort}><input value={senderDraft.imapPort} onChange={(event) => updateSender('imapPort', event.target.value)} /></Field>
+              <Field label={copy.devLetter.fields.imapUsername}><input value={senderDraft.imapUsername} onChange={(event) => updateSender('imapUsername', event.target.value)} /></Field>
               <label className="check-row outreach-secure-row">
                 <input type="checkbox" checked={senderDraft.secure} onChange={(event) => updateSender('secure', event.target.checked)} />
                 {copy.devLetter.fields.secure}
+              </label>
+              <label className="check-row outreach-secure-row">
+                <input type="checkbox" checked={senderDraft.imapSecure} onChange={(event) => updateSender('imapSecure', event.target.checked)} />
+                {copy.devLetter.fields.imapSecure}
               </label>
             </div>
           </details>
@@ -2363,6 +3213,40 @@ function DevelopmentLetterPage({
   )
 }
 
+function QualityReviewCard({ review, stale, copy }: { review?: OutreachEmailQualityReview; stale?: boolean; copy: UiCopy }) {
+  if (!review) {
+    return (
+      <div className="quality-review-card empty">
+        <div className="quality-review-top">
+          <strong>{copy.devLetter.quality.title}</strong>
+          <span>{copy.devLetter.quality.notReviewed}</span>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className={`quality-review-card ${review.level} ${stale ? 'stale' : ''}`}>
+      <div className="quality-review-top">
+        <strong>{copy.devLetter.quality.title}</strong>
+        <span>{stale ? copy.devLetter.quality.stale : copy.devLetter.quality.score(review.score)}</span>
+      </div>
+      <div className="quality-review-checks">
+        {review.checks.map((check) => (
+          <span className={check.passed ? 'passed' : 'failed'} key={check.id}>
+            {check.passed ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+            {copy.devLetter.quality.checks[check.id]}
+          </span>
+        ))}
+      </div>
+      {review.issues.length ? (
+        <p>{review.issues[0]}</p>
+      ) : (
+        <p>{review.summary}</p>
+      )}
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label>
@@ -2414,6 +3298,10 @@ function emptySenderDraft(companyProfile: CompanyProfile): SenderFormDraft {
     host: 'smtp.gmail.com',
     port: '587',
     secure: false,
+    imapHost: 'imap.gmail.com',
+    imapPort: '993',
+    imapSecure: true,
+    imapUsername: '',
     username: '',
     password: '',
   }
@@ -2428,6 +3316,10 @@ function senderFormFromAccount(account: OutreachSenderAccount): SenderFormDraft 
     host: account.host,
     port: String(account.port),
     secure: account.secure,
+    imapHost: account.imapHost ?? '',
+    imapPort: String(account.imapPort ?? 993),
+    imapSecure: account.imapSecure ?? true,
+    imapUsername: account.imapUsername ?? '',
     username: account.username ?? '',
     password: '',
   }
@@ -2529,24 +3421,36 @@ function OnboardingLoadingPage({ serviceError, copy }: { serviceError: string; c
 
 function OnboardingWizard({
   initialState,
+  initialCompanyProfile,
+  companyMaterials,
+  setCompanyProfile,
+  setCompanyMaterials,
+  companyOnly = false,
   serviceError,
   onFinished,
 }: {
   initialState: OnboardingState
+  initialCompanyProfile: CompanyProfile
+  companyMaterials: Material[]
+  setCompanyProfile: (profile: CompanyProfile) => void
+  setCompanyMaterials: (materials: Material[]) => void
+  companyOnly?: boolean
   serviceError: string
   onFinished: (state: OnboardingState) => void
 }) {
+  const steps = companyOnly ? companyOnboardingSteps : onboardingSteps
   const [stepIndex, setStepIndex] = useState(0)
-  const [draft, setDraft] = useState<OnboardingDraft>(() => draftFromOnboarding(initialState))
+  const [draft, setDraft] = useState<OnboardingDraft>(() => draftFromOnboarding(initialState, initialCompanyProfile))
   const [busy, setBusy] = useState(false)
   const [pickingWorkspace, setPickingWorkspace] = useState(false)
+  const [uploadingCompanyFiles, setUploadingCompanyFiles] = useState(false)
   const [error, setError] = useState('')
-  const step = onboardingSteps[stepIndex] ?? onboardingSteps[0]
+  const step = steps[stepIndex] ?? steps[0]
   const copy = getUiCopy(draft.language)
   const stepCopy = copy.onboarding.steps[step.id]
   const StepIcon = step.icon
-  const isLastStep = stepIndex === onboardingSteps.length - 1
-  const progress = `${((stepIndex + 1) / onboardingSteps.length) * 100}%`
+  const isLastStep = stepIndex === steps.length - 1
+  const progress = `${((stepIndex + 1) / steps.length) * 100}%`
 
   function updateDraft(patch: Partial<OnboardingDraft>) {
     setDraft((current) => ({ ...current, ...patch }))
@@ -2554,6 +3458,10 @@ function OnboardingWizard({
 
   function updateProvider(patch: Partial<ProviderForm>) {
     setDraft((current) => ({ ...current, provider: { ...current.provider, ...patch } }))
+  }
+
+  function updateCompany(patch: Partial<ReturnType<typeof companyDraftFromProfile>>) {
+    setDraft((current) => ({ ...current, company: { ...current.company, ...patch } }))
   }
 
   function setProviderChoice(providerChoice: OnboardingProviderChoice) {
@@ -2586,6 +3494,32 @@ function OnboardingWizard({
     })
   }
 
+  async function saveCompanyDraft() {
+    const saved = await api.saveCompanyProfile(companyProfileFromDraft(draft.company))
+    setCompanyProfile(saved)
+    return saved
+  }
+
+  async function uploadCompanyFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? [])
+    if (!files.length) return
+    setUploadingCompanyFiles(true)
+    setError('')
+    try {
+      const saved: Material[] = []
+      for (const file of files) {
+        const material = await api.saveCompanyMaterial(file)
+        saved.push(await api.updateCompanyMaterial(material.id, { category: 'product-catalog' }))
+      }
+      setCompanyMaterials([...saved, ...companyMaterials])
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setUploadingCompanyFiles(false)
+      event.currentTarget.value = ''
+    }
+  }
+
   async function chooseWorkspaceDirectory() {
     setPickingWorkspace(true)
     setError('')
@@ -2606,6 +3540,17 @@ function OnboardingWizard({
   function validateStep(): string {
     if (step.id === 'identity' && (!draft.userDisplayName.trim() || !draft.agentName.trim())) {
       return copy.onboarding.validation.missingNames
+    }
+    if (step.id === 'companyBasics' && (!draft.company.name.trim() || !draft.company.website.trim())) {
+      return copy.onboarding.validation.missingCompanyBasics
+    }
+    if (step.id === 'companyProducts' && splitLines(draft.company.mainProducts).length === 0) {
+      return copy.onboarding.validation.missingCompanyProducts
+    }
+    if (step.id === 'companyReview' && !isCompanyDraftReady(draft.company)) {
+      return !draft.company.name.trim() || !draft.company.website.trim()
+        ? copy.onboarding.validation.missingCompanyBasics
+        : copy.onboarding.validation.missingCompanyProducts
     }
     if (step.id === 'provider' && draft.providerChoice !== 'skip') {
       if (!draft.provider.displayName.trim() || !draft.provider.baseUrl.trim() || !draft.provider.defaultModel.trim()) {
@@ -2629,11 +3574,12 @@ function OnboardingWizard({
     setError('')
     const input = onboardingInputFromDraft(draft)
     try {
+      if (isCompanyOnboardingStep(step.id)) await saveCompanyDraft()
       if (isLastStep) {
-        onFinished(await completeOnboardingState(input))
+        onFinished(companyOnly ? normalizeOnboardingState(initialState) : await completeOnboardingState(input))
       } else {
-        await updateOnboardingState(input)
-        setStepIndex((current) => Math.min(current + 1, onboardingSteps.length - 1))
+        if (!companyOnly) await updateOnboardingState(input)
+        setStepIndex((current) => Math.min(current + 1, steps.length - 1))
       }
     } catch (err) {
       setError(humanizeErrorMessage(err, copy))
@@ -2659,7 +3605,7 @@ function OnboardingWizard({
 
       <section className="onboarding-card">
         <aside className="onboarding-steps" aria-label={copy.onboarding.stepsAria}>
-          {onboardingSteps.map((item, index) => {
+          {steps.map((item, index) => {
             const Icon = item.icon
             const state = index < stepIndex ? 'complete' : index === stepIndex ? 'active' : ''
             const itemCopy = copy.onboarding.steps[item.id]
@@ -2683,7 +3629,7 @@ function OnboardingWizard({
               <StepIcon size={22} />
             </div>
             <div>
-              <span>{copy.onboarding.stepProgress(stepIndex + 1, onboardingSteps.length)}</span>
+              <span>{copy.onboarding.stepProgress(stepIndex + 1, steps.length)}</span>
               <h1>{stepCopy.title}</h1>
               <p>{stepCopy.description}</p>
             </div>
@@ -2722,6 +3668,90 @@ function OnboardingWizard({
                     <small>{copy.onboarding.identity.memoryDescription}</small>
                   </span>
                 </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyBasics' ? (
+              <div className="onboarding-form-grid">
+                <label>
+                  <span>{copy.onboarding.company.name}</span>
+                  <input value={draft.company.name} onChange={(event) => updateCompany({ name: event.target.value })} placeholder="Acme Trading" />
+                </label>
+                <label>
+                  <span>{copy.onboarding.company.website}</span>
+                  <input value={draft.company.website} onChange={(event) => updateCompany({ website: event.target.value })} placeholder="https://example.com" />
+                </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyProducts' ? (
+              <div className="onboarding-form-grid">
+                <label className="full-span">
+                  <span>{copy.onboarding.company.mainProducts}</span>
+                  <textarea value={draft.company.mainProducts} onChange={(event) => updateCompany({ mainProducts: event.target.value })} rows={6} placeholder="LED work lights&#10;Outdoor camping lamps&#10;Custom OEM lighting" />
+                </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyMarket' ? (
+              <div className="onboarding-form-grid">
+                <label className="full-span">
+                  <span>{copy.onboarding.company.markets}</span>
+                  <textarea value={draft.company.markets} onChange={(event) => updateCompany({ markets: event.target.value })} rows={6} placeholder="United States outdoor brands&#10;EU hardware distributors&#10;Amazon sellers" />
+                </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyTrust' ? (
+              <div className="onboarding-form-grid">
+                <label>
+                  <span>{copy.onboarding.company.certifications}</span>
+                  <textarea value={draft.company.certifications} onChange={(event) => updateCompany({ certifications: event.target.value })} rows={5} />
+                </label>
+                <label>
+                  <span>{copy.onboarding.company.brandVoice}</span>
+                  <textarea value={draft.company.brandVoice} onChange={(event) => updateCompany({ brandVoice: event.target.value })} rows={5} />
+                </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyTrade' ? (
+              <div className="onboarding-form-grid">
+                <label>
+                  <span>{copy.onboarding.company.paymentTerms}</span>
+                  <textarea value={draft.company.paymentTerms} onChange={(event) => updateCompany({ paymentTerms: event.target.value })} rows={4} />
+                </label>
+                <label>
+                  <span>{copy.onboarding.company.shippingTerms}</span>
+                  <textarea value={draft.company.shippingTerms} onChange={(event) => updateCompany({ shippingTerms: event.target.value })} rows={4} />
+                </label>
+                <label className="full-span">
+                  <span>{copy.onboarding.company.notes}</span>
+                  <textarea value={draft.company.notes} onChange={(event) => updateCompany({ notes: event.target.value })} rows={4} />
+                </label>
+              </div>
+            ) : null}
+
+            {step.id === 'companyFiles' ? (
+              <div className="company-onboarding-files">
+                <label className="upload-dropzone company-upload-dropzone">
+                  <Upload size={20} />
+                  <strong>{uploadingCompanyFiles ? copy.onboarding.company.uploading : copy.onboarding.company.uploadTitle}</strong>
+                  <span>{copy.onboarding.company.uploadHint}</span>
+                  <input type="file" multiple onChange={uploadCompanyFiles} aria-label={copy.onboarding.company.uploadAction} />
+                </label>
+                <div className="onboarding-note">{copy.onboarding.company.uploadedCount(companyMaterials.length)}</div>
+              </div>
+            ) : null}
+
+            {step.id === 'companyReview' ? (
+              <div className="company-review-list">
+                <CompanyReviewItem label={copy.onboarding.company.name} value={draft.company.name} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyBasics'))} copy={copy} />
+                <CompanyReviewItem label={copy.onboarding.company.website} value={draft.company.website} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyBasics'))} copy={copy} />
+                <CompanyReviewItem label={copy.onboarding.company.mainProducts} value={draft.company.mainProducts} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyProducts'))} copy={copy} />
+                <CompanyReviewItem label={copy.onboarding.company.markets} value={draft.company.markets} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyMarket'))} copy={copy} />
+                <CompanyReviewItem label={copy.onboarding.company.certifications} value={draft.company.certifications} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyTrust'))} copy={copy} />
+                <CompanyReviewItem label={copy.onboarding.company.paymentTerms} value={draft.company.paymentTerms} onEdit={() => setStepIndex(steps.findIndex((item) => item.id === 'companyTrade'))} copy={copy} />
               </div>
             ) : null}
 
@@ -2858,6 +3888,31 @@ function OnboardingOptionButton({
       </span>
       {active ? <CheckCircle2 size={16} /> : null}
     </button>
+  )
+}
+
+function CompanyReviewItem({
+  label,
+  value,
+  onEdit,
+  copy,
+}: {
+  label: string
+  value: string
+  onEdit: () => void
+  copy: UiCopy
+}) {
+  return (
+    <article className="company-review-item">
+      <div>
+        <span>{label}</span>
+        <p>{value.trim() || copy.onboarding.company.empty}</p>
+      </div>
+      <button className="text-button" type="button" onClick={onEdit}>
+        <Pencil size={14} />
+        {copy.onboarding.company.edit}
+      </button>
+    </article>
   )
 }
 
@@ -4559,6 +5614,14 @@ function companyProfileFromDraft(draft: ReturnType<typeof companyDraftFromProfil
   }
 }
 
+function isCompanyDraftReady(draft: ReturnType<typeof companyDraftFromProfile>): boolean {
+  return Boolean(draft.name.trim() && draft.website.trim() && splitLines(draft.mainProducts).length)
+}
+
+function isCompanyProfileReady(profile: CompanyProfile): boolean {
+  return Boolean(profile.name.trim() && profile.website?.trim() && profile.mainProducts.some((item) => item.trim()))
+}
+
 function joinLines(values: string[] | undefined): string {
   return (values ?? []).join('\n')
 }
@@ -4799,6 +5862,21 @@ function StatusRow({
 }
 
 type MessageBlock = { type: 'text'; body: string } | { type: 'code'; lang: string; body: string }
+
+const COMPUTER_CONTROL_MESSAGE_PREFIX = '[[HERMILLS_COMPUTER_CONTROL:'
+const COMPUTER_CONTROL_MESSAGE_SUFFIX = ']]'
+
+function parseComputerControlMessage(content: string): ComputerControlPayload | undefined {
+  if (!content.startsWith(COMPUTER_CONTROL_MESSAGE_PREFIX) || !content.endsWith(COMPUTER_CONTROL_MESSAGE_SUFFIX)) return undefined
+  try {
+    const raw = content.slice(COMPUTER_CONTROL_MESSAGE_PREFIX.length, -COMPUTER_CONTROL_MESSAGE_SUFFIX.length)
+    const payload = JSON.parse(raw) as ComputerControlPayload
+    if (!payload || typeof payload.message !== 'string') return undefined
+    return payload
+  } catch {
+    return undefined
+  }
+}
 
 function MessageContent({ content }: { content: string }) {
   return (

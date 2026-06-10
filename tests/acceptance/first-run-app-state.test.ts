@@ -81,17 +81,21 @@ describe("first-run app-state acceptance", () => {
     expect(apiSource).toContain("async deleteAgent");
   });
 
-  it("keeps first onboarding to three simple steps before chat", async () => {
+  it("keeps first onboarding simple while requiring company setup before chat", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const stepsBlock = appSource.match(/const onboardingSteps:[\s\S]*?\n\]/)?.[0] ?? "";
 
     expect(stepsBlock).toContain("id: 'language'");
     expect(stepsBlock).toContain("id: 'identity'");
+    expect(stepsBlock).toContain("id: 'companyBasics'");
+    expect(stepsBlock).toContain("id: 'companyProducts'");
+    expect(stepsBlock).toContain("id: 'companyReview'");
     expect(stepsBlock).toContain("id: 'workspace'");
     expect(stepsBlock).not.toContain("id: 'provider'");
     expect(stepsBlock).not.toContain("id: 'theme'");
     expect(stepsBlock).not.toContain("id: 'features'");
-    expect(getUiCopy("zh-CN").onboarding.stepProgress(1, 3)).toBe("第 1 步，共 3 步");
+    expect(appSource).toContain("const companyReady = isCompanyProfileReady(companyProfile.data)");
+    expect(getUiCopy("zh-CN").onboarding.stepProgress(1, 10)).toBe("第 1 步，共 10 步");
     expect(getUiCopy("en").firstRun.oneTimeSetup).toBe("Set up Hermes");
     expect(getUiCopy("zh-CN").firstRun.oneTimeSetup).toBe("设置 Hermes");
   });

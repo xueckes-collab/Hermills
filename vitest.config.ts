@@ -9,6 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@": fileURLToPath(new URL("./apps/renderer/src", import.meta.url)),
       "@hermills/core": fileURLToPath(new URL("./packages/core/src/index.ts", import.meta.url)),
       "@hermills/runtime": fileURLToPath(new URL("./packages/runtime/src/index.ts", import.meta.url)),
       "@hermills/agent-builder": fileURLToPath(new URL("./packages/agent-builder/src/index.ts", import.meta.url))

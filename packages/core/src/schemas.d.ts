@@ -919,6 +919,83 @@ export declare const OutreachLeadSchema: z.ZodObject<{
     need?: string | undefined;
 }>;
 export declare const OutreachDraftStatusSchema: z.ZodEnum<["draft", "sent", "failed"]>;
+export declare const OutreachEmailQualityCheckSchema: z.ZodObject<{
+    id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+    label: z.ZodString;
+    passed: z.ZodBoolean;
+    score: z.ZodNumber;
+    message: z.ZodDefault<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    label: string;
+    message: string;
+    id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+    passed: boolean;
+    score: number;
+}, {
+    label: string;
+    id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+    passed: boolean;
+    score: number;
+    message?: string | undefined;
+}>;
+export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
+    score: z.ZodNumber;
+    passed: z.ZodBoolean;
+    level: z.ZodEnum<["pass", "needs-work", "blocked"]>;
+    summary: z.ZodDefault<z.ZodString>;
+    checks: z.ZodArray<z.ZodObject<{
+        id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+        label: z.ZodString;
+        passed: z.ZodBoolean;
+        score: z.ZodNumber;
+        message: z.ZodDefault<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        message: string;
+        id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+        passed: boolean;
+        score: number;
+    }, {
+        label: string;
+        id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+        passed: boolean;
+        score: number;
+        message?: string | undefined;
+    }>, "many">;
+    issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    rewriteHints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    reviewedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    issues: string[];
+    checks: {
+        label: string;
+        message: string;
+        id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+        passed: boolean;
+        score: number;
+    }[];
+    passed: boolean;
+    score: number;
+    level: "pass" | "needs-work" | "blocked";
+    summary: string;
+    rewriteHints: string[];
+    reviewedAt: string;
+}, {
+    checks: {
+        label: string;
+        id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+        passed: boolean;
+        score: number;
+        message?: string | undefined;
+    }[];
+    passed: boolean;
+    score: number;
+    level: "pass" | "needs-work" | "blocked";
+    reviewedAt: string;
+    issues?: string[] | undefined;
+    summary?: string | undefined;
+    rewriteHints?: string[] | undefined;
+}>;
 export declare const OutreachDraftSchema: z.ZodObject<{
     id: z.ZodString;
     profileId: z.ZodOptional<z.ZodString>;
@@ -947,6 +1024,64 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         totalTokens?: number | undefined;
         estimatedCostUsd?: number | undefined;
     }>>;
+    qualityReview: z.ZodOptional<z.ZodObject<{
+        score: z.ZodNumber;
+        passed: z.ZodBoolean;
+        level: z.ZodEnum<["pass", "needs-work", "blocked"]>;
+        summary: z.ZodDefault<z.ZodString>;
+        checks: z.ZodArray<z.ZodObject<{
+            id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+            label: z.ZodString;
+            passed: z.ZodBoolean;
+            score: z.ZodNumber;
+            message: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }, {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }>, "many">;
+        issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        rewriteHints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        reviewedAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        issues: string[];
+        checks: {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        summary: string;
+        rewriteHints: string[];
+        reviewedAt: string;
+    }, {
+        checks: {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        reviewedAt: string;
+        issues?: string[] | undefined;
+        summary?: string | undefined;
+        rewriteHints?: string[] | undefined;
+    }>>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
@@ -971,6 +1106,22 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     } | undefined;
     profileId?: string | undefined;
     leadId?: string | undefined;
+    qualityReview?: {
+        issues: string[];
+        checks: {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        summary: string;
+        rewriteHints: string[];
+        reviewedAt: string;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }, {
@@ -993,6 +1144,22 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     leadId?: string | undefined;
     tone?: string | undefined;
     promptSnapshot?: string | undefined;
+    qualityReview?: {
+        checks: {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        reviewedAt: string;
+        issues?: string[] | undefined;
+        summary?: string | undefined;
+        rewriteHints?: string[] | undefined;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }>;
@@ -1005,6 +1172,10 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     host: z.ZodString;
     port: z.ZodDefault<z.ZodNumber>;
     secure: z.ZodDefault<z.ZodBoolean>;
+    imapHost: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    imapPort: z.ZodOptional<z.ZodNumber>;
+    imapSecure: z.ZodOptional<z.ZodBoolean>;
+    imapUsername: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     username: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     passwordRef: z.ZodOptional<z.ZodString>;
     passwordPreview: z.ZodOptional<z.ZodString>;
@@ -1012,6 +1183,9 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     lastTestedAt: z.ZodOptional<z.ZodString>;
     lastTestEmailAt: z.ZodOptional<z.ZodString>;
     deliveryConfirmedAt: z.ZodOptional<z.ZodString>;
+    lastInboxCheckedAt: z.ZodOptional<z.ZodString>;
+    lastInboxCheckStatus: z.ZodOptional<z.ZodEnum<["ready", "unsupported", "failed"]>>;
+    lastInboxCheckMessage: z.ZodOptional<z.ZodString>;
     lastError: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
@@ -1027,12 +1201,19 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     secure: boolean;
     profileId?: string | undefined;
     fromName?: string | undefined;
+    imapHost?: string | undefined;
+    imapPort?: number | undefined;
+    imapSecure?: boolean | undefined;
+    imapUsername?: string | undefined;
     username?: string | undefined;
     passwordRef?: string | undefined;
     passwordPreview?: string | undefined;
     lastTestedAt?: string | undefined;
     lastTestEmailAt?: string | undefined;
     deliveryConfirmedAt?: string | undefined;
+    lastInboxCheckedAt?: string | undefined;
+    lastInboxCheckStatus?: "failed" | "ready" | "unsupported" | undefined;
+    lastInboxCheckMessage?: string | undefined;
     lastError?: string | undefined;
 }, {
     label: string;
@@ -1046,17 +1227,57 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     fromName?: unknown;
     port?: number | undefined;
     secure?: boolean | undefined;
+    imapHost?: unknown;
+    imapPort?: number | undefined;
+    imapSecure?: boolean | undefined;
+    imapUsername?: unknown;
     username?: unknown;
     passwordRef?: string | undefined;
     passwordPreview?: string | undefined;
     lastTestedAt?: string | undefined;
     lastTestEmailAt?: string | undefined;
     deliveryConfirmedAt?: string | undefined;
+    lastInboxCheckedAt?: string | undefined;
+    lastInboxCheckStatus?: "failed" | "ready" | "unsupported" | undefined;
+    lastInboxCheckMessage?: string | undefined;
     lastError?: string | undefined;
+}>;
+export declare const OutreachResearchDepthSchema: z.ZodEnum<["quick", "standard", "deep"]>;
+export declare const CustomerResearchSummarySchema: z.ZodObject<{
+    depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+    confidenceScore: z.ZodDefault<z.ZodNumber>;
+    buyerType: z.ZodDefault<z.ZodString>;
+    likelyNeed: z.ZodDefault<z.ZodString>;
+    primaryAngle: z.ZodDefault<z.ZodString>;
+    riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    checkedPages: z.ZodDefault<z.ZodNumber>;
+}, "strict", z.ZodTypeAny, {
+    depth: "quick" | "standard" | "deep";
+    confidenceScore: number;
+    buyerType: string;
+    likelyNeed: string;
+    primaryAngle: string;
+    riskNotes: string[];
+    checkedPages: number;
+}, {
+    depth?: "quick" | "standard" | "deep" | undefined;
+    confidenceScore?: number | undefined;
+    buyerType?: string | undefined;
+    likelyNeed?: string | undefined;
+    primaryAngle?: string | undefined;
+    riskNotes?: string[] | undefined;
+    checkedPages?: number | undefined;
 }>;
 export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     website: z.ZodString;
     companyName: z.ZodString;
+    depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+    confidenceScore: z.ZodDefault<z.ZodNumber>;
+    buyerType: z.ZodDefault<z.ZodString>;
+    productSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    buyingSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    painSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    recommendedAngle: z.ZodDefault<z.ZodString>;
     industry: z.ZodDefault<z.ZodString>;
     inferredNeed: z.ZodDefault<z.ZodString>;
     title: z.ZodDefault<z.ZodString>;
@@ -1073,6 +1294,13 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     title: string;
     companyName: string;
     industry: string;
+    depth: "quick" | "standard" | "deep";
+    confidenceScore: number;
+    buyerType: string;
+    productSignals: string[];
+    buyingSignals: string[];
+    painSignals: string[];
+    recommendedAngle: string;
     inferredNeed: string;
     fetchedUrls: string[];
     error?: string | undefined;
@@ -1084,6 +1312,13 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     textPreview?: string | undefined;
     title?: string | undefined;
     industry?: string | undefined;
+    depth?: "quick" | "standard" | "deep" | undefined;
+    confidenceScore?: number | undefined;
+    buyerType?: string | undefined;
+    productSignals?: string[] | undefined;
+    buyingSignals?: string[] | undefined;
+    painSignals?: string[] | undefined;
+    recommendedAngle?: string | undefined;
     inferredNeed?: string | undefined;
     fetchedUrls?: string[] | undefined;
     error?: string | undefined;
@@ -1148,6 +1383,64 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
     subject: z.ZodString;
     body: z.ZodString;
     status: z.ZodDefault<z.ZodEnum<["draft", "sent", "failed"]>>;
+    qualityReview: z.ZodOptional<z.ZodObject<{
+        score: z.ZodNumber;
+        passed: z.ZodBoolean;
+        level: z.ZodEnum<["pass", "needs-work", "blocked"]>;
+        summary: z.ZodDefault<z.ZodString>;
+        checks: z.ZodArray<z.ZodObject<{
+            id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+            label: z.ZodString;
+            passed: z.ZodBoolean;
+            score: z.ZodNumber;
+            message: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }, {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }>, "many">;
+        issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        rewriteHints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        reviewedAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        issues: string[];
+        checks: {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        summary: string;
+        rewriteHints: string[];
+        reviewedAt: string;
+    }, {
+        checks: {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        reviewedAt: string;
+        issues?: string[] | undefined;
+        summary?: string | undefined;
+        rewriteHints?: string[] | undefined;
+    }>>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
@@ -1158,6 +1451,22 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
     step: number;
     delayDays: number;
     strategy: string;
+    qualityReview?: {
+        issues: string[];
+        checks: {
+            label: string;
+            message: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        summary: string;
+        rewriteHints: string[];
+        reviewedAt: string;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
     draftId?: string | undefined;
@@ -1168,6 +1477,22 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
     step: number;
     strategy: string;
     status?: "failed" | "draft" | "sent" | undefined;
+    qualityReview?: {
+        checks: {
+            label: string;
+            id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+            passed: boolean;
+            score: number;
+            message?: string | undefined;
+        }[];
+        passed: boolean;
+        score: number;
+        level: "pass" | "needs-work" | "blocked";
+        reviewedAt: string;
+        issues?: string[] | undefined;
+        summary?: string | undefined;
+        rewriteHints?: string[] | undefined;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
     draftId?: string | undefined;
@@ -1185,6 +1510,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     research: z.ZodObject<{
         website: z.ZodString;
         companyName: z.ZodString;
+        depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+        confidenceScore: z.ZodDefault<z.ZodNumber>;
+        buyerType: z.ZodDefault<z.ZodString>;
+        productSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        buyingSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        painSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        recommendedAngle: z.ZodDefault<z.ZodString>;
         industry: z.ZodDefault<z.ZodString>;
         inferredNeed: z.ZodDefault<z.ZodString>;
         title: z.ZodDefault<z.ZodString>;
@@ -1201,6 +1533,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
+        depth: "quick" | "standard" | "deep";
+        confidenceScore: number;
+        buyerType: string;
+        productSignals: string[];
+        buyingSignals: string[];
+        painSignals: string[];
+        recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
         error?: string | undefined;
@@ -1212,6 +1551,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
+        depth?: "quick" | "standard" | "deep" | undefined;
+        confidenceScore?: number | undefined;
+        buyerType?: string | undefined;
+        productSignals?: string[] | undefined;
+        buyingSignals?: string[] | undefined;
+        painSignals?: string[] | undefined;
+        recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
         error?: string | undefined;
@@ -1275,6 +1621,64 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         subject: z.ZodString;
         body: z.ZodString;
         status: z.ZodDefault<z.ZodEnum<["draft", "sent", "failed"]>>;
+        qualityReview: z.ZodOptional<z.ZodObject<{
+            score: z.ZodNumber;
+            passed: z.ZodBoolean;
+            level: z.ZodEnum<["pass", "needs-work", "blocked"]>;
+            summary: z.ZodDefault<z.ZodString>;
+            checks: z.ZodArray<z.ZodObject<{
+                id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+                label: z.ZodString;
+                passed: z.ZodBoolean;
+                score: z.ZodNumber;
+                message: z.ZodDefault<z.ZodString>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }, {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }>, "many">;
+            issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            rewriteHints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            reviewedAt: z.ZodString;
+        }, "strict", z.ZodTypeAny, {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        }, {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
@@ -1285,6 +1689,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         delayDays: number;
         strategy: string;
+        qualityReview?: {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1295,6 +1715,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         strategy: string;
         status?: "failed" | "draft" | "sent" | undefined;
+        qualityReview?: {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1309,6 +1745,64 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         subject: z.ZodString;
         body: z.ZodString;
         status: z.ZodDefault<z.ZodEnum<["draft", "sent", "failed"]>>;
+        qualityReview: z.ZodOptional<z.ZodObject<{
+            score: z.ZodNumber;
+            passed: z.ZodBoolean;
+            level: z.ZodEnum<["pass", "needs-work", "blocked"]>;
+            summary: z.ZodDefault<z.ZodString>;
+            checks: z.ZodArray<z.ZodObject<{
+                id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
+                label: z.ZodString;
+                passed: z.ZodBoolean;
+                score: z.ZodNumber;
+                message: z.ZodDefault<z.ZodString>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }, {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }>, "many">;
+            issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            rewriteHints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            reviewedAt: z.ZodString;
+        }, "strict", z.ZodTypeAny, {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        }, {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
@@ -1319,6 +1813,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         delayDays: number;
         strategy: string;
+        qualityReview?: {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1329,6 +1839,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         strategy: string;
         status?: "failed" | "draft" | "sent" | undefined;
+        qualityReview?: {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1374,6 +1900,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
+        depth: "quick" | "standard" | "deep";
+        confidenceScore: number;
+        buyerType: string;
+        productSignals: string[];
+        buyingSignals: string[];
+        painSignals: string[];
+        recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
         error?: string | undefined;
@@ -1404,6 +1937,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         delayDays: number;
         strategy: string;
+        qualityReview?: {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1416,6 +1965,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         delayDays: number;
         strategy: string;
+        qualityReview?: {
+            issues: string[];
+            checks: {
+                label: string;
+                message: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            summary: string;
+            rewriteHints: string[];
+            reviewedAt: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1445,6 +2010,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
+        depth?: "quick" | "standard" | "deep" | undefined;
+        confidenceScore?: number | undefined;
+        buyerType?: string | undefined;
+        productSignals?: string[] | undefined;
+        buyingSignals?: string[] | undefined;
+        painSignals?: string[] | undefined;
+        recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
         error?: string | undefined;
@@ -1456,6 +2028,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         strategy: string;
         status?: "failed" | "draft" | "sent" | undefined;
+        qualityReview?: {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1498,6 +2086,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         step: number;
         strategy: string;
         status?: "failed" | "draft" | "sent" | undefined;
+        qualityReview?: {
+            checks: {
+                label: string;
+                id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+                passed: boolean;
+                score: number;
+                message?: string | undefined;
+            }[];
+            passed: boolean;
+            score: number;
+            level: "pass" | "needs-work" | "blocked";
+            reviewedAt: string;
+            issues?: string[] | undefined;
+            summary?: string | undefined;
+            rewriteHints?: string[] | undefined;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -1505,7 +2109,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     }[] | undefined;
 }>;
 export declare const OutreachCampaignStatusSchema: z.ZodEnum<["draft", "generating", "ready", "sending", "paused", "completed", "failed", "stopped"]>;
-export declare const OutreachCampaignRecipientStatusSchema: z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "failed", "skipped"]>;
+export declare const OutreachCampaignRecipientStatusSchema: z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "replied", "bounced", "unsubscribed", "stopped", "failed", "skipped"]>;
 export declare const OutreachCampaignRateLimitSchema: z.ZodObject<{
     maxPerHour: z.ZodDefault<z.ZodNumber>;
     minDelayMinutes: z.ZodDefault<z.ZodNumber>;
@@ -1525,28 +2129,40 @@ export declare const OutreachCampaignStatsSchema: z.ZodObject<{
     queued: z.ZodDefault<z.ZodNumber>;
     sending: z.ZodDefault<z.ZodNumber>;
     sent: z.ZodDefault<z.ZodNumber>;
+    replied: z.ZodDefault<z.ZodNumber>;
+    bounced: z.ZodDefault<z.ZodNumber>;
+    unsubscribed: z.ZodDefault<z.ZodNumber>;
+    stopped: z.ZodDefault<z.ZodNumber>;
     failed: z.ZodDefault<z.ZodNumber>;
     skipped: z.ZodDefault<z.ZodNumber>;
 }, "strict", z.ZodTypeAny, {
     generated: number;
     failed: number;
+    stopped: number;
     sent: number;
     sending: number;
     pending: number;
     researching: number;
     approved: number;
     queued: number;
+    replied: number;
+    bounced: number;
+    unsubscribed: number;
     skipped: number;
     total: number;
 }, {
     generated?: number | undefined;
     failed?: number | undefined;
+    stopped?: number | undefined;
     sent?: number | undefined;
     sending?: number | undefined;
     pending?: number | undefined;
     researching?: number | undefined;
     approved?: number | undefined;
     queued?: number | undefined;
+    replied?: number | undefined;
+    bounced?: number | undefined;
+    unsubscribed?: number | undefined;
     skipped?: number | undefined;
     total?: number | undefined;
 }>;
@@ -1562,6 +2178,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     tone: z.ZodDefault<z.ZodString>;
     providerId: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
+    researchDepth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
     rateLimit: z.ZodDefault<z.ZodObject<{
         maxPerHour: z.ZodDefault<z.ZodNumber>;
         minDelayMinutes: z.ZodDefault<z.ZodNumber>;
@@ -1581,28 +2198,40 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         queued: z.ZodDefault<z.ZodNumber>;
         sending: z.ZodDefault<z.ZodNumber>;
         sent: z.ZodDefault<z.ZodNumber>;
+        replied: z.ZodDefault<z.ZodNumber>;
+        bounced: z.ZodDefault<z.ZodNumber>;
+        unsubscribed: z.ZodDefault<z.ZodNumber>;
+        stopped: z.ZodDefault<z.ZodNumber>;
         failed: z.ZodDefault<z.ZodNumber>;
         skipped: z.ZodDefault<z.ZodNumber>;
     }, "strict", z.ZodTypeAny, {
         generated: number;
         failed: number;
+        stopped: number;
         sent: number;
         sending: number;
         pending: number;
         researching: number;
         approved: number;
         queued: number;
+        replied: number;
+        bounced: number;
+        unsubscribed: number;
         skipped: number;
         total: number;
     }, {
         generated?: number | undefined;
         failed?: number | undefined;
+        stopped?: number | undefined;
         sent?: number | undefined;
         sending?: number | undefined;
         pending?: number | undefined;
         researching?: number | undefined;
         approved?: number | undefined;
         queued?: number | undefined;
+        replied?: number | undefined;
+        bounced?: number | undefined;
+        unsubscribed?: number | undefined;
         skipped?: number | undefined;
         total?: number | undefined;
     }>>;
@@ -1623,6 +2252,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     profileId: string;
     tone: string;
     mode: "first-email-only";
+    researchDepth: "quick" | "standard" | "deep";
     rateLimit: {
         maxPerHour: number;
         minDelayMinutes: number;
@@ -1630,12 +2260,16 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     stats: {
         generated: number;
         failed: number;
+        stopped: number;
         sent: number;
         sending: number;
         pending: number;
         researching: number;
         approved: number;
         queued: number;
+        replied: number;
+        bounced: number;
+        unsubscribed: number;
         skipped: number;
         total: number;
     };
@@ -1660,6 +2294,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     tone?: string | undefined;
     senderAccountId?: string | undefined;
     mode?: "first-email-only" | undefined;
+    researchDepth?: "quick" | "standard" | "deep" | undefined;
     rateLimit?: {
         maxPerHour?: number | undefined;
         minDelayMinutes?: number | undefined;
@@ -1667,12 +2302,16 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     stats?: {
         generated?: number | undefined;
         failed?: number | undefined;
+        stopped?: number | undefined;
         sent?: number | undefined;
         sending?: number | undefined;
         pending?: number | undefined;
         researching?: number | undefined;
         approved?: number | undefined;
         queued?: number | undefined;
+        replied?: number | undefined;
+        bounced?: number | undefined;
+        unsubscribed?: number | undefined;
         skipped?: number | undefined;
         total?: number | undefined;
     } | undefined;
@@ -1693,16 +2332,47 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     website: z.ZodString;
     contactName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     contactTitle: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    status: z.ZodDefault<z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "failed", "skipped"]>>;
+    status: z.ZodDefault<z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "replied", "bounced", "unsubscribed", "stopped", "failed", "skipped"]>>;
+    researchSummary: z.ZodOptional<z.ZodObject<{
+        depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+        confidenceScore: z.ZodDefault<z.ZodNumber>;
+        buyerType: z.ZodDefault<z.ZodString>;
+        likelyNeed: z.ZodDefault<z.ZodString>;
+        primaryAngle: z.ZodDefault<z.ZodString>;
+        riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        checkedPages: z.ZodDefault<z.ZodNumber>;
+    }, "strict", z.ZodTypeAny, {
+        depth: "quick" | "standard" | "deep";
+        confidenceScore: number;
+        buyerType: string;
+        likelyNeed: string;
+        primaryAngle: string;
+        riskNotes: string[];
+        checkedPages: number;
+    }, {
+        depth?: "quick" | "standard" | "deep" | undefined;
+        confidenceScore?: number | undefined;
+        buyerType?: string | undefined;
+        likelyNeed?: string | undefined;
+        primaryAngle?: string | undefined;
+        riskNotes?: string[] | undefined;
+        checkedPages?: number | undefined;
+    }>>;
     approvedAt: z.ZodOptional<z.ZodString>;
     queuedAt: z.ZodOptional<z.ZodString>;
     sentAt: z.ZodOptional<z.ZodString>;
+    repliedAt: z.ZodOptional<z.ZodString>;
+    bouncedAt: z.ZodOptional<z.ZodString>;
+    unsubscribedAt: z.ZodOptional<z.ZodString>;
+    stoppedAt: z.ZodOptional<z.ZodString>;
+    lastInboxEventAt: z.ZodOptional<z.ZodString>;
+    stopReason: z.ZodOptional<z.ZodString>;
     skippedAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    status: "generated" | "failed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "skipped";
+    status: "generated" | "failed" | "stopped" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "bounced" | "unsubscribed" | "skipped";
     id: string;
     createdAt: string;
     updatedAt: string;
@@ -1716,10 +2386,25 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     contactTitle?: string | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
+    stoppedAt?: string | undefined;
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
+    researchSummary?: {
+        depth: "quick" | "standard" | "deep";
+        confidenceScore: number;
+        buyerType: string;
+        likelyNeed: string;
+        primaryAngle: string;
+        riskNotes: string[];
+        checkedPages: number;
+    } | undefined;
     approvedAt?: string | undefined;
     queuedAt?: string | undefined;
+    repliedAt?: string | undefined;
+    bouncedAt?: string | undefined;
+    unsubscribedAt?: string | undefined;
+    lastInboxEventAt?: string | undefined;
+    stopReason?: string | undefined;
     skippedAt?: string | undefined;
 }, {
     id: string;
@@ -1731,16 +2416,140 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     email: string;
     leadId: string;
     campaignId: string;
-    status?: "generated" | "failed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "skipped" | undefined;
+    status?: "generated" | "failed" | "stopped" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "bounced" | "unsubscribed" | "skipped" | undefined;
     contactName?: unknown;
     contactTitle?: unknown;
     sentAt?: string | undefined;
     sendError?: string | undefined;
+    stoppedAt?: string | undefined;
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
+    researchSummary?: {
+        depth?: "quick" | "standard" | "deep" | undefined;
+        confidenceScore?: number | undefined;
+        buyerType?: string | undefined;
+        likelyNeed?: string | undefined;
+        primaryAngle?: string | undefined;
+        riskNotes?: string[] | undefined;
+        checkedPages?: number | undefined;
+    } | undefined;
     approvedAt?: string | undefined;
     queuedAt?: string | undefined;
+    repliedAt?: string | undefined;
+    bouncedAt?: string | undefined;
+    unsubscribedAt?: string | undefined;
+    lastInboxEventAt?: string | undefined;
+    stopReason?: string | undefined;
     skippedAt?: string | undefined;
+}>;
+export declare const OutreachFollowUpStatusSchema: z.ZodEnum<["scheduled", "ready", "sending", "sent", "failed", "stopped"]>;
+export declare const OutreachFollowUpModeSchema: z.ZodEnum<["confirm", "auto"]>;
+export declare const OutreachFollowUpJobSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodString;
+    campaignId: z.ZodString;
+    recipientId: z.ZodString;
+    leadId: z.ZodString;
+    workflowId: z.ZodString;
+    draftId: z.ZodString;
+    senderAccountId: z.ZodString;
+    step: z.ZodNumber;
+    mode: z.ZodDefault<z.ZodEnum<["confirm", "auto"]>>;
+    status: z.ZodDefault<z.ZodEnum<["scheduled", "ready", "sending", "sent", "failed", "stopped"]>>;
+    email: z.ZodString;
+    companyName: z.ZodString;
+    subject: z.ZodString;
+    body: z.ZodString;
+    sendAt: z.ZodString;
+    readyAt: z.ZodOptional<z.ZodString>;
+    sentAt: z.ZodOptional<z.ZodString>;
+    stoppedAt: z.ZodOptional<z.ZodString>;
+    stopReason: z.ZodOptional<z.ZodString>;
+    sendError: z.ZodOptional<z.ZodString>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    status: "failed" | "ready" | "stopped" | "sent" | "sending" | "scheduled";
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    profileId: string;
+    companyName: string;
+    email: string;
+    leadId: string;
+    subject: string;
+    body: string;
+    draftId: string;
+    step: number;
+    senderAccountId: string;
+    mode: "confirm" | "auto";
+    campaignId: string;
+    workflowId: string;
+    recipientId: string;
+    sendAt: string;
+    sentAt?: string | undefined;
+    sendError?: string | undefined;
+    stoppedAt?: string | undefined;
+    stopReason?: string | undefined;
+    readyAt?: string | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    profileId: string;
+    companyName: string;
+    email: string;
+    leadId: string;
+    subject: string;
+    body: string;
+    draftId: string;
+    step: number;
+    senderAccountId: string;
+    campaignId: string;
+    workflowId: string;
+    recipientId: string;
+    sendAt: string;
+    status?: "failed" | "ready" | "stopped" | "sent" | "sending" | "scheduled" | undefined;
+    sentAt?: string | undefined;
+    sendError?: string | undefined;
+    mode?: "confirm" | "auto" | undefined;
+    stoppedAt?: string | undefined;
+    stopReason?: string | undefined;
+    readyAt?: string | undefined;
+}>;
+export declare const OutreachFeedbackSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodOptional<z.ZodString>;
+    targetType: z.ZodDefault<z.ZodEnum<["draft", "workflow", "campaign", "recipient", "general"]>>;
+    targetId: z.ZodOptional<z.ZodString>;
+    rating: z.ZodNumber;
+    category: z.ZodDefault<z.ZodEnum<["good", "too-generic", "wrong-context", "too-long", "not-my-company", "other"]>>;
+    comment: z.ZodDefault<z.ZodString>;
+    status: z.ZodDefault<z.ZodEnum<["new", "valuable", "archived"]>>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    status: "new" | "valuable" | "archived";
+    id: string;
+    category: "other" | "good" | "too-generic" | "wrong-context" | "too-long" | "not-my-company";
+    createdAt: string;
+    updatedAt: string;
+    targetType: "draft" | "workflow" | "campaign" | "recipient" | "general";
+    rating: number;
+    comment: string;
+    profileId?: string | undefined;
+    targetId?: string | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    rating: number;
+    status?: "new" | "valuable" | "archived" | undefined;
+    category?: "other" | "good" | "too-generic" | "wrong-context" | "too-long" | "not-my-company" | undefined;
+    profileId?: string | undefined;
+    targetType?: "draft" | "workflow" | "campaign" | "recipient" | "general" | undefined;
+    targetId?: string | undefined;
+    comment?: string | undefined;
 }>;
 export declare const JobStatusSchema: z.ZodEnum<["active", "paused"]>;
 export declare const JobRunStatusSchema: z.ZodEnum<["queued", "running", "succeeded", "failed", "skipped"]>;

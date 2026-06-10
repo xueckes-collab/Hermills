@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
-const allowed = /\b(MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|MPL-2\.0|CC0-1\.0|0BSD|Python-2\.0|CC-BY-4\.0|BlueOak-1\.0\.0|WTFPL)\b/i;
+const allowed = /\b(MIT|Apache-2\.0|BSD-2-Clause|BSD-3-Clause|ISC|MPL-2\.0|CC0-1\.0|0BSD|Python-2\.0|CC-BY-4\.0|BlueOak-1\.0\.0|WTFPL|OFL-1\.1)\b/i;
 const denied = /\b(AGPL|GPL|LGPL|BSL|BUSL|Business Source|SSPL|Commons Clause)\b/i;
 const failures = [];
 

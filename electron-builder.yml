@@ -26,6 +26,11 @@ files:
       - package.json
       - dist/**
   - package.json
+extraResources:
+  - from: packages/runtime/dist/helpers
+    to: bin
+    filter:
+      - "**/*"
 asar: true
 mac:
   icon: build/icon.icns

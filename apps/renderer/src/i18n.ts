@@ -1,6 +1,6 @@
 export type UiLanguage = 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'en'
 export type AdvancedPanelId = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
-export type OnboardingStepId = 'language' | 'identity' | 'provider' | 'theme' | 'workspace' | 'features'
+export type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
 export type OnboardingThemeId = 'warm' | 'night' | 'plain' | 'system'
 export type OnboardingFeatureId = 'chat' | 'files' | 'memory' | 'assistants' | 'diagnostics'
 export type RuntimeStepId = 'not-installed' | 'ready' | 'failed' | 'needs-user-action' | 'checking' | 'downloading' | 'installing' | 'configuring' | 'starting' | 'verifying'
@@ -73,6 +73,30 @@ export type UiCopy = {
       memoryTitle: string
       memoryDescription: string
     }
+    company: {
+      name: string
+      website: string
+      mainProducts: string
+      markets: string
+      customers: string
+      advantages: string
+      certifications: string
+      cases: string
+      brandVoice: string
+      paymentTerms: string
+      shippingTerms: string
+      notes: string
+      optional: string
+      uploadTitle: string
+      uploadHint: string
+      uploadAction: string
+      uploading: string
+      uploadedCount: (count: number) => string
+      reviewTitle: string
+      reviewHint: string
+      edit: string
+      empty: string
+    }
     provider: {
       skip: string
       skipDetail: string
@@ -90,6 +114,8 @@ export type UiCopy = {
       missingProvider: string
       missingWorkspace: string
       missingFeature: string
+      missingCompanyBasics: string
+      missingCompanyProducts: string
       noDirectoryPicker: string
     }
     startChatting: string
@@ -104,10 +130,54 @@ export type UiCopy = {
   topbar: {
     chats: string
     devLetter: string
+    computer: string
     assistants: string
     files: string
     settingsAria: string
     serviceWarning: (message: string) => string
+  }
+  computerControl: {
+    sectionLabel: string
+    title: string
+    subtitle: string
+    inlineTitle: string
+    inlineSubtitle: string
+    permissionNudgeTitle: string
+    permissionNudgeDetail: string
+    permissionNudgeAction: string
+    permissionNudgeChecking: string
+    needsTools: string
+    notReadyHint: string
+    consoleEyebrow: string
+    consoleTitle: string
+    consoleReady: string
+    consoleEmpty: string
+    consolePlaceholder: string
+    consolePlaceholderDetail: string
+    frameTitle: string
+    permissionsEyebrow: string
+    permissionsTitle: string
+    permissionsSubtitle: string
+    cards: {
+      cli: string
+      tools: string
+      driver: string
+      console: string
+    }
+    permissionHints: Record<'screen-recording' | 'accessibility' | 'automation' | 'files', { label: string; detail: string }>
+    actions: {
+      refresh: string
+      refreshing: string
+      enableTools: string
+      enabling: string
+      installDriver: string
+      installing: string
+      startConsole: string
+      starting: string
+      stopConsole: string
+      stopping: string
+      openExternal: string
+    }
   }
   mode: {
     label: string
@@ -133,6 +203,7 @@ export type UiCopy = {
     placeholderReady: string
     placeholderNotReady: string
     startBeforeSend: string
+    thinking: string
     newConversation: string
     newAssistantConversation: (name: string) => string
     emptyActions: Record<ChatEmptyEntryId, { title: string; description: string; action: string; prompt: string }>
@@ -238,6 +309,10 @@ export type UiCopy = {
       host: string
       port: string
       secure: string
+      imapHost: string
+      imapPort: string
+      imapSecure: string
+      imapUsername: string
       username: string
       password: string
     }
@@ -294,6 +369,24 @@ export type UiCopy = {
       confirmSend: string
       confirmBatchSend: (count: number) => string
       confirmStopCampaign: string
+    }
+    quality: {
+      title: string
+      notReviewed: string
+      stale: string
+      score: (score: number) => string
+      review: string
+      reviewing: string
+      rewrite: string
+      rewriting: string
+      passed: string
+      needsRewrite: string
+      rewrittenPassed: string
+      rewrittenNeedsReview: string
+      blockedSend: string
+      blockedApprove: string
+      saveBeforeReview: string
+      checks: Record<'buyerReason' | 'humanTone' | 'personalized' | 'nextStep' | 'twoSecondRead', string>
     }
     results: {
       title: string
@@ -363,9 +456,18 @@ export type UiCopy = {
         pause: string
         resume: string
         stop: string
+        scheduleFollowUps: string
+        checkFollowUps: string
+        checkInbox: string
       }
       campaignStatus: Record<'draft' | 'generating' | 'ready' | 'sending' | 'paused' | 'completed' | 'failed' | 'stopped', string>
-      recipientStatus: Record<'pending' | 'researching' | 'generated' | 'approved' | 'queued' | 'sending' | 'sent' | 'failed' | 'skipped', string>
+      recipientStatus: Record<'pending' | 'researching' | 'generated' | 'approved' | 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'replied' | 'bounced' | 'unsubscribed' | 'stopped', string>
+      followUpTitle: string
+      followUpSummary: (scheduled: number, ready: number, stopped: number) => string
+      followUpMetrics: Record<'scheduled' | 'ready' | 'sent' | 'stopped', string>
+      followUpEmpty: string
+      followUpNext: (step: number, company: string, date: string) => string
+      followUpStatus: Record<'scheduled' | 'ready' | 'sending' | 'sent' | 'failed' | 'stopped', string>
       status: {
         created: (count: number) => string
         generated: (count: number) => string
@@ -375,6 +477,9 @@ export type UiCopy = {
         paused: string
         resumed: string
         stopped: string
+        followUpsScheduled: (count: number) => string
+        followUpsChecked: (ready: number, stopped: number) => string
+        inboxChecked: (matched: number, stopped: number) => string
       }
       warnings: {
         noCustomers: string
@@ -678,6 +783,13 @@ const en: UiCopy = {
     steps: {
       language: { label: 'Language', title: 'Choose your language.', description: 'Hermes will use this for the first workspace experience.' },
       identity: { label: 'Identity', title: 'Name this workspace.', description: 'Set the names Hermes should use in chat and decide whether memory starts on.' },
+      companyBasics: { label: 'Company', title: 'Tell Hermes who your company is.', description: 'This makes Hermills work like your company AI, not a generic chatbot.' },
+      companyProducts: { label: 'Products', title: 'What do you sell?', description: 'Keep it simple. Hermes will use this when writing outreach and answering buyer questions.' },
+      companyMarket: { label: 'Buyers', title: 'Who do you sell to?', description: 'Add target markets and customer types so Hermes can match the right buyer angle.' },
+      companyTrust: { label: 'Why you', title: 'Why should buyers trust you?', description: 'Add strengths, certifications, or proof that make your company credible.' },
+      companyTrade: { label: 'Terms', title: 'How do you usually trade?', description: 'Payment, shipping, and important notes help Hermes avoid making things up.' },
+      companyFiles: { label: 'Docs', title: 'Add company docs if you have them.', description: 'Catalogs and company introductions are optional, but they make answers stronger.' },
+      companyReview: { label: 'Review', title: 'Review your company brain.', description: 'Check everything once. You can edit any part before starting.' },
       provider: { label: 'Provider', title: 'Connect a model provider.', description: 'Add an OpenAI-compatible provider now, or skip and finish this later.' },
       theme: { label: 'Theme', title: 'Pick a simple theme.', description: 'Choose the surface tone for this local workspace.' },
       workspace: { label: 'Path', title: 'Choose a work path.', description: 'Hermes stores local workspace material in this directory.' },
@@ -691,6 +803,30 @@ const en: UiCopy = {
       en: 'Use English for Hermills and Hermes.',
     },
     identity: { userName: 'Your name', agentName: 'Agent name', memoryTitle: 'Start with memory on', memoryDescription: 'Hermes can remember selected preferences for this workspace.' },
+    company: {
+      name: 'Company name',
+      website: 'Company website',
+      mainProducts: 'Main products or services',
+      markets: 'Target markets',
+      customers: 'Target customers',
+      advantages: 'Core advantages',
+      certifications: 'Certifications',
+      cases: 'Proof or customer cases',
+      brandVoice: 'Brand tone',
+      paymentTerms: 'Payment terms',
+      shippingTerms: 'Shipping terms',
+      notes: 'Important notes',
+      optional: 'Optional',
+      uploadTitle: 'Company files',
+      uploadHint: 'Product catalogs, company decks, price lists, FAQ, and case studies all work.',
+      uploadAction: 'Add company docs',
+      uploading: 'Uploading...',
+      uploadedCount: (count) => `${count} company doc${count === 1 ? '' : 's'} added`,
+      reviewTitle: 'Company brain',
+      reviewHint: 'Hermes will use this automatically in chat, customer research, and outreach emails.',
+      edit: 'Edit',
+      empty: 'Not added yet',
+    },
     provider: { skip: 'Skip', skipDetail: 'Set this up later', setupLater: 'You can open Settings later and add a provider before sending model-backed messages.' },
     themeOptions: {
       warm: { label: 'Warm paper', detail: 'Soft paper surface with blue-green accents.' },
@@ -711,6 +847,8 @@ const en: UiCopy = {
       missingProvider: 'Provider name, base URL, and default model are required.',
       missingWorkspace: 'Choose or type a workspace path.',
       missingFeature: 'Select at least one feature.',
+      missingCompanyBasics: 'Add your company name and website before continuing.',
+      missingCompanyProducts: 'Add at least one main product or service.',
       noDirectoryPicker: 'Directory picker is not available in this build. Type a path instead.',
     },
     startChatting: 'Start chatting',
@@ -725,10 +863,59 @@ const en: UiCopy = {
   topbar: {
     chats: 'Chats',
     devLetter: 'Outreach',
+    computer: 'Computer control',
     assistants: 'Assistants',
     files: 'Files',
     settingsAria: 'Advanced settings',
     serviceWarning: (message) => `Local service warning: ${message}`,
+  },
+  computerControl: {
+    sectionLabel: 'Computer',
+    title: 'Hermes computer control',
+    subtitle: 'Ask in chat when you want Hermes to operate this Mac.',
+    inlineTitle: 'Computer control is in this chat',
+    inlineSubtitle: 'Say what you want Hermes to open, click, type, or check.',
+    permissionNudgeTitle: 'One more tap to control this Mac',
+    permissionNudgeDetail: 'Allow Hermills when macOS asks, then keep chatting normally.',
+    permissionNudgeAction: 'Allow',
+    permissionNudgeChecking: 'Checking',
+    needsTools: 'Hermes is preparing computer control.',
+    notReadyHint: 'Hermes will prepare the local computer-control ability when you ask in chat.',
+    consoleEyebrow: 'Native Hermes',
+    consoleTitle: 'Computer control',
+    consoleReady: 'Hermes can operate this Mac from chat.',
+    consoleEmpty: 'Ask Hermes what to do in the normal chat box.',
+    consolePlaceholder: 'Ready in chat',
+    consolePlaceholderDetail: 'No separate panel is needed.',
+    frameTitle: 'Hermes computer control',
+    permissionsEyebrow: 'macOS permissions',
+    permissionsTitle: 'Mac will ask when needed',
+    permissionsSubtitle: 'Hermills cannot grant these silently. macOS prompts appear only when Hermes needs them.',
+    cards: {
+      cli: 'Hermes CLI',
+      tools: 'Abilities',
+      driver: 'Local helper',
+      console: 'Chat',
+    },
+    permissionHints: {
+      'screen-recording': { label: 'Screen Recording', detail: 'macOS may ask for this when Hermes needs to see the screen.' },
+      accessibility: { label: 'Accessibility', detail: 'macOS may ask for this when Hermes needs to click, type, or control apps.' },
+      automation: { label: 'Automation', detail: 'macOS may ask for this when Hermes needs to control another app.' },
+      files: { label: 'Files and folders', detail: 'Only choose folders you want Hermes to read or write.' },
+    },
+    actions: {
+      refresh: 'Refresh',
+      refreshing: 'Refreshing',
+      enableTools: 'Prepare',
+      enabling: 'Enabling',
+      installDriver: 'Prepare local helper',
+      installing: 'Installing',
+      startConsole: 'Use in chat',
+      starting: 'Opening',
+      stopConsole: 'Stop',
+      stopping: 'Stopping',
+      openExternal: 'Open outside',
+    },
   },
   mode: {
     label: 'Mode',
@@ -757,6 +944,7 @@ const en: UiCopy = {
     placeholderReady: 'Ask Hermes...',
     placeholderNotReady: 'Start Hermes first',
     startBeforeSend: 'Start Hermes before sending a message.',
+    thinking: 'Hermes is thinking...',
     newConversation: 'New Hermes conversation',
     newAssistantConversation: (name) => `${name} chat`,
     emptyActions: {
@@ -872,6 +1060,10 @@ const en: UiCopy = {
       host: 'SMTP host',
       port: 'Port',
       secure: 'Use SSL',
+      imapHost: 'Inbox host',
+      imapPort: 'Inbox port',
+      imapSecure: 'Inbox SSL',
+      imapUsername: 'Inbox username',
       username: 'SMTP username',
       password: 'SMTP password',
     },
@@ -928,6 +1120,30 @@ const en: UiCopy = {
       confirmSend: 'This sends a real email. Read it once, then confirm.',
       confirmBatchSend: (count) => `This sends ${count} real first email${count === 1 ? '' : 's'}. Read the approved drafts first, then confirm.`,
       confirmStopCampaign: 'Stop this campaign and cancel all unsent recipients?',
+    },
+    quality: {
+      title: 'Buyer 2-second check',
+      notReviewed: 'Not checked yet',
+      stale: 'Edited, check again',
+      score: (score) => `${score}/100`,
+      review: 'Check quality',
+      reviewing: 'Checking...',
+      rewrite: 'Rewrite human',
+      rewriting: 'Rewriting...',
+      passed: 'Passed. This can be sent.',
+      needsRewrite: 'Needs rewrite before sending.',
+      rewrittenPassed: 'Rewritten and passed.',
+      rewrittenNeedsReview: 'Rewritten. Check once before sending.',
+      blockedSend: 'This email needs to pass the buyer check before sending.',
+      blockedApprove: 'This email needs to pass the buyer check before approval.',
+      saveBeforeReview: 'Save the current edit before checking.',
+      checks: {
+        buyerReason: 'Buyer reason',
+        humanTone: 'Human tone',
+        personalized: 'Personalized',
+        nextStep: 'Next step',
+        twoSecondRead: 'Quick read',
+      },
     },
     results: {
       title: 'Research result',
@@ -1006,9 +1222,18 @@ const en: UiCopy = {
         pause: 'Pause',
         resume: 'Resume',
         stop: 'Stop',
+        scheduleFollowUps: 'Set follow-ups',
+        checkFollowUps: 'Check due',
+        checkInbox: 'Check replies',
       },
       campaignStatus: { draft: 'Not generated', generating: 'Writing drafts', ready: 'Ready to review', sending: 'Sending', paused: 'Paused', completed: 'Done', failed: 'Needs attention', stopped: 'Stopped' },
-      recipientStatus: { pending: 'Not generated', researching: 'Researching', generated: 'Needs your check', approved: 'Ready to send', queued: 'Waiting to send', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped' },
+      recipientStatus: { pending: 'Not generated', researching: 'Researching', generated: 'Needs your check', approved: 'Ready to send', queued: 'Waiting to send', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped', replied: 'Replied', bounced: 'Bounced', unsubscribed: 'Unsubscribed', stopped: 'Stopped' },
+      followUpTitle: 'Follow-up guard',
+      followUpSummary: (scheduled, ready, stopped) => `${scheduled} scheduled · ${ready} ready · ${stopped} stopped`,
+      followUpMetrics: { scheduled: 'scheduled', ready: 'ready', sent: 'sent', stopped: 'stopped' },
+      followUpEmpty: 'No follow-ups yet. Send approved first emails, then set follow-ups.',
+      followUpNext: (step, company, date) => `#${step} · ${company} · ${date}`,
+      followUpStatus: { scheduled: 'Scheduled', ready: 'Needs confirm', sending: 'Sending', sent: 'Sent', failed: 'Failed', stopped: 'Stopped' },
       status: {
         created: (count) => `${count} customer${count === 1 ? '' : 's'} prepared. You can generate drafts now.`,
         generated: (count) => `${count} draft${count === 1 ? '' : 's'} generated. Check them before sending.`,
@@ -1018,6 +1243,9 @@ const en: UiCopy = {
         paused: 'Campaign paused.',
         resumed: 'Campaign ready again.',
         stopped: 'Campaign stopped.',
+        followUpsScheduled: (count) => count ? `${count} follow-up email${count === 1 ? '' : 's'} scheduled.` : 'Follow-ups are already scheduled.',
+        followUpsChecked: (ready, stopped) => `Checked due follow-ups. ${ready} ready, ${stopped} stopped.`,
+        inboxChecked: (matched, stopped) => `Checked replies. ${matched} matched, ${stopped} follow-up${stopped === 1 ? '' : 's'} stopped.`,
       },
       warnings: {
         noCustomers: 'Choose at least one customer.',
@@ -1240,6 +1468,13 @@ const zhCN = withOverrides(en, {
     steps: {
       language: { label: '语言', title: '选择语言。', description: 'Hermes 会用这个语言完成首次设置。' },
       identity: { label: '名字', title: '给工作区起个名字。', description: '设置 Hermes 在聊天里怎么称呼你，并决定是否开启记忆。' },
+      companyBasics: { label: '公司', title: '告诉 Hermes 你的公司是谁。', description: '这样 Hermills 会像你公司的外贸 AI，而不是普通聊天机器人。' },
+      companyProducts: { label: '产品', title: '你们主要卖什么？', description: '简单写清楚产品或服务，Hermes 写开发信和回答客户时会自动使用。' },
+      companyMarket: { label: '客户', title: '你们卖给谁？', description: '写目标市场和客户类型，Hermes 才能匹配合适的买家角度。' },
+      companyTrust: { label: '优势', title: '客户为什么应该相信你？', description: '写公司优势、认证、案例或能证明实力的内容。' },
+      companyTrade: { label: '交易', title: '通常怎么交易？', description: '付款、物流和重要备注能让 Hermes 少乱说。' },
+      companyFiles: { label: '资料', title: '有公司资料就加进来。', description: '产品目录、公司介绍、报价单、FAQ、案例都可以，选填。' },
+      companyReview: { label: '确认', title: '确认你的公司大脑。', description: '最后看一遍。需要改哪块，可以点修改回去。' },
       provider: { label: '模型', title: '连接模型供应商。', description: '现在添加一个兼容 OpenAI 的供应商，或者先跳过。' },
       theme: { label: '主题', title: '选择一个简单主题。', description: '选择这个本地工作区的界面风格。' },
       workspace: { label: '路径', title: '选择工作路径。', description: 'Hermes 会把本地材料放在这个目录里。' },
@@ -1247,17 +1482,84 @@ const zhCN = withOverrides(en, {
     },
     languageDetails: { 'zh-CN': '用简体中文开始。', 'zh-TW': '用繁體中文開始。', ja: '日本語で開始します。', ko: '한국어로 시작합니다.', en: 'Use English for Hermills and Hermes.' },
     identity: { userName: '你的名字', agentName: '助手名字', memoryTitle: '一开始就开启记忆', memoryDescription: 'Hermes 可以记住这个工作区里你选择的偏好。' },
+    company: {
+      name: '公司名称',
+      website: '公司官网',
+      mainProducts: '主营产品或服务',
+      markets: '目标市场',
+      customers: '目标客户',
+      advantages: '核心优势',
+      certifications: '认证资质',
+      cases: '案例或证明',
+      brandVoice: '品牌语气',
+      paymentTerms: '付款条款',
+      shippingTerms: '物流条款',
+      notes: '重要备注',
+      optional: '选填',
+      uploadTitle: '公司资料',
+      uploadHint: '产品目录、公司介绍、报价单、FAQ、案例都可以。',
+      uploadAction: '添加公司资料',
+      uploading: '上传中...',
+      uploadedCount: (count) => `已添加 ${count} 份公司资料`,
+      reviewTitle: '公司大脑',
+      reviewHint: 'Hermes 会在聊天、客户背调、开发信里自动使用这些资料。',
+      edit: '修改',
+      empty: '还没填写',
+    },
     provider: { skip: '跳过', skipDetail: '之后再设置', setupLater: '之后可以在设置里添加供应商，再发送需要模型回答的消息。' },
     themeOptions: { warm: { label: '暖纸', detail: '柔和纸面和蓝绿色重点。' }, night: { label: '青夜', detail: '低亮度深色，适合夜间工作。' }, plain: { label: '素白', detail: '高对比，简单清爽。' }, system: { label: '自动', detail: '跟随这台 Mac 的系统外观。' } },
     workspace: { path: '工作区路径', chooseFolder: '选择文件夹', choosingFolder: '选择中...' },
     features: { chat: { label: '聊天', detail: '直接进入本地聊天工作区。' }, files: { label: '文件', detail: '上传文件，作为本地上下文使用。' }, memory: { label: '记忆', detail: '让 Hermes 记住已选择的偏好。' }, assistants: { label: '助手', detail: '之后可以创建不同任务的 Agent。' }, diagnostics: { label: '诊断', detail: '保留运行状态和健康检查。' } },
-    validation: { missingNames: '请先填写两个名字。', missingProvider: '需要供应商名称、Base URL 和默认模型。', missingWorkspace: '请选择或输入工作区路径。', missingFeature: '至少选择一个功能。', noDirectoryPicker: '当前版本不能打开文件夹选择器，请直接输入路径。' },
+    validation: { missingNames: '请先填写两个名字。', missingProvider: '需要供应商名称、Base URL 和默认模型。', missingWorkspace: '请选择或输入工作区路径。', missingFeature: '至少选择一个功能。', missingCompanyBasics: '请先填写公司名称和官网。', missingCompanyProducts: '请至少填写一个主营产品或服务。', noDirectoryPicker: '当前版本不能打开文件夹选择器，请直接输入路径。' },
     startChatting: '开始聊天',
   },
   firstRun: { setupEyebrow: 'Hermes 设置', checkingTitle: '正在准备 Hermes。', checkingDescription: '这里只需要做一次。准备好后会直接进入聊天。', oneTimeSetup: '设置 Hermes', packageCheckFallback: 'Hermes 会帮你完成本地设置。' },
-  topbar: { chats: '对话', devLetter: '开发信', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
+  topbar: { chats: '对话', devLetter: '开发信', computer: '电脑操作', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
+  computerControl: {
+    sectionLabel: '电脑',
+    title: 'Hermes 电脑操作',
+    subtitle: '需要操作这台 Mac 时，直接在聊天里说。',
+    inlineTitle: '就在聊天里操作电脑',
+    inlineSubtitle: '直接告诉 Hermes 要打开、点击、输入或检查什么。',
+    permissionNudgeTitle: '还差一步：允许 Hermills 操作这台 Mac',
+    permissionNudgeDetail: 'macOS 弹窗出现时点允许，之后继续正常聊天。',
+    permissionNudgeAction: '允许',
+    permissionNudgeChecking: '检查中',
+    needsTools: 'Hermes 正在准备电脑操作能力。',
+    notReadyHint: '你在聊天里提出操作请求时，Hermes 会自动准备本地能力。',
+    consoleEyebrow: '原生 Hermes',
+    consoleTitle: '电脑操作',
+    consoleReady: 'Hermes 可以在聊天里操作这台 Mac。',
+    consoleEmpty: '在普通聊天框里告诉 Hermes 要做什么。',
+    consolePlaceholder: '已在聊天里准备好',
+    consolePlaceholderDetail: '不需要单独页面。',
+    frameTitle: 'Hermes 电脑操作',
+    permissionsEyebrow: 'macOS 权限',
+    permissionsTitle: 'Mac 会在需要时询问',
+    permissionsSubtitle: 'Hermills 不能偷偷授权。只有 Hermes 真正需要看屏幕、点击或读文件时，macOS 才会弹出授权。',
+    cards: { cli: 'Hermes 命令', tools: '能力', driver: '本地助手', console: '聊天' },
+    permissionHints: {
+      'screen-recording': { label: '屏幕录制', detail: 'Hermes 需要看屏幕时，macOS 可能会询问这个权限。' },
+      accessibility: { label: '辅助功能', detail: 'Hermes 需要点击、输入或控制 App 时，macOS 可能会询问这个权限。' },
+      automation: { label: '自动化', detail: 'Hermes 需要控制其他 App 时，macOS 可能会询问这个权限。' },
+      files: { label: '文件和文件夹', detail: '只选择你愿意让 Hermes 读取或写入的文件夹。' },
+    },
+    actions: {
+      refresh: '刷新',
+      refreshing: '刷新中',
+      enableTools: '准备',
+      enabling: '开启中',
+      installDriver: '准备本地助手',
+      installing: '安装中',
+      startConsole: '在聊天里使用',
+      starting: '打开中',
+      stopConsole: '停止',
+      stopping: '停止中',
+      openExternal: '外部打开',
+    },
+  },
   mode: { label: '模式', ariaLabel: '选择界面模式', options: { simple: { label: '简单', description: '只显示日常聊天、文件、助手和基础设置。', switchLabel: '使用简单模式', currentLabel: '已开启简单模式' }, expert: { label: '专家', description: '显示供应商、运行时、隐私和诊断控制。', switchLabel: '使用专家模式', currentLabel: '已开启专家模式' } } },
-  chat: { sectionLabel: '聊天', defaultTitle: '问 Hermes', defaultAssistant: '默认助手', addFile: '添加文件', addCompanyMaterial: '添加公司资料', openCompanyKnowledgeAria: '打开公司知识库', selectedFiles: (count) => `${count} 个文件`, selectedCompanyMaterials: (count) => `${count} 份公司资料`, you: '你', emptyTitle: '在这台 Mac 上问 Hermes。', emptyDescription: '需要基于本地内容回答时，可以添加文件。', openSetup: '打开设置', addApiKey: '添加 API Key', openSourcesAria: '打开文件', messageAria: '消息', placeholderReady: '问 Hermes...', placeholderNotReady: '先启动 Hermes', startBeforeSend: '请先启动 Hermes 再发送消息。', newConversation: '新的 Hermes 对话', newAssistantConversation: (name) => `${name} 对话`, emptyActions: { quickChat: { title: '直接提问', description: '开始普通对话，让 Hermes 基于这台 Mac 回答。', action: '开始聊天', prompt: '帮我梳理这件事。' }, companyKnowledge: { title: '完善公司资料', description: '把产品、价格、认证、物流和付款条款教给 Hermes。', action: '打开公司资料', prompt: '基于我们的公司资料回答这个问题。' }, addFiles: { title: '带文件聊天', description: '添加本地文件，让回答使用你的上下文。', action: '添加文件', prompt: '总结我添加的文件。' }, createAssistant: { title: '创建助手', description: '为经常做的任务做一个可复用助手。', action: '创建助手', prompt: '为这个工作流创建一个助手。' } } },
+  chat: { sectionLabel: '聊天', defaultTitle: '问 Hermes', defaultAssistant: '默认助手', addFile: '添加文件', addCompanyMaterial: '添加公司资料', openCompanyKnowledgeAria: '打开公司知识库', selectedFiles: (count) => `${count} 个文件`, selectedCompanyMaterials: (count) => `${count} 份公司资料`, you: '你', emptyTitle: '在这台 Mac 上问 Hermes。', emptyDescription: '需要基于本地内容回答时，可以添加文件。', openSetup: '打开设置', addApiKey: '添加 API Key', openSourcesAria: '打开文件', messageAria: '消息', placeholderReady: '问 Hermes...', placeholderNotReady: '先启动 Hermes', startBeforeSend: '请先启动 Hermes 再发送消息。', thinking: 'Hermes 正在思考...', newConversation: '新的 Hermes 对话', newAssistantConversation: (name) => `${name} 对话`, emptyActions: { quickChat: { title: '直接提问', description: '开始普通对话，让 Hermes 基于这台 Mac 回答。', action: '开始聊天', prompt: '帮我梳理这件事。' }, companyKnowledge: { title: '完善公司资料', description: '把产品、价格、认证、物流和付款条款教给 Hermes。', action: '打开公司资料', prompt: '基于我们的公司资料回答这个问题。' }, addFiles: { title: '带文件聊天', description: '添加本地文件，让回答使用你的上下文。', action: '添加文件', prompt: '总结我添加的文件。' }, createAssistant: { title: '创建助手', description: '为经常做的任务做一个可复用助手。', action: '创建助手', prompt: '为这个工作流创建一个助手。' } } },
   session: { count: (count) => `${count} 个对话`, newSessionAria: '新建对话', closeAria: '关闭对话列表', searchAria: '搜索对话', searchPlaceholder: '搜索', titleAria: '对话标题', saveTitleAria: '保存标题', renameAria: (title) => `重命名 ${title}`, deleteAria: (title) => `删除 ${title}`, messages: (count) => `${count} 条消息`, noMatch: '没有匹配的对话', tryAnother: '换个词试试', newConversation: '新对话', startWithHermes: '从 Hermes 开始' },
   files: { title: '文件', attachLocalFiles: '添加本地文件', attached: (count) => `已添加 ${count} 个`, closeAria: '关闭文件面板', addFiles: '添加文件', uploading: '上传中...', supportedTypes: 'PDF、文档、笔记、代码、图片', preview: '预览', closePreviewAria: '关闭预览', noPreview: '暂时没有可读预览。', fileNameAria: '文件名', saveFileNameAria: '保存文件名', previewAria: (name) => `预览 ${name}`, downloadAria: (name) => `下载 ${name}`, copyAria: (name) => `复制 ${name}`, renameAria: (name) => `重命名 ${name}`, deleteAria: (name) => `删除 ${name}`, empty: '还没有文件。添加文件后，回答会更贴近本地内容。', actions: { summarize: { label: '总结', description: '把选中文件变成简短概览。', prompt: '用大白话总结这个文件。' }, keyPoints: { label: '找重点', description: '提取重要事实、决定和风险。', prompt: '找出这个文件的重点。' }, askFile: { label: '问文件', description: '围绕选中文件提出具体问题。', prompt: '优先根据这个文件回答我的问题。' }, actionPlan: { label: '行动计划', description: '把文件转成下一步和负责人。', prompt: '把这个文件整理成可执行行动计划。' } }, status: { ready: '已就绪', needsRetry: '需要重试', gettingReady: '准备中', added: '已添加' } },
   companyKnowledge: {
@@ -1303,6 +1605,10 @@ const zhCN = withOverrides(en, {
       host: 'SMTP 服务器',
       port: '端口',
       secure: '使用 SSL',
+      imapHost: '收件服务器',
+      imapPort: '收件端口',
+      imapSecure: '收件 SSL',
+      imapUsername: '收件用户名',
       username: 'SMTP 用户名',
       password: 'SMTP 密码',
     },
@@ -1359,6 +1665,30 @@ const zhCN = withOverrides(en, {
       confirmSend: '这里会发送真实邮件。请先读一遍，再确认发送。',
       confirmBatchSend: (count) => `这里会发送 ${count} 封真实首封邮件。请先读完已通过的草稿，再确认发送。`,
       confirmStopCampaign: '停止这个批量任务，并取消所有未发送客户吗？',
+    },
+    quality: {
+      title: '买家 2 秒审核',
+      notReviewed: '还没检查',
+      stale: '已修改，需要重查',
+      score: (score) => `${score}分`,
+      review: '检查质量',
+      reviewing: '检查中...',
+      rewrite: '重写成人话',
+      rewriting: '重写中...',
+      passed: '已通过，可以发送。',
+      needsRewrite: '还不适合发送，需要重写。',
+      rewrittenPassed: '已重写并通过。',
+      rewrittenNeedsReview: '已重写，请再检查一次。',
+      blockedSend: '这封信还没通过买家审核，不能发送。',
+      blockedApprove: '这封信还没通过买家审核，不能通过。',
+      saveBeforeReview: '先保存当前修改，再检查。',
+      checks: {
+        buyerReason: '找他的理由',
+        humanTone: '像真人英文',
+        personalized: '不是群发',
+        nextStep: '下一步清楚',
+        twoSecondRead: '2秒能看懂',
+      },
     },
     results: {
       title: '背调结果',
@@ -1437,9 +1767,18 @@ const zhCN = withOverrides(en, {
         pause: '暂停',
         resume: '继续',
         stop: '停止',
+        scheduleFollowUps: '安排跟进',
+        checkFollowUps: '检查到期',
+        checkInbox: '检查回复',
       },
       campaignStatus: { draft: '还没生成', generating: '正在写草稿', ready: '可以检查', sending: '发送中', paused: '已暂停', completed: '已完成', failed: '需要处理', stopped: '已停止' },
-      recipientStatus: { pending: '还没生成', researching: '正在背调', generated: '等你检查', approved: '可以发送', queued: '等待发送', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过' },
+      recipientStatus: { pending: '还没生成', researching: '正在背调', generated: '等你检查', approved: '可以发送', queued: '等待发送', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过', replied: '已回复', bounced: '已退信', unsubscribed: '已退订', stopped: '已停止' },
+      followUpTitle: '跟进守护',
+      followUpSummary: (scheduled, ready, stopped) => `${scheduled} 个等待 · ${ready} 个待确认 · ${stopped} 个已停止`,
+      followUpMetrics: { scheduled: '等待', ready: '待确认', sent: '已发送', stopped: '已停止' },
+      followUpEmpty: '还没有跟进。先发送通过的首封邮件，再安排后续跟进。',
+      followUpNext: (step, company, date) => `第 ${step} 封 · ${company} · ${date}`,
+      followUpStatus: { scheduled: '等待时间', ready: '需要确认', sending: '发送中', sent: '已发送', failed: '失败', stopped: '已停止' },
       status: {
         created: (count) => `已准备 ${count} 个客户，现在可以生成邮件草稿。`,
         generated: (count) => `已生成 ${count} 封草稿，请逐封检查。`,
@@ -1449,6 +1788,9 @@ const zhCN = withOverrides(en, {
         paused: '批量任务已暂停。',
         resumed: '批量任务可以继续。',
         stopped: '批量任务已停止。',
+        followUpsScheduled: (count) => count ? `已安排 ${count} 封跟进邮件。` : '跟进邮件已经安排好了。',
+        followUpsChecked: (ready, stopped) => `已检查到期跟进：${ready} 个待确认，${stopped} 个已停止。`,
+        inboxChecked: (matched, stopped) => `已检查回复：命中 ${matched} 个客户，停止 ${stopped} 个跟进。`,
       },
       warnings: {
         noCustomers: '请先选择至少一个客户。',
@@ -1518,7 +1860,7 @@ const zhTW = withOverrides(zhCN, {
   firstRun: { setupEyebrow: '設定', checkingTitle: '正在檢查這台 Mac。', checkingDescription: '設定完成後 Hermes 會進入聊天。', oneTimeSetup: '一次性設定', packageCheckFallback: 'Hermes 會先檢查官方安裝包。' },
   topbar: { chats: '對話', assistants: '助手', files: '檔案', settingsAria: '進階設定', serviceWarning: (message) => `本地服務提醒：${message}` },
   mode: { label: '模式', ariaLabel: '選擇介面模式', options: { simple: { label: '簡單', description: '只顯示日常聊天、檔案、助手和基本設定。', switchLabel: '使用簡單模式', currentLabel: '已開啟簡單模式' }, expert: { label: '專家', description: '顯示供應商、執行時、隱私和診斷控制。', switchLabel: '使用專家模式', currentLabel: '已開啟專家模式' } } },
-  chat: { ...zhCN.chat, addFile: '加入檔案', addCompanyMaterial: '加入公司資料', openCompanyKnowledgeAria: '開啟公司知識庫', selectedFiles: (count) => `${count} 個檔案`, selectedCompanyMaterials: (count) => `${count} 份公司資料`, you: '你', emptyTitle: '在這台 Mac 上問 Hermes。', emptyDescription: '需要根據本地內容回答時，可以加入檔案。', openSetup: '開啟設定', addApiKey: '加入 API Key', openSourcesAria: '開啟檔案', placeholderNotReady: '先啟動 Hermes', startBeforeSend: '請先啟動 Hermes 再傳送訊息。', newConversation: '新的 Hermes 對話', newAssistantConversation: (name) => `${name} 對話`, emptyActions: { quickChat: { title: '直接提問', description: '開始一般對話，讓 Hermes 根據這台 Mac 回答。', action: '開始聊天', prompt: '幫我梳理這件事。' }, companyKnowledge: { title: '完善公司資料', description: '把產品、價格、認證、物流和付款條款教給 Hermes。', action: '開啟公司資料', prompt: '根據我們的公司資料回答這個問題。' }, addFiles: { title: '帶檔案聊天', description: '加入本地檔案，讓回答使用你的上下文。', action: '加入檔案', prompt: '總結我加入的檔案。' }, createAssistant: { title: '建立助手', description: '為經常做的任務建立一個可重複使用的助手。', action: '建立助手', prompt: '為這個工作流程建立一個助手。' } } },
+  chat: { ...zhCN.chat, addFile: '加入檔案', addCompanyMaterial: '加入公司資料', openCompanyKnowledgeAria: '開啟公司知識庫', selectedFiles: (count) => `${count} 個檔案`, selectedCompanyMaterials: (count) => `${count} 份公司資料`, you: '你', emptyTitle: '在這台 Mac 上問 Hermes。', emptyDescription: '需要根據本地內容回答時，可以加入檔案。', openSetup: '開啟設定', addApiKey: '加入 API Key', openSourcesAria: '開啟檔案', placeholderNotReady: '先啟動 Hermes', startBeforeSend: '請先啟動 Hermes 再傳送訊息。', thinking: 'Hermes 正在思考...', newConversation: '新的 Hermes 對話', newAssistantConversation: (name) => `${name} 對話`, emptyActions: { quickChat: { title: '直接提問', description: '開始一般對話，讓 Hermes 根據這台 Mac 回答。', action: '開始聊天', prompt: '幫我梳理這件事。' }, companyKnowledge: { title: '完善公司資料', description: '把產品、價格、認證、物流和付款條款教給 Hermes。', action: '開啟公司資料', prompt: '根據我們的公司資料回答這個問題。' }, addFiles: { title: '帶檔案聊天', description: '加入本地檔案，讓回答使用你的上下文。', action: '加入檔案', prompt: '總結我加入的檔案。' }, createAssistant: { title: '建立助手', description: '為經常做的任務建立一個可重複使用的助手。', action: '建立助手', prompt: '為這個工作流程建立一個助手。' } } },
   session: { count: (count) => `${count} 個對話`, newSessionAria: '新增對話', closeAria: '關閉對話列表', searchAria: '搜尋對話', searchPlaceholder: '搜尋', titleAria: '對話標題', saveTitleAria: '儲存標題', renameAria: (title) => `重新命名 ${title}`, deleteAria: (title) => `刪除 ${title}`, messages: (count) => `${count} 則訊息`, noMatch: '沒有符合的對話', tryAnother: '換個詞試試', newConversation: '新對話', startWithHermes: '從 Hermes 開始' },
   files: { title: '檔案', attachLocalFiles: '加入本地檔案', attached: (count) => `已加入 ${count} 個`, closeAria: '關閉檔案面板', addFiles: '加入檔案', uploading: '上傳中...', supportedTypes: 'PDF、文件、筆記、程式碼、圖片', preview: '預覽', closePreviewAria: '關閉預覽', noPreview: '暫時沒有可讀預覽。', fileNameAria: '檔案名稱', saveFileNameAria: '儲存檔案名稱', previewAria: (name) => `預覽 ${name}`, downloadAria: (name) => `下載 ${name}`, copyAria: (name) => `複製 ${name}`, renameAria: (name) => `重新命名 ${name}`, deleteAria: (name) => `刪除 ${name}`, empty: '還沒有檔案。加入檔案後，回答會更貼近本地內容。', actions: { summarize: { label: '總結', description: '把選取檔案變成簡短概覽。', prompt: '用大白話總結這個檔案。' }, keyPoints: { label: '找重點', description: '提取重要事實、決定和風險。', prompt: '找出這個檔案的重點。' }, askFile: { label: '問檔案', description: '圍繞選取檔案提出具體問題。', prompt: '優先根據這個檔案回答我的問題。' }, actionPlan: { label: '行動計畫', description: '把檔案轉成下一步和負責人。', prompt: '把這個檔案整理成可執行行動計畫。' } }, status: { ready: '已就緒', needsRetry: '需要重試', gettingReady: '準備中', added: '已加入' } },
   companyKnowledge: {
@@ -1579,7 +1921,7 @@ const ja = withOverrides(en, {
   firstRun: { setupEyebrow: '設定', checkingTitle: 'この Mac を確認しています。', checkingDescription: '設定が完了すると Hermes がチャットを開きます。', oneTimeSetup: '初回設定', packageCheckFallback: 'Hermes はまず公式セットアップパッケージを確認します。' },
   topbar: { chats: 'チャット', assistants: 'アシスタント', files: 'ファイル', settingsAria: '詳細設定', serviceWarning: (message) => `ローカルサービス警告: ${message}` },
   mode: { label: 'モード', ariaLabel: '画面モードを選択', options: { simple: { label: 'シンプル', description: '日常のチャット、ファイル、アシスタント、基本設定だけを表示します。', switchLabel: 'シンプルモードに切り替え', currentLabel: 'シンプルモード中' }, expert: { label: 'エキスパート', description: 'プロバイダー、ランタイム、プライバシー、診断の設定を表示します。', switchLabel: 'エキスパートモードに切り替え', currentLabel: 'エキスパートモード中' } } },
-  chat: { sectionLabel: 'チャット', defaultTitle: 'Hermes に質問', defaultAssistant: '既定アシスタント', addFile: 'ファイル追加', addCompanyMaterial: '会社資料を追加', openCompanyKnowledgeAria: '会社ナレッジベースを開く', selectedFiles: (count) => `${count} 件のファイル`, selectedCompanyMaterials: (count) => `${count} 件の会社資料`, you: 'あなた', emptyTitle: 'この Mac 上で Hermes に何でも聞けます。', emptyDescription: 'ローカル内容に基づく回答が必要なときはファイルを添付します。', openSetup: '設定を開く', addApiKey: 'API Key を追加', openSourcesAria: 'ファイルを開く', messageAria: 'メッセージ', placeholderReady: 'Hermes に質問...', placeholderNotReady: '先に Hermes を開始', startBeforeSend: '送信する前に Hermes を開始してください。', newConversation: '新しい Hermes 会話', newAssistantConversation: (name) => `${name} チャット`, emptyActions: { quickChat: { title: '質問する', description: '通常のチャットを始め、この Mac の内容から Hermes に答えてもらいます。', action: 'チャット開始', prompt: 'この件を整理するのを手伝ってください。' }, companyKnowledge: { title: '会社資料を整える', description: '製品、価格、認証、物流、支払い条件を Hermes に教えます。', action: '会社資料を開く', prompt: '会社資料に基づいてこの質問に答えてください。' }, addFiles: { title: 'ファイルとチャット', description: 'ローカルファイルを追加して、回答に自分の文脈を使います。', action: 'ファイル追加', prompt: '追加したファイルを要約してください。' }, createAssistant: { title: 'アシスタントを作成', description: 'よく行う作業向けの再利用できる助手を作ります。', action: 'アシスタント作成', prompt: 'このワークフロー用のアシスタントを作成してください。' } } },
+  chat: { sectionLabel: 'チャット', defaultTitle: 'Hermes に質問', defaultAssistant: '既定アシスタント', addFile: 'ファイル追加', addCompanyMaterial: '会社資料を追加', openCompanyKnowledgeAria: '会社ナレッジベースを開く', selectedFiles: (count) => `${count} 件のファイル`, selectedCompanyMaterials: (count) => `${count} 件の会社資料`, you: 'あなた', emptyTitle: 'この Mac 上で Hermes に何でも聞けます。', emptyDescription: 'ローカル内容に基づく回答が必要なときはファイルを添付します。', openSetup: '設定を開く', addApiKey: 'API Key を追加', openSourcesAria: 'ファイルを開く', messageAria: 'メッセージ', placeholderReady: 'Hermes に質問...', placeholderNotReady: '先に Hermes を開始', startBeforeSend: '送信する前に Hermes を開始してください。', thinking: 'Hermes が考えています...', newConversation: '新しい Hermes 会話', newAssistantConversation: (name) => `${name} チャット`, emptyActions: { quickChat: { title: '質問する', description: '通常のチャットを始め、この Mac の内容から Hermes に答えてもらいます。', action: 'チャット開始', prompt: 'この件を整理するのを手伝ってください。' }, companyKnowledge: { title: '会社資料を整える', description: '製品、価格、認証、物流、支払い条件を Hermes に教えます。', action: '会社資料を開く', prompt: '会社資料に基づいてこの質問に答えてください。' }, addFiles: { title: 'ファイルとチャット', description: 'ローカルファイルを追加して、回答に自分の文脈を使います。', action: 'ファイル追加', prompt: '追加したファイルを要約してください。' }, createAssistant: { title: 'アシスタントを作成', description: 'よく行う作業向けの再利用できる助手を作ります。', action: 'アシスタント作成', prompt: 'このワークフロー用のアシスタントを作成してください。' } } },
   session: { count: (count) => `${count} 件の会話`, newSessionAria: '新しい会話', closeAria: '会話リストを閉じる', searchAria: '会話を検索', searchPlaceholder: '検索', titleAria: '会話タイトル', saveTitleAria: 'タイトルを保存', renameAria: (title) => `${title} を名称変更`, deleteAria: (title) => `${title} を削除`, messages: (count) => `${count} 件のメッセージ`, noMatch: '一致する会話がありません', tryAnother: '別の語で試してください', newConversation: '新しい会話', startWithHermes: 'Hermes で開始' },
   files: { title: 'ファイル', attachLocalFiles: 'ローカルファイルを添付', attached: (count) => `${count} 件添付`, closeAria: 'ファイルパネルを閉じる', addFiles: 'ファイル追加', uploading: 'アップロード中...', supportedTypes: 'PDF、文書、メモ、コード、画像', preview: 'プレビュー', closePreviewAria: 'プレビューを閉じる', noPreview: '読み取れるプレビューはまだありません。', fileNameAria: 'ファイル名', saveFileNameAria: 'ファイル名を保存', previewAria: (name) => `${name} をプレビュー`, downloadAria: (name) => `${name} をダウンロード`, copyAria: (name) => `${name} をコピー`, renameAria: (name) => `${name} を名称変更`, deleteAria: (name) => `${name} を削除`, empty: 'ファイルはまだありません。ファイルを追加すると回答に使えます。', actions: { summarize: { label: '要約', description: '選択したファイルを短い概要にします。', prompt: 'このファイルをわかりやすく要約してください。' }, keyPoints: { label: '重要点を探す', description: '重要な事実、決定、リスクを抜き出します。', prompt: 'このファイルの重要点を見つけてください。' }, askFile: { label: 'ファイルに質問', description: '選択したファイルについて具体的に質問します。', prompt: 'このファイルを優先して私の質問に答えてください。' }, actionPlan: { label: '行動計画', description: 'ファイルを次の手順と担当に変換します。', prompt: 'このファイルを実行しやすい行動計画にしてください。' } }, status: { ready: '準備完了', needsRetry: '再試行が必要', gettingReady: '準備中', added: '追加済み' } },
   companyKnowledge: {
@@ -1640,7 +1982,7 @@ const ko = withOverrides(en, {
   firstRun: { setupEyebrow: '설정', checkingTitle: '이 Mac을 확인하는 중입니다.', checkingDescription: '설정이 완료되면 Hermes가 채팅을 엽니다.', oneTimeSetup: '첫 설정', packageCheckFallback: 'Hermes가 먼저 공식 설치 패키지를 확인합니다.' },
   topbar: { chats: '대화', assistants: '도우미', files: '파일', settingsAria: '고급 설정', serviceWarning: (message) => `로컬 서비스 알림: ${message}` },
   mode: { label: '모드', ariaLabel: '화면 모드 선택', options: { simple: { label: '간단', description: '일상 채팅, 파일, 도우미, 기본 설정만 표시합니다.', switchLabel: '간단 모드 사용', currentLabel: '간단 모드 사용 중' }, expert: { label: '전문가', description: '공급자, 런타임, 개인정보, 진단 설정을 표시합니다.', switchLabel: '전문가 모드 사용', currentLabel: '전문가 모드 사용 중' } } },
-  chat: { sectionLabel: '채팅', defaultTitle: 'Hermes에게 묻기', defaultAssistant: '기본 도우미', addFile: '파일 추가', addCompanyMaterial: '회사 자료 추가', openCompanyKnowledgeAria: '회사 지식 베이스 열기', selectedFiles: (count) => `${count}개 파일`, selectedCompanyMaterials: (count) => `${count}개 회사 자료`, you: '나', emptyTitle: '이 Mac에서 Hermes에게 무엇이든 물어보세요.', emptyDescription: '로컬 내용에 기반한 답변이 필요하면 파일을 첨부하세요.', openSetup: '설정 열기', addApiKey: 'API Key 추가', openSourcesAria: '파일 열기', messageAria: '메시지', placeholderReady: 'Hermes에게 묻기...', placeholderNotReady: '먼저 Hermes 시작', startBeforeSend: '메시지를 보내기 전에 Hermes를 시작하세요.', newConversation: '새 Hermes 대화', newAssistantConversation: (name) => `${name} 채팅`, emptyActions: { quickChat: { title: '질문하기', description: '일반 채팅을 시작하고 Hermes가 이 Mac의 맥락으로 답하게 합니다.', action: '채팅 시작', prompt: '이 일을 정리하는 데 도움을 주세요.' }, companyKnowledge: { title: '회사 자료 정리', description: '제품, 가격, 인증, 물류, 결제 조건을 Hermes에게 알려줍니다.', action: '회사 자료 열기', prompt: '회사 자료를 바탕으로 이 질문에 답해 주세요.' }, addFiles: { title: '파일로 채팅', description: '로컬 파일을 추가해 답변에 내 문맥을 사용합니다.', action: '파일 추가', prompt: '추가한 파일을 요약해 주세요.' }, createAssistant: { title: '도우미 만들기', description: '자주 하는 작업을 위한 재사용 가능한 도우미를 만듭니다.', action: '도우미 만들기', prompt: '이 작업 흐름을 위한 도우미를 만들어 주세요.' } } },
+  chat: { sectionLabel: '채팅', defaultTitle: 'Hermes에게 묻기', defaultAssistant: '기본 도우미', addFile: '파일 추가', addCompanyMaterial: '회사 자료 추가', openCompanyKnowledgeAria: '회사 지식 베이스 열기', selectedFiles: (count) => `${count}개 파일`, selectedCompanyMaterials: (count) => `${count}개 회사 자료`, you: '나', emptyTitle: '이 Mac에서 Hermes에게 무엇이든 물어보세요.', emptyDescription: '로컬 내용에 기반한 답변이 필요하면 파일을 첨부하세요.', openSetup: '설정 열기', addApiKey: 'API Key 추가', openSourcesAria: '파일 열기', messageAria: '메시지', placeholderReady: 'Hermes에게 묻기...', placeholderNotReady: '먼저 Hermes 시작', startBeforeSend: '메시지를 보내기 전에 Hermes를 시작하세요.', thinking: 'Hermes가 생각 중입니다...', newConversation: '새 Hermes 대화', newAssistantConversation: (name) => `${name} 채팅`, emptyActions: { quickChat: { title: '질문하기', description: '일반 채팅을 시작하고 Hermes가 이 Mac의 맥락으로 답하게 합니다.', action: '채팅 시작', prompt: '이 일을 정리하는 데 도움을 주세요.' }, companyKnowledge: { title: '회사 자료 정리', description: '제품, 가격, 인증, 물류, 결제 조건을 Hermes에게 알려줍니다.', action: '회사 자료 열기', prompt: '회사 자료를 바탕으로 이 질문에 답해 주세요.' }, addFiles: { title: '파일로 채팅', description: '로컬 파일을 추가해 답변에 내 문맥을 사용합니다.', action: '파일 추가', prompt: '추가한 파일을 요약해 주세요.' }, createAssistant: { title: '도우미 만들기', description: '자주 하는 작업을 위한 재사용 가능한 도우미를 만듭니다.', action: '도우미 만들기', prompt: '이 작업 흐름을 위한 도우미를 만들어 주세요.' } } },
   session: { count: (count) => `${count}개 대화`, newSessionAria: '새 대화', closeAria: '대화 목록 닫기', searchAria: '대화 검색', searchPlaceholder: '검색', titleAria: '대화 제목', saveTitleAria: '제목 저장', renameAria: (title) => `${title} 이름 바꾸기`, deleteAria: (title) => `${title} 삭제`, messages: (count) => `${count}개 메시지`, noMatch: '일치하는 대화 없음', tryAnother: '다른 단어를 시도하세요', newConversation: '새 대화', startWithHermes: 'Hermes로 시작' },
   files: { title: '파일', attachLocalFiles: '로컬 파일 첨부', attached: (count) => `${count}개 첨부됨`, closeAria: '파일 패널 닫기', addFiles: '파일 추가', uploading: '업로드 중...', supportedTypes: 'PDF, 문서, 메모, 코드, 이미지', preview: '미리보기', closePreviewAria: '미리보기 닫기', noPreview: '아직 읽을 수 있는 미리보기가 없습니다.', fileNameAria: '파일 이름', saveFileNameAria: '파일 이름 저장', previewAria: (name) => `${name} 미리보기`, downloadAria: (name) => `${name} 다운로드`, copyAria: (name) => `${name} 복사`, renameAria: (name) => `${name} 이름 바꾸기`, deleteAria: (name) => `${name} 삭제`, empty: '아직 파일이 없습니다. 파일을 추가하면 답변에 사용할 수 있습니다.', actions: { summarize: { label: '요약', description: '선택한 파일을 짧은 개요로 바꿉니다.', prompt: '이 파일을 쉬운 말로 요약해 주세요.' }, keyPoints: { label: '핵심 찾기', description: '중요한 사실, 결정, 위험을 뽑아냅니다.', prompt: '이 파일의 핵심을 찾아 주세요.' }, askFile: { label: '파일에 질문', description: '선택한 파일에 대해 구체적으로 질문합니다.', prompt: '이 파일을 먼저 사용해서 제 질문에 답해 주세요.' }, actionPlan: { label: '실행 계획', description: '파일을 다음 단계와 담당자로 정리합니다.', prompt: '이 파일을 실행 가능한 계획으로 바꿔 주세요.' } }, status: { ready: '준비됨', needsRetry: '재시도 필요', gettingReady: '준비 중', added: '추가됨' } },
   companyKnowledge: {

@@ -3,7 +3,10 @@ import { EventEmitter } from "node:events";
 import { createWriteStream } from "node:fs";
 import { access, chmod, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { homedir } from "node:os";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createServer as createNetServer } from "node:net";
+import { fileURLToPath } from "node:url";
 import {
   getDataHome,
   getHermillsHome,
@@ -79,6 +82,70 @@ export interface GatewayStatus {
   message?: string;
 }
 
+export interface ComputerControlCliStatus {
+  found: boolean;
+  path?: string;
+  version?: string;
+  message?: string;
+}
+
+export interface ComputerControlDriverStatus {
+  installed: boolean;
+  statusText: string;
+}
+
+export interface ComputerControlToolsetStatus {
+  computerUseEnabled: boolean;
+  enabled: string[];
+  missingRequired: string[];
+  output?: string;
+}
+
+export interface ComputerControlDashboardStatus {
+  state: "stopped" | "starting" | "running" | "failed";
+  pid?: number;
+  port?: number;
+  url?: string;
+  message?: string;
+  logPath?: string;
+}
+
+export type ComputerControlPermissionState = "granted" | "missing" | "required" | "unknown";
+export type ComputerControlReadiness = "ready" | "preparing" | "needs-permission" | "failed" | "unsupported";
+export type ComputerControlPermissionId = "screen-recording" | "accessibility";
+
+export interface ComputerControlPermissionHint {
+  id: "screen-recording" | "accessibility" | "automation" | "files";
+  label: string;
+  state: ComputerControlPermissionState;
+  detail: string;
+}
+
+export interface ComputerControlStatus {
+  platform: string;
+  supported: boolean;
+  hermesCli: ComputerControlCliStatus;
+  driver: ComputerControlDriverStatus;
+  toolsets: ComputerControlToolsetStatus;
+  dashboard: ComputerControlDashboardStatus;
+  readiness: ComputerControlReadiness;
+  permissions: ComputerControlPermissionHint[];
+}
+
+export interface ComputerControlRunResult {
+  ok: boolean;
+  message: string;
+  output: string;
+  status: ComputerControlStatus;
+}
+
+export interface ComputerControlCommandResult {
+  ok: boolean;
+  message: string;
+  output?: string;
+  status: ComputerControlStatus;
+}
+
 interface InstallJob {
   id: string;
   events: InstallEvent[];
@@ -86,6 +153,13 @@ interface InstallJob {
 }
 
 type InstallMetadata = NonNullable<RuntimeStatus["installMetadata"]>;
+
+type PermissionHelperPayload = {
+  screenRecording?: "granted" | "missing" | "unknown";
+  accessibility?: "granted" | "missing" | "unknown";
+  automation?: "unknown";
+  files?: "workspace-only" | "missing" | "unknown";
+};
 
 export class RuntimeService {
   private readonly baseDir: string;
@@ -104,6 +178,11 @@ export class RuntimeService {
   private gatewayProcess?: ChildProcess;
   private gatewayMessage = "";
   private gatewayFailed = false;
+  private dashboardProcess?: ChildProcess;
+  private dashboardPort?: number;
+  private dashboardMessage = "";
+  private dashboardFailed = false;
+  private dashboardLogPath?: string;
 
   constructor(options: RuntimeServiceOptions = {}) {
     this.baseDir = options.baseDir ?? getHermillsHome();
@@ -322,7 +401,199 @@ export class RuntimeService {
     return this.startGateway();
   }
 
+  async getComputerControlStatus(): Promise<ComputerControlStatus> {
+    const hermesCli = await this.getComputerControlCliStatus();
+    const commandStatus = hermesCli.path ? await this.runHermesCommand(["computer-use", "status"], 15_000).catch((error) => commandError(error)) : undefined;
+    const toolsStatus = hermesCli.path ? await this.runHermesCommand(["tools", "--summary", "list"], 15_000).catch((error) => commandError(error)) : undefined;
+    const driver = parseComputerUseDriverStatus(commandStatus?.output ?? "");
+    const toolsets = parseToolsetStatus(toolsStatus?.output ?? "");
+    const permissions = await this.getComputerControlPermissionHints();
+    return {
+      platform: process.platform,
+      supported: process.platform === "darwin",
+      hermesCli,
+      driver,
+      toolsets,
+      dashboard: this.getComputerControlDashboardStatus(),
+      readiness: computerControlReadiness({
+        supported: process.platform === "darwin",
+        hermesCli,
+        driver,
+        toolsets,
+        permissions
+      }),
+      permissions
+    };
+  }
+
+  async prepareComputerControl(): Promise<ComputerControlCommandResult> {
+    if (process.platform !== "darwin") {
+      return {
+        ok: false,
+        message: "Hermes computer control is currently macOS-only.",
+        status: await this.getComputerControlStatus()
+      };
+    }
+    let status = await this.getComputerControlStatus();
+    if (!status.hermesCli.found) {
+      return {
+        ok: false,
+        message: "Hermes CLI is not available. Install Hermes before using computer control.",
+        status
+      };
+    }
+    if (!status.toolsets.computerUseEnabled) status = (await this.enableComputerControlTools()).status;
+    if (!status.driver.installed) status = (await this.installComputerControlDriver()).status;
+    return {
+      ok: status.readiness === "ready" || status.readiness === "needs-permission",
+      message: status.readiness === "needs-permission" ? "Hermes needs macOS permission before computer control." : "Hermes computer control is prepared.",
+      status
+    };
+  }
+
+  async requestComputerControlPermission(permission: ComputerControlPermissionId): Promise<ComputerControlCommandResult> {
+    if (process.platform !== "darwin") {
+      return {
+        ok: false,
+        message: "Hermes computer control is currently macOS-only.",
+        status: await this.getComputerControlStatus()
+      };
+    }
+    const action = permission === "screen-recording" ? "request-screen-recording" : "request-accessibility";
+    const result = await this.runPermissionHelper(action).catch(() => undefined);
+    return {
+      ok: Boolean(result),
+      message: result ? "macOS permission request was opened." : "macOS permission helper is not available yet.",
+      status: await this.getComputerControlStatus()
+    };
+  }
+
+  async installComputerControlDriver(): Promise<ComputerControlCommandResult> {
+    if (process.platform !== "darwin") throw new Error("Hermes computer use is currently macOS-only.");
+    const result = await this.runHermesCommand(["computer-use", "install"], 5 * 60_000);
+    return {
+      ok: result.ok,
+      message: result.ok ? "Hermes computer-use driver install finished." : "Hermes computer-use driver install failed.",
+      output: result.output,
+      status: await this.getComputerControlStatus()
+    };
+  }
+
+  async enableComputerControlTools(): Promise<ComputerControlCommandResult> {
+    const toolsets = ["web", "browser", "terminal", "file", "code_execution", "vision", "skills", "memory", "computer_use"];
+    const result = await this.runHermesCommand(["tools", "enable", "--platform", "cli", ...toolsets], 60_000);
+    return {
+      ok: result.ok,
+      message: result.ok ? "Hermes computer control tools are enabled." : "Hermes tools could not be enabled.",
+      output: result.output,
+      status: await this.getComputerControlStatus()
+    };
+  }
+
+  async startComputerControlDashboard(): Promise<ComputerControlCommandResult> {
+    if (this.dashboardProcess?.exitCode === null) {
+      return {
+        ok: true,
+        message: "Hermes computer console is already running.",
+        status: await this.getComputerControlStatus()
+      };
+    }
+    const executablePath = await this.findComputerControlExecutable();
+    if (!executablePath) throw new Error("Hermes CLI is not available. Install Hermes before starting computer control.");
+
+    await mkdir(this.hermesHome, { recursive: true });
+    await mkdir(this.logHome, { recursive: true });
+    const port = await findOpenPort(9119);
+    const logPath = path.join(this.logHome, `computer-control-${Date.now()}.log`);
+    const logStream = createWriteStream(logPath, { flags: "a" });
+    this.dashboardPort = port;
+    this.dashboardLogPath = logPath;
+    this.dashboardFailed = false;
+    this.dashboardMessage = "Starting Hermes computer console.";
+
+    const child = spawn(executablePath, ["dashboard", "--tui", "--host", "127.0.0.1", "--port", String(port), "--no-open"], {
+      cwd: this.hermesHome,
+      env: this.hermesCommandEnv(),
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    this.dashboardProcess = child;
+
+    const onChunk = (chunk: Buffer) => {
+      const line = redactSecrets(chunk.toString("utf8"));
+      logStream.write(line);
+      const trimmed = line.trim();
+      if (trimmed) this.dashboardMessage = trimmed;
+    };
+    child.stdout?.on("data", onChunk);
+    child.stderr?.on("data", onChunk);
+    child.on("error", (error) => {
+      this.dashboardFailed = true;
+      this.dashboardMessage = error.message;
+      logStream.end();
+    });
+    child.on("close", (code) => {
+      this.dashboardFailed = code !== 0;
+      this.dashboardMessage = `Hermes computer console exited with code ${code ?? "unknown"}. Log: ${logPath}`;
+      logStream.end();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    if (this.dashboardProcess.exitCode === null && this.dashboardMessage === "Starting Hermes computer console.") {
+      this.dashboardMessage = "Hermes computer console is running.";
+    }
+    return {
+      ok: this.dashboardProcess.exitCode === null,
+      message: this.dashboardProcess.exitCode === null ? "Hermes computer console is running." : this.dashboardMessage,
+      status: await this.getComputerControlStatus()
+    };
+  }
+
+  async stopComputerControlDashboard(): Promise<ComputerControlCommandResult> {
+    await this.stopComputerControlDashboardProcess();
+    return {
+      ok: true,
+      message: "Hermes computer console stopped.",
+      status: await this.getComputerControlStatus()
+    };
+  }
+
+  async runComputerControlPrompt(prompt: string): Promise<ComputerControlRunResult> {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt) throw new Error("Computer control prompt cannot be empty.");
+    if (process.platform !== "darwin") throw new Error("Hermes computer control is currently macOS-only.");
+
+    let status = await this.getComputerControlStatus();
+    if (!status.hermesCli.found) throw new Error("Hermes CLI is not available. Install Hermes before using computer control.");
+    if (!status.toolsets.computerUseEnabled) status = (await this.enableComputerControlTools()).status;
+    if (!status.driver.installed) status = (await this.installComputerControlDriver()).status;
+    if (!status.toolsets.computerUseEnabled) throw new Error("Hermes computer-use toolset could not be enabled.");
+    if (!status.driver.installed) throw new Error("Hermes computer-use driver is not installed yet.");
+    status = await this.getComputerControlStatus();
+    if (status.readiness === "needs-permission") {
+      throw new Error("Hermes needs macOS permission before computer control.");
+    }
+
+    const result = await this.runHermesCommand([
+      "chat",
+      "--query",
+      normalizedPrompt,
+      "--quiet",
+      "--source",
+      "hermills-computer-control",
+      "--toolsets",
+      "browser,computer_use,file,terminal,vision"
+    ], 3 * 60_000);
+
+    return {
+      ok: result.ok,
+      message: result.ok ? "Hermes finished the computer operation." : "Hermes could not finish the computer operation.",
+      output: result.output,
+      status: await this.getComputerControlStatus()
+    };
+  }
+
   async dispose(): Promise<void> {
+    await this.stopComputerControlDashboardProcess();
     await this.stopGateway();
     this.emitter.removeAllListeners();
   }
@@ -447,11 +718,22 @@ export class RuntimeService {
     this.pushEvent(job, "info", "starting", 84, "Starting Hermes gateway.");
     const gateway = await this.startGateway();
 
+    await this.prepareComputerControlForLocalInstall();
+
     if (gateway.state === "running") await this.markLocalDeployCompleted(version);
     this.updateCheckCache = undefined;
 
     this.pushEvent(job, gateway.state === "running" ? "done" : "warn", "verifying", gateway.state === "running" ? 100 : 92, gateway.message ?? "Gateway start requested.");
     job.status = "done";
+  }
+
+  private async prepareComputerControlForLocalInstall(): Promise<void> {
+    if (process.platform !== "darwin") return;
+    try {
+      await this.prepareComputerControl();
+    } catch {
+      // Computer control is retried from chat on first use, so a setup hiccup must not block local Hermes installation.
+    }
   }
 
   private async computeUpdateCheck(): Promise<RuntimeUpdateCheck> {
@@ -543,6 +825,179 @@ export class RuntimeService {
     const backupPath = `${this.runtimeHome}.partial-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomBytes(3).toString("hex")}`;
     await rename(this.runtimeHome, backupPath);
     this.pushEvent(job, "warn", "installing", 39, `Moved incomplete Hermes install aside before retrying: ${backupPath}.`);
+  }
+
+  private async getComputerControlCliStatus(): Promise<ComputerControlCliStatus> {
+    const executablePath = await this.findComputerControlExecutable();
+    if (!executablePath) return { found: false, message: "Hermes CLI was not found." };
+    return {
+      found: true,
+      path: executablePath,
+      version: await this.readVersion(executablePath)
+    };
+  }
+
+  private async getComputerControlPermissionHints(): Promise<ComputerControlPermissionHint[]> {
+    if (process.platform !== "darwin") return computerControlPermissionHints();
+    const payload = await this.runPermissionHelper("status").catch(() => undefined);
+    if (!payload) return computerControlPermissionHints();
+    return [
+      {
+        id: "screen-recording",
+        label: "Screen Recording",
+        state: permissionState(payload.screenRecording),
+        detail: "macOS asks for this when Hermes needs to see the screen."
+      },
+      {
+        id: "accessibility",
+        label: "Accessibility",
+        state: permissionState(payload.accessibility),
+        detail: "macOS asks for this when Hermes needs to click, type, or control apps."
+      },
+      {
+        id: "automation",
+        label: "Automation",
+        state: "unknown",
+        detail: "macOS asks per app when Hermes needs to control another app."
+      },
+      {
+        id: "files",
+        label: "Files and folders",
+        state: payload.files === "workspace-only" ? "required" : permissionState(payload.files),
+        detail: "Only choose folders you want Hermes to read or write."
+      }
+    ];
+  }
+
+  private async runPermissionHelper(action: string): Promise<PermissionHelperPayload | undefined> {
+    if (process.platform !== "darwin") return undefined;
+    const executablePath = await this.findPermissionHelperExecutable();
+    if (!executablePath) return undefined;
+    await mkdir(this.hermesHome, { recursive: true });
+    const result = await runCommand(executablePath, [action], {
+      cwd: this.hermesHome,
+      env: this.hermesCommandEnv(),
+      timeoutMs: 15_000
+    });
+    return JSON.parse(result.output) as PermissionHelperPayload;
+  }
+
+  private async findPermissionHelperExecutable(): Promise<string | undefined> {
+    const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+    const candidates = [
+      process.env.HERMILLS_PERMISSION_HELPER,
+      path.join(moduleDir, "helpers", "hermills-permission-helper"),
+      path.join(process.cwd(), "packages", "runtime", "dist", "helpers", "hermills-permission-helper"),
+      resourcesPath ? path.join(resourcesPath, "bin", "hermills-permission-helper") : undefined,
+      resourcesPath ? path.join(resourcesPath, "app.asar.unpacked", "packages", "runtime", "dist", "helpers", "hermills-permission-helper") : undefined
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of candidates) {
+      if (await pathExists(candidate)) return candidate;
+    }
+    return undefined;
+  }
+
+  private async stopComputerControlDashboardProcess(): Promise<void> {
+    if (this.dashboardProcess?.exitCode === null) {
+      this.dashboardProcess.kill("SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (this.dashboardProcess.exitCode === null) this.dashboardProcess.kill("SIGKILL");
+    }
+    this.dashboardProcess = undefined;
+    this.dashboardFailed = false;
+    this.dashboardMessage = "Hermes computer console stopped.";
+  }
+
+  private getComputerControlDashboardStatus(): ComputerControlDashboardStatus {
+    if (!this.dashboardProcess) {
+      return {
+        state: this.dashboardFailed ? "failed" : "stopped",
+        message: this.dashboardMessage || "Hermes computer console is stopped.",
+        logPath: this.dashboardLogPath
+      };
+    }
+    if (this.dashboardProcess.exitCode !== null) {
+      return {
+        state: this.dashboardFailed ? "failed" : "stopped",
+        port: this.dashboardPort,
+        url: this.dashboardPort ? `http://127.0.0.1:${this.dashboardPort}` : undefined,
+        message: this.dashboardMessage || `Hermes computer console exited with code ${this.dashboardProcess.exitCode}.`,
+        logPath: this.dashboardLogPath
+      };
+    }
+    return {
+      state: this.dashboardMessage === "Starting Hermes computer console." ? "starting" : "running",
+      pid: this.dashboardProcess.pid,
+      port: this.dashboardPort,
+      url: this.dashboardPort ? `http://127.0.0.1:${this.dashboardPort}` : undefined,
+      message: this.dashboardMessage || "Hermes computer console is running.",
+      logPath: this.dashboardLogPath
+    };
+  }
+
+  private async findComputerControlExecutable(): Promise<string | undefined> {
+    const managed = await this.findExecutable();
+    if (managed) return managed;
+    const candidates = [
+      process.env.HERMILLS_HERMES_CLI,
+      path.join(homedir(), ".local", "bin", "hermes"),
+      "/opt/homebrew/bin/hermes",
+      "/usr/local/bin/hermes",
+      "hermes"
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    for (const candidate of candidates) {
+      if (path.isAbsolute(candidate) && !(await pathExists(candidate))) continue;
+      if (await this.commandWorks(candidate, ["--version"])) return candidate;
+    }
+    return undefined;
+  }
+
+  private commandWorks(command: string, args: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
+      const child = spawn(command, args, { env: this.hermesCommandEnv(), stdio: ["ignore", "ignore", "ignore"] });
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve(false);
+      }, 5000);
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        resolve(code === 0);
+      });
+      child.on("error", () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
+  }
+
+  private async runHermesCommand(args: string[], timeoutMs: number): Promise<{ ok: boolean; output: string }> {
+    const executablePath = await this.findComputerControlExecutable();
+    if (!executablePath) throw new Error("Hermes CLI is not available.");
+    await mkdir(this.hermesHome, { recursive: true });
+    return runCommand(executablePath, args, {
+      cwd: this.hermesHome,
+      env: this.hermesCommandEnv(),
+      timeoutMs
+    });
+  }
+
+  private hermesCommandEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      PATH: prependPathEntries(process.env.PATH, [
+        path.join(this.runtimeHome, "venv", "bin"),
+        path.join(this.runtimeHome, ".venv", "bin"),
+        path.join(this.runtimeHome, "bin"),
+        path.join(homedir(), ".local", "bin"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin"
+      ]),
+      HERMILLS_HOME: this.baseDir,
+      HERMES_HOME: this.hermesHome,
+      HERMES_AGENT_HOME: this.runtimeHome
+    };
   }
 
   private async findExecutable(): Promise<string | undefined> {
@@ -820,6 +1275,143 @@ async function pathExists(target: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function commandError(error: unknown): { ok: false; output: string; message: string } {
+  const message = error instanceof Error ? error.message : String(error);
+  return { ok: false, output: message, message };
+}
+
+function parseComputerUseDriverStatus(output: string): ComputerControlDriverStatus {
+  const text = output.trim();
+  const installed = /cua-driver:\s*installed|computer use.*ready|installed/i.test(text) && !/not installed/i.test(text);
+  return {
+    installed,
+    statusText: text || "Computer-use driver status has not been checked."
+  };
+}
+
+function parseToolsetStatus(output: string): ComputerControlToolsetStatus {
+  const enabled = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/\benabled\s+([a-z0-9_:-]+)\b/i)
+      ?? line.match(/^\s*[-*]?\s*([a-z0-9_:-]+)\s+(?:enabled|on|true)\b/i);
+    if (match?.[1]) enabled.add(match[1]);
+  }
+  for (const name of ["web", "browser", "terminal", "file", "code_execution", "vision", "skills", "memory", "computer_use"]) {
+    if (new RegExp(`\\b${escapeRegex(name)}\\b[\\s\\S]{0,80}\\benabled\\b`, "i").test(output)) enabled.add(name);
+  }
+  const required = ["terminal", "file", "browser", "computer_use"];
+  const missingRequired = required.filter((name) => !enabled.has(name));
+  return {
+    computerUseEnabled: enabled.has("computer_use"),
+    enabled: [...enabled].sort(),
+    missingRequired,
+    output: output.trim() || undefined
+  };
+}
+
+function computerControlPermissionHints(): ComputerControlPermissionHint[] {
+  return [
+    {
+      id: "screen-recording",
+      label: "Screen Recording",
+      state: "unknown",
+      detail: "macOS may ask for this when Hermes needs to see the screen."
+    },
+    {
+      id: "accessibility",
+      label: "Accessibility",
+      state: "unknown",
+      detail: "macOS may ask for this when Hermes needs to click, type, or control apps."
+    },
+    {
+      id: "automation",
+      label: "Automation",
+      state: "unknown",
+      detail: "macOS may ask for this when Hermes needs to control another app."
+    },
+    {
+      id: "files",
+      label: "Files and folders",
+      state: "required",
+      detail: "Only choose folders you want Hermes to read or write."
+    }
+  ];
+}
+
+function permissionState(input?: string): ComputerControlPermissionState {
+  if (input === "granted" || input === "missing" || input === "required" || input === "unknown") return input;
+  return "unknown";
+}
+
+function computerControlReadiness(input: {
+  supported: boolean;
+  hermesCli: ComputerControlCliStatus;
+  driver: ComputerControlDriverStatus;
+  toolsets: ComputerControlToolsetStatus;
+  permissions: ComputerControlPermissionHint[];
+}): ComputerControlReadiness {
+  if (!input.supported) return "unsupported";
+  if (!input.hermesCli.found) return "failed";
+  if (!input.toolsets.computerUseEnabled || !input.driver.installed) return "preparing";
+  const missingInteractivePermission = input.permissions.some((permission) => (
+    (permission.id === "screen-recording" || permission.id === "accessibility") && permission.state === "missing"
+  ));
+  return missingInteractivePermission ? "needs-permission" : "ready";
+}
+
+function runCommand(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number }): Promise<{ ok: boolean; output: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: options.cwd, env: options.env, stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    const append = (chunk: Buffer) => {
+      output = `${output}${chunk.toString("utf8")}`.slice(-64_000);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error(`Hermes command timed out: ${args.join(" ")}`));
+    }, options.timeoutMs);
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const sanitized = redactSecrets(output.trim());
+      if (code === 0) resolve({ ok: true, output: sanitized });
+      else reject(new Error(sanitized || `Hermes command failed with code ${code ?? "unknown"}.`));
+    });
+  });
+}
+
+function prependPathEntries(currentPath: string | undefined, entries: string[]): string {
+  const existing = currentPath ? currentPath.split(path.delimiter) : [];
+  return [...entries, ...existing].filter(Boolean).join(path.delimiter);
+}
+
+function findOpenPort(startPort: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const tryPort = (port: number) => {
+      const server = createNetServer();
+      server.once("error", () => {
+        server.close();
+        if (port >= 65535) reject(new Error("No open local port is available for Hermes computer console."));
+        else tryPort(port + 1);
+      });
+      server.once("listening", () => {
+        server.close(() => resolve(port));
+      });
+      server.listen(port, "127.0.0.1");
+    };
+    tryPort(startPort);
+  });
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function ensurePrivateDirectory(dirPath: string): Promise<void> {

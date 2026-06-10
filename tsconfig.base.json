@@ -13,6 +13,9 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
+      "@/components/ui/*": ["apps/renderer/src/components/ui/*.tsx"],
+      "@/lib/*": ["apps/renderer/src/lib/*.ts"],
+      "@/*": ["apps/renderer/src/*"],
       "@hermills/core": ["packages/core/src/index.ts"],
       "@hermills/runtime": ["packages/runtime/src/index.ts"],
       "@hermills/agent-builder": ["packages/agent-builder/src/index.ts"]
