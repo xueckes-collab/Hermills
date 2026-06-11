@@ -59,7 +59,8 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: Hermills ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          prerelease: true
+          prerelease: false
+          make_latest: true
           generate_release_notes: true
           files: |
             release/Hermills-*-x64-setup.exe
