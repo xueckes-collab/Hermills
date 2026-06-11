@@ -17,6 +17,49 @@ export type GatewayStatus = {
   message?: string;
 };
 
+export type ComputerControlStatus = {
+  platform: string;
+  supported: boolean;
+  readiness: "ready" | "preparing" | "needs-permission" | "failed" | "unsupported";
+  hermesCli: {
+    found: boolean;
+    path?: string;
+    version?: string;
+    message?: string;
+  };
+  driver: {
+    installed: boolean;
+    statusText: string;
+  };
+  toolsets: {
+    computerUseEnabled: boolean;
+    enabled: string[];
+    missingRequired: string[];
+    output?: string;
+  };
+  dashboard: {
+    state: "stopped" | "starting" | "running" | "failed";
+    pid?: number;
+    port?: number;
+    url?: string;
+    message?: string;
+    logPath?: string;
+  };
+  permissions: Array<{
+    id: "screen-recording" | "accessibility" | "automation" | "files";
+    label: string;
+    state: "granted" | "missing" | "required" | "unknown";
+    detail: string;
+  }>;
+};
+
+export type ComputerControlCommandResult = {
+  ok: boolean;
+  message: string;
+  output?: string;
+  status: ComputerControlStatus;
+};
+
 export type RuntimeStatus = {
   state: RuntimeState;
   installed: boolean;
@@ -418,10 +461,30 @@ export type OutreachDraft = {
   providerId?: string;
   model?: string;
   usage?: ChatMessage["usage"];
+  qualityReview?: OutreachEmailQualityReview;
   sentAt?: string;
   sendError?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type OutreachEmailQualityCheck = {
+  id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
+  label: string;
+  passed: boolean;
+  score: number;
+  message: string;
+};
+
+export type OutreachEmailQualityReview = {
+  score: number;
+  passed: boolean;
+  level: "pass" | "needs-work" | "blocked";
+  summary: string;
+  checks: OutreachEmailQualityCheck[];
+  issues: string[];
+  rewriteHints: string[];
+  reviewedAt: string;
 };
 
 export type OutreachSenderAccount = {
@@ -433,12 +496,19 @@ export type OutreachSenderAccount = {
   host: string;
   port: number;
   secure: boolean;
+  imapHost?: string;
+  imapPort?: number;
+  imapSecure?: boolean;
+  imapUsername?: string;
   username?: string;
   passwordPreview?: string;
   enabled: boolean;
   lastTestedAt?: string;
   lastTestEmailAt?: string;
   deliveryConfirmedAt?: string;
+  lastInboxCheckedAt?: string;
+  lastInboxCheckStatus?: "ready" | "unsupported" | "failed";
+  lastInboxCheckMessage?: string;
   lastError?: string;
   createdAt: string;
   updatedAt: string;
@@ -505,6 +575,7 @@ export type EmailSequenceDraft = {
   subject: string;
   body: string;
   status: "draft" | "sent" | "failed";
+  qualityReview?: OutreachEmailQualityReview;
   sentAt?: string;
   sendError?: string;
 };
@@ -532,7 +603,20 @@ export type OutreachWorkflow = {
 };
 
 export type OutreachCampaignStatus = "draft" | "generating" | "ready" | "sending" | "paused" | "completed" | "failed" | "stopped";
-export type OutreachCampaignRecipientStatus = "pending" | "researching" | "generated" | "approved" | "queued" | "sending" | "sent" | "failed" | "skipped";
+export type OutreachCampaignRecipientStatus =
+  | "pending"
+  | "researching"
+  | "generated"
+  | "approved"
+  | "queued"
+  | "sending"
+  | "sent"
+  | "failed"
+  | "skipped"
+  | "replied"
+  | "bounced"
+  | "unsubscribed"
+  | "stopped";
 
 export type OutreachCampaignRateLimit = {
   maxPerHour: number;
@@ -550,6 +634,10 @@ export type OutreachCampaignStats = {
   sent: number;
   failed: number;
   skipped: number;
+  replied: number;
+  bounced: number;
+  unsubscribed: number;
+  stopped: number;
 };
 
 export type OutreachCampaignRecipient = {
@@ -570,6 +658,12 @@ export type OutreachCampaignRecipient = {
   queuedAt?: string;
   sentAt?: string;
   skippedAt?: string;
+  repliedAt?: string;
+  bouncedAt?: string;
+  unsubscribedAt?: string;
+  stoppedAt?: string;
+  lastInboxEventAt?: string;
+  stopReason?: string;
   sendError?: string;
   draft?: OutreachDraft;
   createdAt: string;
@@ -596,6 +690,54 @@ export type OutreachCampaign = {
   pausedAt?: string;
   completedAt?: string;
   stoppedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachFollowUpJob = {
+  id: string;
+  profileId: string;
+  campaignId: string;
+  recipientId: string;
+  leadId: string;
+  workflowId: string;
+  draftId: string;
+  senderAccountId: string;
+  step: number;
+  mode: "confirm" | "auto";
+  status: "scheduled" | "ready" | "sending" | "sent" | "failed" | "stopped";
+  email: string;
+  companyName: string;
+  subject: string;
+  body: string;
+  sendAt: string;
+  readyAt?: string;
+  sentAt?: string;
+  stoppedAt?: string;
+  stopReason?: string;
+  sendError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachFollowUpStats = {
+  total: number;
+  scheduled: number;
+  ready: number;
+  sent: number;
+  failed: number;
+  stopped: number;
+};
+
+export type OutreachFeedback = {
+  id: string;
+  profileId: string;
+  targetType: "draft" | "workflow" | "campaign" | "recipient" | "general";
+  targetId?: string;
+  rating: number;
+  category: "good" | "too-generic" | "wrong-context" | "too-long" | "not-my-company" | "other";
+  comment: string;
+  status: "new" | "reviewed" | "applied";
   createdAt: string;
   updatedAt: string;
 };
@@ -834,6 +976,30 @@ export const api = {
   },
   async restartGateway(): Promise<GatewayStatus> {
     return request<GatewayStatus>("/api/gateway/restart", { method: "POST", body: "{}" });
+  },
+  async computerControlStatus(): Promise<ComputerControlStatus> {
+    return request<ComputerControlStatus>("/api/computer-control/status");
+  },
+  async prepareComputerControl(): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/prepare", { method: "POST", body: "{}" });
+  },
+  async requestComputerControlPermission(permission: "screen-recording" | "accessibility"): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/request-permission", {
+      method: "POST",
+      body: JSON.stringify({ permission })
+    });
+  },
+  async installComputerControlDriver(): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/install-driver", { method: "POST", body: "{}" });
+  },
+  async enableComputerControlTools(): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/enable-tools", { method: "POST", body: "{}" });
+  },
+  async startComputerControlDashboard(): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/dashboard/start", { method: "POST", body: "{}" });
+  },
+  async stopComputerControlDashboard(): Promise<ComputerControlCommandResult> {
+    return request<ComputerControlCommandResult>("/api/computer-control/dashboard/stop", { method: "POST", body: "{}" });
   },
   async agents(): Promise<Agent[]> {
     const agents = await request<RawAgent[]>("/api/agents");
@@ -1150,6 +1316,24 @@ export const api = {
       body: JSON.stringify({ ...input, confirm: true })
     });
   },
+  async scheduleOutreachFollowUps(id: string, input: { senderAccountId: string; mode?: "confirm" | "auto" }): Promise<{ created: number; jobs: OutreachFollowUpJob[]; stats: OutreachFollowUpStats }> {
+    return request<{ created: number; jobs: OutreachFollowUpJob[]; stats: OutreachFollowUpStats }>(`/api/outreach/campaigns/${id}/schedule-followups`, {
+      method: "POST",
+      body: JSON.stringify({ ...input, mode: input.mode ?? "confirm", confirm: true })
+    });
+  },
+  async outreachFollowUps(campaignId?: string): Promise<OutreachFollowUpJob[]> {
+    return request<OutreachFollowUpJob[]>(`/api/outreach/followups${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : ""}`);
+  },
+  async outreachFollowUpStats(campaignId?: string): Promise<OutreachFollowUpStats> {
+    return request<OutreachFollowUpStats>(`/api/outreach/followups/stats${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : ""}`);
+  },
+  async tickOutreachFollowUps(input: { now?: string; limit?: number } = {}): Promise<{ processed: number; sent: number; ready: number; failed: number; stopped: number }> {
+    return request<{ processed: number; sent: number; ready: number; failed: number; stopped: number }>("/api/outreach/followups/tick", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
   async pauseOutreachCampaign(id: string): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/pause`, { method: "POST", body: "{}" });
   },
@@ -1162,6 +1346,18 @@ export const api = {
   async updateOutreachDraft(id: string, input: Partial<Pick<OutreachDraft, "subject" | "body" | "language" | "tone">>): Promise<OutreachDraft> {
     return request<OutreachDraft>(`/api/outreach/drafts/${id}`, { method: "PUT", body: JSON.stringify(input) });
   },
+  async reviewOutreachDraft(id: string): Promise<OutreachEmailQualityReview> {
+    return request<OutreachEmailQualityReview>(`/api/outreach/drafts/${id}/review`, { method: "POST", body: "{}" });
+  },
+  async rewriteOutreachDraft(id: string, input: { providerId?: string; model?: string } = {}): Promise<OutreachDraft> {
+    return request<OutreachDraft>(`/api/outreach/drafts/${id}/rewrite`, { method: "POST", body: JSON.stringify(input) });
+  },
+  async reviewOutreachCampaignRecipient(campaignId: string, recipientId: string): Promise<OutreachEmailQualityReview> {
+    return request<OutreachEmailQualityReview>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/review`, { method: "POST", body: "{}" });
+  },
+  async rewriteOutreachCampaignRecipient(campaignId: string, recipientId: string, input: { providerId?: string; model?: string } = {}): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/rewrite`, { method: "POST", body: JSON.stringify(input) });
+  },
   async outreachSenderAccounts(): Promise<OutreachSenderAccount[]> {
     return request<OutreachSenderAccount[]>("/api/outreach/sender-accounts");
   },
@@ -1173,6 +1369,10 @@ export const api = {
     host: string;
     port: number;
     secure: boolean;
+    imapHost?: string;
+    imapPort?: number;
+    imapSecure?: boolean;
+    imapUsername?: string;
     username?: string;
     password?: string;
     enabled?: boolean;
@@ -1195,11 +1395,47 @@ export const api = {
   async confirmOutreachSenderDelivery(id: string): Promise<{ ok: boolean; message: string; sender: OutreachSenderAccount }> {
     return request<{ ok: boolean; message: string; sender: OutreachSenderAccount }>(`/api/outreach/sender-accounts/${id}/confirm-delivery`, { method: "POST", body: "{}" });
   },
+  async checkOutreachInbox(input: { senderAccountId: string; campaignId?: string }): Promise<{
+    ok: boolean;
+    status: "ready" | "unsupported" | "failed";
+    message: string;
+    sender: OutreachSenderAccount;
+    matched: Array<{
+      campaignId: string;
+      recipientId: string;
+      leadId: string;
+      email: string;
+      companyName: string;
+      type: "replied" | "bounced" | "unsubscribed";
+      subject?: string;
+      from?: string;
+      at: string;
+      reason: string;
+    }>;
+    stopped: number;
+  }> {
+    return request("/api/outreach/inbox/check", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
   async sendOutreachDraft(id: string, input: { senderAccountId: string; to?: string }): Promise<OutreachDraft> {
     return request<OutreachDraft>(`/api/outreach/drafts/${id}/send`, {
       method: "POST",
       body: JSON.stringify({ ...input, confirm: true })
     });
+  },
+  async outreachFeedback(): Promise<OutreachFeedback[]> {
+    return request<OutreachFeedback[]>("/api/outreach/feedback");
+  },
+  async createOutreachFeedback(input: {
+    targetType?: OutreachFeedback["targetType"];
+    targetId?: string;
+    rating: number;
+    category?: OutreachFeedback["category"];
+    comment?: string;
+  }): Promise<OutreachFeedback> {
+    return request<OutreachFeedback>("/api/outreach/feedback", { method: "POST", body: JSON.stringify(input) });
   },
   async materials(): Promise<Material[]> {
     return request<Material[]>("/api/materials");
@@ -1318,5 +1554,7 @@ export const fallback = {
   companyMaterials: [] satisfies Material[],
   outreachLeads: [] satisfies OutreachLead[],
   outreachCampaigns: [] satisfies OutreachCampaign[],
-  outreachSenderAccounts: [] satisfies OutreachSenderAccount[]
+  outreachSenderAccounts: [] satisfies OutreachSenderAccount[],
+  outreachFollowUps: [] satisfies OutreachFollowUpJob[],
+  outreachFeedback: [] satisfies OutreachFeedback[]
 };

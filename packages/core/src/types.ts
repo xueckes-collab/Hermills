@@ -19,10 +19,13 @@ import type {
   EmailSequenceDraftSchema,
   GeneratedIcpSchema,
   GeneratedUspSchema,
+  OutreachEmailQualityReviewSchema,
   OutreachResearchDepthSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
+  OutreachFeedbackSchema,
+  OutreachFollowUpJobSchema,
   OutreachLeadSchema,
   OutreachSenderAccountSchema,
   OutreachWorkflowSchema,
@@ -55,9 +58,12 @@ export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSc
 export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;
 export type GeneratedUsp = z.infer<typeof GeneratedUspSchema>;
 export type EmailSequenceDraft = z.infer<typeof EmailSequenceDraftSchema>;
+export type OutreachEmailQualityReview = z.infer<typeof OutreachEmailQualityReviewSchema>;
 export type OutreachWorkflow = z.infer<typeof OutreachWorkflowSchema>;
 export type OutreachCampaign = z.infer<typeof OutreachCampaignSchema>;
 export type OutreachCampaignRecipient = z.infer<typeof OutreachCampaignRecipientSchema>;
+export type OutreachFollowUpJob = z.infer<typeof OutreachFollowUpJobSchema>;
+export type OutreachFeedback = z.infer<typeof OutreachFeedbackSchema>;
 
 export interface InstallEvent {
   jobId: string;

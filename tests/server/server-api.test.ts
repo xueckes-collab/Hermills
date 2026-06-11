@@ -111,6 +111,66 @@ describe("Hermills local API", () => {
     });
   });
 
+  it("exposes fixed computer-control actions behind the desktop token", async () => {
+    expect((await server.inject({ method: "GET", url: "/api/computer-control/status" })).statusCode).toBe(401);
+
+    const statusResponse = await server.inject({ method: "GET", url: "/api/computer-control/status", headers });
+    expect(statusResponse.statusCode).toBe(200);
+    expect(statusResponse.json()).toMatchObject({
+      hermesCli: { found: true },
+      readiness: "preparing",
+      dashboard: { state: "stopped" }
+    });
+
+    const prepareResponse = await server.inject({ method: "POST", url: "/api/computer-control/prepare", headers, payload: {} });
+    expect(prepareResponse.statusCode).toBe(200);
+    expect(prepareResponse.json()).toMatchObject({
+      ok: true,
+      status: { readiness: "ready" }
+    });
+
+    const permissionResponse = await server.inject({ method: "POST", url: "/api/computer-control/request-permission", headers, payload: { permission: "accessibility" } });
+    expect(permissionResponse.statusCode).toBe(200);
+    expect(permissionResponse.json()).toMatchObject({
+      ok: true,
+      status: { readiness: "ready" }
+    });
+
+    const toolsResponse = await server.inject({ method: "POST", url: "/api/computer-control/enable-tools", headers, payload: {} });
+    expect(toolsResponse.statusCode).toBe(200);
+    expect(toolsResponse.json()).toMatchObject({
+      ok: true,
+      status: { toolsets: { computerUseEnabled: true } }
+    });
+
+    const dashboardResponse = await server.inject({ method: "POST", url: "/api/computer-control/dashboard/start", headers, payload: {} });
+    expect(dashboardResponse.statusCode).toBe(200);
+    expect(dashboardResponse.json()).toMatchObject({
+      ok: true,
+      status: { dashboard: { state: "running", url: "http://127.0.0.1:9119" } }
+    });
+  });
+
+  it("routes computer-control requests from normal chat into built-in Hermes computer operation", async () => {
+    const sessionResponse = await server.inject({ method: "POST", url: "/api/chat/sessions", headers, payload: { title: "Computer chat" } });
+
+    const messageResponse = await server.inject({
+      method: "POST",
+      url: `/api/chat/sessions/${sessionResponse.json().id}/messages`,
+      headers,
+      payload: { content: "帮我控制这台 Mac 打开浏览器" }
+    });
+
+    expect(messageResponse.statusCode).toBe(200);
+    expect(runtime.requests).toEqual([]);
+    expect(runtime.computerPrompts).toEqual(["帮我控制这台 Mac 打开浏览器"]);
+    expect(messageResponse.json().messages).toHaveLength(2);
+    const assistantMessage = messageResponse.json().messages[1].content as string;
+    expect(assistantMessage).toContain("我已经按你的要求操作这台 Mac。");
+    expect(assistantMessage).toContain("fake computer output");
+    expect(assistantMessage).not.toContain("[[HERMILLS_COMPUTER_CONTROL:");
+  });
+
   it("keeps first deploy visible after a failed install event", async () => {
     await server.inject({ method: "POST", url: "/api/runtime/install", headers, payload: {} });
     runtime.emit("job-test", {
@@ -304,6 +364,7 @@ describe("Hermills local API", () => {
 
     await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
       name: "Eckes Export",
+      website: "https://eckes-export.example",
       mainProducts: ["LED work light"],
       certifications: ["CE"],
       shippingTerms: ["FOB Ningbo"]
@@ -332,7 +393,8 @@ describe("Hermills local API", () => {
     expect(draftResponse.json()).toMatchObject({
       leadId,
       subject: "LED work light supply",
-      status: "draft"
+      status: "draft",
+      qualityReview: { passed: true }
     });
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("Bright LLC");
@@ -367,6 +429,30 @@ describe("Hermills local API", () => {
     expect(confirmResponse.json().sender.deliveryConfirmedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("refuses outreach generation until company profile has the required basics", async () => {
+    const leadResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads",
+      headers,
+      payload: {
+        companyName: "Missing Company Context Buyer",
+        email: "buyer@missing-context.example",
+        website: "https://missing-context.example"
+      }
+    });
+    expect(leadResponse.statusCode).toBe(200);
+
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/generate",
+      headers,
+      payload: { leadId: leadResponse.json().id, language: "English", tone: "short" }
+    });
+    expect(draftResponse.statusCode).toBe(400);
+    expect(draftResponse.json().error.message).toContain("Company profile is required");
+    expect(runtime.requests).toHaveLength(0);
+  });
+
   it("refuses to send outreach until the sender mailbox delivery is confirmed", async () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
@@ -375,6 +461,11 @@ describe("Hermills local API", () => {
         body: "Hello, I saw your team sources work lights. Would it help if I sent a concise option list?"
       });
     };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"]
+    } });
 
     const leadResponse = await server.inject({
       method: "POST",
@@ -438,6 +529,11 @@ describe("Hermills local API", () => {
         body: "Hello, I saw Preview Buyer imports industrial lighting. We can support work light supply. Would you like details?"
       });
     };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"]
+    } });
 
     const draftResponse = await server.inject({
       method: "POST",
@@ -452,7 +548,7 @@ describe("Hermills local API", () => {
     });
 
     expect(draftResponse.statusCode).toBe(200);
-    expect(draftResponse.json()).toMatchObject({ subject: "Work light supply", status: "draft" });
+    expect(draftResponse.json()).toMatchObject({ subject: "Work light supply", status: "draft", qualityReview: { passed: true } });
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("--- Customer website research ---");
     expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
@@ -519,6 +615,12 @@ describe("Hermills local API", () => {
         }))
       });
     };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"]
+    } });
 
     const workflowResponse = await server.inject({
       method: "POST",
@@ -538,7 +640,7 @@ describe("Hermills local API", () => {
       email: "sourcing@atlas-buyer.example",
       website: "https://atlas-buyer.example/",
       language: "English",
-      initialEmail: { subject: "Rugged work light options", status: "draft" }
+      initialEmail: { subject: "Rugged work light options", status: "draft", qualityReview: { passed: true } }
     });
     expect(workflow.icps).toHaveLength(1);
     expect(workflow.usps).toHaveLength(1);
@@ -1098,6 +1200,7 @@ type FakeRuntimeUpdateCheck = {
 
 function createFakeRuntime() {
   const requests: HermesReplyRequest[] = [];
+  const computerPrompts: string[] = [];
   const installs: Parameters<RuntimeAdapter["startInstall"]>[0][] = [];
   const listeners = new Map<string, Set<(event: InstallEvent) => void>>();
   const initialStatus: RuntimeStatus = {
@@ -1110,6 +1213,7 @@ function createFakeRuntime() {
   };
   return {
     requests,
+    computerPrompts,
     installs,
     status: initialStatus,
     updateCheck: {
@@ -1155,6 +1259,36 @@ function createFakeRuntime() {
     async restartGateway() {
       return { state: "running", apiBaseUrl: "http://127.0.0.1:8642" };
     },
+    async getComputerControlStatus() {
+      return fakeComputerControlStatus();
+    },
+    async prepareComputerControl() {
+      return { ok: true, message: "computer control prepared", status: fakeComputerControlStatus({ driverInstalled: true, computerUseEnabled: true }) };
+    },
+    async requestComputerControlPermission() {
+      return { ok: true, message: "permission requested", status: fakeComputerControlStatus({ driverInstalled: true, computerUseEnabled: true }) };
+    },
+    async installComputerControlDriver() {
+      return { ok: true, message: "driver installed", status: fakeComputerControlStatus({ driverInstalled: true }) };
+    },
+    async enableComputerControlTools() {
+      return { ok: true, message: "tools enabled", status: fakeComputerControlStatus({ computerUseEnabled: true }) };
+    },
+    async startComputerControlDashboard() {
+      return { ok: true, message: "dashboard started", status: fakeComputerControlStatus({ dashboardRunning: true }) };
+    },
+    async stopComputerControlDashboard() {
+      return { ok: true, message: "dashboard stopped", status: fakeComputerControlStatus() };
+    },
+    async runComputerControlPrompt(prompt: string) {
+      computerPrompts.push(prompt);
+      return {
+        ok: true,
+        message: "computer operation finished",
+        output: "fake computer output",
+        status: fakeComputerControlStatus({ driverInstalled: true, computerUseEnabled: true })
+      };
+    },
     async createHermesReply(request: HermesReplyRequest) {
       requests.push(request);
       return "fake Hermes reply";
@@ -1164,9 +1298,35 @@ function createFakeRuntime() {
     }
   } satisfies RuntimeAdapter & {
     requests: HermesReplyRequest[];
+    computerPrompts: string[];
     installs: Parameters<RuntimeAdapter["startInstall"]>[0][];
     status: RuntimeStatus;
     updateCheck: FakeRuntimeUpdateCheck;
     emit(jobId: string, event: InstallEvent): void;
+  };
+}
+
+function fakeComputerControlStatus(input: { driverInstalled?: boolean; computerUseEnabled?: boolean; dashboardRunning?: boolean } = {}) {
+  return {
+    platform: process.platform,
+    supported: process.platform === "darwin",
+    hermesCli: { found: true, path: "/usr/local/bin/hermes", version: "Hermes fake" },
+    driver: { installed: input.driverInstalled ?? false, statusText: input.driverInstalled ? "cua-driver: installed" : "cua-driver: not installed" },
+    toolsets: {
+      computerUseEnabled: input.computerUseEnabled ?? false,
+      enabled: input.computerUseEnabled ? ["browser", "computer_use", "file", "terminal"] : ["browser", "file", "terminal"],
+      missingRequired: input.computerUseEnabled ? [] : ["computer_use"],
+      output: ""
+    },
+    dashboard: input.dashboardRunning
+      ? { state: "running" as const, pid: 1234, port: 9119, url: "http://127.0.0.1:9119", message: "running" }
+      : { state: "stopped" as const, message: "stopped" },
+    readiness: input.driverInstalled && input.computerUseEnabled ? "ready" as const : "preparing" as const,
+    permissions: [
+      { id: "screen-recording" as const, label: "Screen Recording", state: "unknown" as const, detail: "macOS may ask." },
+      { id: "accessibility" as const, label: "Accessibility", state: "unknown" as const, detail: "macOS may ask." },
+      { id: "automation" as const, label: "Automation", state: "unknown" as const, detail: "macOS may ask." },
+      { id: "files" as const, label: "Files and folders", state: "required" as const, detail: "Choose folders carefully." }
+    ]
   };
 }

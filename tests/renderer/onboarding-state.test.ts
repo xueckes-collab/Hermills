@@ -14,9 +14,10 @@ describe("renderer onboarding routing contract", () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
 
     expect(appSource).toContain("const onboarding = useEndpoint(loadOnboardingState, fallbackOnboarding, workspaceEnabled)");
-    expect(appSource).toContain("const chatEnabled = workspaceEnabled && onboarding.data.completed");
-    expect(appSource).toContain("if (!onboarding.data.completed)");
-    expect(appSource.indexOf("if (!onboarding.data.completed)")).toBeLessThan(appSource.indexOf("className={`client-shell"));
+    expect(appSource).toContain("const companyReady = isCompanyProfileReady(companyProfile.data)");
+    expect(appSource).toContain("const chatEnabled = workspaceEnabled && setupCompleted");
+    expect(appSource).toContain("if (!onboarding.data.completed || !companyReady)");
+    expect(appSource.indexOf("if (!onboarding.data.completed || !companyReady)")).toBeLessThan(appSource.indexOf("className=\"client-shell"));
   });
 
   it("keeps provider setup optional in the onboarding wizard", async () => {

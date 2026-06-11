@@ -95,14 +95,94 @@ describe("renderer usability contract", () => {
 
   it("keeps an actionable entry in the chat empty state", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
-    const emptyChat = sourceWindow(appSource, 'className="empty-chat"');
+    const emptyChat = sourceWindow(appSource, 'className="empty-chat hermills-empty-chat"');
 
     expect(emptyChat).toContain("copy.chat.emptyTitle");
     expect(emptyChat).toContain("copy.chat.emptyDescription");
-    expect(emptyChat, "The empty chat state should include a button-level entry point.").toMatch(/<button\b/);
+    expect(emptyChat, "The empty chat state should include a button-level entry point.").toMatch(/<(?:button|Button)\b/);
     expect(emptyChat, "The empty chat entry should open setup, files, assistants, or a new conversation.").toMatch(
       /setSourcesOpen|setAssistantsOpen|openAdvanced|newSession|copy\.chat\.(?:empty|openSetup|addFile|newConversation)/
     );
+  });
+
+  it("sends the chat composer on Enter while keeping Shift+Enter for new lines", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const composer = sourceWindow(appSource, 'className="composer-input"', 1400);
+
+    expect(appSource).toContain("function handleComposerKeyDown");
+    expect(appSource).toContain("event.key !== 'Enter'");
+    expect(appSource).toContain("event.shiftKey");
+    expect(appSource).toContain("event.nativeEvent.isComposing");
+    expect(appSource).toContain("event.currentTarget.form?.requestSubmit()");
+    expect(composer).toContain("onKeyDown={handleComposerKeyDown}");
+  });
+
+  it("shows sent messages and a Hermes thinking bubble before the reply resolves", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const sendFlow = sourceWindow(appSource, "async function sendMessage", 3200);
+    const messageStream = sourceWindow(appSource, 'className="hermills-message-stream"', 2600);
+
+    expect(sendFlow).toContain("optimisticUserMessage");
+    expect(sendFlow).toContain("optimisticSession");
+    expect(sendFlow).toMatch(/setSessions\(nextSessionList\)[\s\S]{0,500}await api\.sendChatMessage/);
+    expect(sendFlow).toMatch(/setDraft\(''\)[\s\S]{0,500}await api\.sendChatMessage/);
+    expect(messageStream).toContain("sending ? (");
+    expect(messageStream).toContain('className="message agent pending"');
+    expect(messageStream).toContain("copy.chat.thinking");
+  });
+
+  it("keeps native Hermes computer control inside the ordinary chat stream", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const apiSource = await readFile(projectFile("apps/renderer/src/api.ts"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain("type WorkspaceView = 'chat' | 'outreach'");
+    expect(appSource).toContain("function ComputerControlInlinePanel");
+    expect(appSource).toContain("function ComputerPermissionNudge");
+    expect(appSource).toContain("parseComputerControlMessage(message.content)");
+    expect(appSource).toContain("api.prepareComputerControl");
+    expect(appSource).toContain("api.requestComputerControlPermission");
+    expect(appSource).toContain("COMPUTER_CONTROL_MESSAGE_PREFIX");
+    expect(appSource).not.toContain("setWorkspaceView('computer')");
+    expect(appSource).not.toContain("api.startComputerControlDashboard");
+    expect(appSource).not.toContain("api.enableComputerControlTools");
+    expect(appSource).not.toContain("api.installComputerControlDriver");
+    expect(appSource).not.toContain("id: 'computerControl'");
+    expect(apiSource).toContain("/api/computer-control/status");
+    expect(apiSource).toContain("/api/computer-control/dashboard/start");
+    expect(stylesSource).toContain(".message.computer-control-message");
+    expect(stylesSource).toContain(".computer-inline-note");
+    expect(stylesSource).toContain(".computer-permission-nudge");
+    expect(stylesSource).not.toContain(".computer-inline-frame");
+    expect(stylesSource).not.toContain(".computer-inline-actions");
+  });
+
+  it("keeps computer control as chat-only copy in every supported language", () => {
+    for (const language of languages) {
+      const copy = getUiCopy(language);
+      expect(copy.topbar.computer.trim(), `${language} computer topbar copy should exist`).not.toBe("");
+      expect(copy.computerControl.inlineTitle.trim(), `${language} inline computer title should exist`).not.toBe("");
+      expect(copy.computerControl.inlineSubtitle.trim(), `${language} inline computer subtitle should exist`).not.toBe("");
+      expect(copy.computerControl.permissionNudgeTitle.trim(), `${language} permission title should exist`).not.toBe("");
+      expect(copy.computerControl.permissionNudgeAction.trim(), `${language} permission action should exist`).not.toBe("");
+      expect("computerControl" in copy.chat.emptyActions, `${language} should not expose computer control as an empty-card action`).toBe(false);
+    }
+  });
+
+  it("keeps the lightweight paper UI system wired into chat", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(stylesSource).toContain("--paper:");
+    expect(stylesSource).toContain("--paper-soft:");
+    expect(stylesSource).toContain("--paper-green:");
+    expect(stylesSource).toContain("--radius-lg:");
+    expect(stylesSource).toContain("--shadow-soft:");
+    expect(stylesSource).toMatch(/\.conversation-title\s*\{[\s\S]*width:\s*min\(1124px,\s*100%\)/);
+    expect(stylesSource).toMatch(/\.message-stream\s*\{[\s\S]*width:\s*min\(1124px,\s*100%\)/);
+    expect(stylesSource).toMatch(/\.composer\s*\{[\s\S]*width:\s*min\(1124px,\s*100%\)/);
+    expect(stylesSource).toContain(".message-role");
+    expect(appSource).toContain('className="message-role"');
   });
 
   it("keeps file rows behind an action bar with localized accessible labels", async () => {

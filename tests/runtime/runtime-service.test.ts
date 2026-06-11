@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -164,6 +164,52 @@ describe("RuntimeService", () => {
     });
   });
 
+  it("runs built-in computer control through fixed Hermes chat arguments", async () => {
+    if (process.platform !== "darwin") return;
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-computer-chat-"));
+    const executablePath = path.join(baseDir, "runtime", "hermes-agent", "bin", "hermes");
+    const logPath = path.join(baseDir, "hermes-args.log");
+    await mkdir(path.dirname(executablePath), { recursive: true });
+    await writeFile(executablePath, `#!/usr/bin/env bash
+log=${JSON.stringify(logPath)}
+printf '%s\\n' "$*" >> "$log"
+if [[ "$1" == "--version" ]]; then
+  echo "Hermes Agent test"
+elif [[ "$1" == "computer-use" && "$2" == "status" ]]; then
+  echo "cua-driver: installed"
+elif [[ "$1" == "tools" && "$2" == "--summary" && "$3" == "list" ]]; then
+  echo "enabled terminal"
+  echo "enabled file"
+  echo "enabled browser"
+  echo "enabled computer_use"
+elif [[ "$1" == "chat" ]]; then
+  echo "computer run ok"
+else
+  echo "ok"
+fi
+`, "utf8");
+    await chmod(executablePath, 0o755);
+    const permissionHelperPath = await writeFakePermissionHelper(baseDir, {
+      screenRecording: "granted",
+      accessibility: "granted"
+    });
+    const previousPermissionHelper = process.env.HERMILLS_PERMISSION_HELPER;
+    process.env.HERMILLS_PERMISSION_HELPER = permissionHelperPath;
+    const service = new RuntimeService({ baseDir });
+
+    try {
+      await expect(service.runComputerControlPrompt("控制这台 Mac 打开浏览器; echo bad")).resolves.toMatchObject({
+        ok: true,
+        output: "computer run ok"
+      });
+      const calls = await readFile(logPath, "utf8");
+      expect(calls).toContain("chat --query 控制这台 Mac 打开浏览器; echo bad --quiet --source hermills-computer-control --toolsets browser,computer_use,file,terminal,vision");
+    } finally {
+      restoreEnv("HERMILLS_PERMISSION_HELPER", previousPermissionHelper);
+      await service.dispose();
+    }
+  });
+
   it("normalizes OpenAI-compatible endpoint URLs", () => {
     expect(chatCompletionsUrl("http://127.0.0.1:8642")).toBe("http://127.0.0.1:8642/v1/chat/completions");
     expect(chatCompletionsUrl("https://api.openai.com/v1")).toBe("https://api.openai.com/v1/chat/completions");
@@ -270,6 +316,17 @@ describe("RuntimeService", () => {
         firstDeployHidden: true,
         localDeployCompletedAt: appState.localDeployCompletedAt
       });
+      if (process.platform === "darwin") {
+        await expect(service.getComputerControlStatus()).resolves.toMatchObject({
+          driver: { installed: true },
+          toolsets: { computerUseEnabled: true }
+        });
+        const commandLog = await readFile(path.join(baseDir, "runtime", "hermes-agent", "command-log.txt"), "utf8");
+        expect(commandLog).toContain("tools enable --platform cli");
+        expect(commandLog).toContain("computer_use");
+        expect(commandLog).toContain("computer-use install");
+        expect(service.getEvents(jobId).map((event) => event.message).join("\n")).not.toMatch(/computer-use|computer_use|driver|tools enable/i);
+      }
 
       await expect(service.createHermesReply({
         messages: [
@@ -341,6 +398,25 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
   }
 }
 
+async function writeFakePermissionHelper(baseDir: string, payload: { screenRecording: string; accessibility: string }): Promise<string> {
+  const helperPath = path.join(baseDir, "permission-helper");
+  await writeFile(helperPath, `#!/usr/bin/env bash
+echo ${JSON.stringify(JSON.stringify({
+  screenRecording: payload.screenRecording,
+  accessibility: payload.accessibility,
+  automation: "unknown",
+  files: "workspace-only"
+}))}
+`, "utf8");
+  await chmod(helperPath, 0o755);
+  return helperPath;
+}
+
+function restoreEnv(name: string, previous: string | undefined): void {
+  if (previous === undefined) delete process.env[name];
+  else process.env[name] = previous;
+}
+
 function fakeInstallerScript(): string {
   if (process.platform === "win32") return fakeWindowsInstallerScript(false);
   return `#!/usr/bin/env bash
@@ -359,19 +435,7 @@ while [ "$#" -gt 0 ]; do
 done
 mkdir -p "$RUNTIME_DIR/bin"
 cat > "$RUNTIME_DIR/bin/hermes" <<'NODE'
-#!/usr/bin/env node
-if (process.argv.includes("--version")) {
-  console.log("hermes-agent fake-v1");
-  process.exit(0);
-}
-
-if (process.argv[2] !== "gateway" || process.argv[3] !== "run") {
-  console.error("unsupported fake hermes command");
-  process.exit(2);
-}
-
-process.on("SIGTERM", () => process.exit(0));
-setInterval(() => undefined, 1000);
+${fakeHermesNodeScript()}
 NODE
 chmod +x "$RUNTIME_DIR/bin/hermes"
 `;
@@ -399,21 +463,72 @@ if [ -e "$RUNTIME_DIR" ] && [ ! -d "$RUNTIME_DIR/.git" ]; then
 fi
 mkdir -p "$RUNTIME_DIR/.git" "$RUNTIME_DIR/bin"
 cat > "$RUNTIME_DIR/bin/hermes" <<'NODE'
-#!/usr/bin/env node
-if (process.argv.includes("--version")) {
+${fakeHermesNodeScript()}
+NODE
+chmod +x "$RUNTIME_DIR/bin/hermes"
+`;
+}
+
+function fakeHermesNodeScript(): string {
+  return `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+
+const runtimeHome = process.env.HERMES_AGENT_HOME || path.dirname(path.dirname(process.argv[1]));
+const args = process.argv.slice(2);
+const command = args.join(" ");
+try {
+  fs.appendFileSync(path.join(runtimeHome, "command-log.txt"), command + "\\n");
+} catch {}
+
+if (args.includes("--version")) {
   console.log("hermes-agent fake-v1");
   process.exit(0);
 }
 
-if (process.argv[2] !== "gateway" || process.argv[3] !== "run") {
+if (args[0] === "tools" && args[1] === "--summary" && args[2] === "list") {
+  if (fs.existsSync(path.join(runtimeHome, ".tools-enabled"))) {
+    console.log("enabled terminal");
+    console.log("enabled file");
+    console.log("enabled browser");
+    console.log("enabled computer_use");
+  } else {
+    console.log("enabled terminal");
+    console.log("enabled file");
+    console.log("enabled browser");
+  }
+  process.exit(0);
+}
+
+if (args[0] === "tools" && args[1] === "enable") {
+  fs.writeFileSync(path.join(runtimeHome, ".tools-enabled"), "1");
+  console.log("tools enabled");
+  process.exit(0);
+}
+
+if (args[0] === "computer-use" && args[1] === "status") {
+  console.log(fs.existsSync(path.join(runtimeHome, ".computer-use-installed")) ? "cua-driver: installed" : "cua-driver: not installed");
+  process.exit(0);
+}
+
+if (args[0] === "computer-use" && args[1] === "install") {
+  fs.writeFileSync(path.join(runtimeHome, ".computer-use-installed"), "1");
+  console.log("cua-driver: installed");
+  process.exit(0);
+}
+
+if (args[0] === "chat") {
+  console.log("computer run ok");
+  process.exit(0);
+}
+
+if (args[0] !== "gateway" || args[1] !== "run") {
   console.error("unsupported fake hermes command");
   process.exit(2);
 }
 
 process.on("SIGTERM", () => process.exit(0));
 setInterval(() => undefined, 1000);
-NODE
-chmod +x "$RUNTIME_DIR/bin/hermes"
 `;
 }
 

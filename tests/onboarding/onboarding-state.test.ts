@@ -296,6 +296,30 @@ function createFakeRuntime() {
     async restartGateway() {
       return { state: "running", apiBaseUrl: "http://127.0.0.1:8642" };
     },
+    async getComputerControlStatus() {
+      return fakeComputerControlStatus();
+    },
+    async prepareComputerControl() {
+      return { ok: true, message: "computer control prepared", status: fakeComputerControlStatus() };
+    },
+    async requestComputerControlPermission() {
+      return { ok: true, message: "permission requested", status: fakeComputerControlStatus() };
+    },
+    async installComputerControlDriver() {
+      return { ok: true, message: "driver installed", status: fakeComputerControlStatus() };
+    },
+    async enableComputerControlTools() {
+      return { ok: true, message: "tools enabled", status: fakeComputerControlStatus() };
+    },
+    async startComputerControlDashboard() {
+      return { ok: true, message: "dashboard started", status: fakeComputerControlStatus() };
+    },
+    async stopComputerControlDashboard() {
+      return { ok: true, message: "dashboard stopped", status: fakeComputerControlStatus() };
+    },
+    async runComputerControlPrompt() {
+      return { ok: true, message: "computer operation finished", output: "fake computer output", status: fakeComputerControlStatus() };
+    },
     async createHermesReply() {
       return "fake Hermes reply";
     },
@@ -305,6 +329,19 @@ function createFakeRuntime() {
   } satisfies RuntimeAdapter & {
     status: RuntimeStatus;
     emit(jobId: string, event: InstallEvent): void;
+  };
+}
+
+function fakeComputerControlStatus() {
+  return {
+    platform: process.platform,
+    supported: process.platform === "darwin",
+    hermesCli: { found: true, version: "Hermes fake" },
+    driver: { installed: false, statusText: "cua-driver: not installed" },
+    toolsets: { computerUseEnabled: false, enabled: [], missingRequired: ["computer_use"] },
+    dashboard: { state: "stopped" as const, message: "stopped" },
+    readiness: "preparing" as const,
+    permissions: []
   };
 }
 

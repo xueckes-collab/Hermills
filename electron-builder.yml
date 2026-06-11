@@ -34,6 +34,10 @@ extraResources:
     filter:
       - icon.png
       - icon.ico
+  - from: packages/runtime/dist/helpers
+    to: bin
+    filter:
+      - "**/*"
 asar: true
 mac:
   icon: build/icon.icns
