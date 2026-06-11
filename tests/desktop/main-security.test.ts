@@ -28,4 +28,18 @@ describe("desktop main process security contract", () => {
     expect(source).toContain("url.startsWith(\"https://\")");
     expect(source).toContain("return { action: \"deny\" }");
   });
+
+  it("keeps the app running in the tray when the window close button is clicked", async () => {
+    const source = await readFile(projectFile("apps/desktop/main.cjs"), "utf8");
+
+    expect(source).toContain("Tray");
+    expect(source).toContain("Menu.buildFromTemplate");
+    expect(source).toContain("getTrayIconPath");
+    expect(source).toContain("process.resourcesPath");
+    expect(source).toContain("mainWindow.on(\"close\"");
+    expect(source).toContain("event.preventDefault()");
+    expect(source).toContain("mainWindow.hide()");
+    expect(source).toContain("Quit Hermills");
+    expect(source).toContain("app.quit()");
+  });
 });

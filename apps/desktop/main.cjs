@@ -1,10 +1,13 @@
 const { randomUUID } = require("node:crypto");
+const { existsSync } = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray } = require("electron");
 
 let mainWindow;
+let tray;
+let isQuitting = false;
 let serverInstance;
 let apiBaseUrl = allowDevEndpoints() ? process.env.HERMILLS_SERVER_URL : undefined;
 const desktopToken = process.env.HERMILLS_DESKTOP_TOKEN || randomUUID();
@@ -29,6 +32,14 @@ async function createWindow() {
     }
   });
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = undefined;
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) void shell.openExternal(url);
     return { action: "deny" };
@@ -36,6 +47,50 @@ async function createWindow() {
   const rendererUrl = allowDevEndpoints() ? process.env.HERMILLS_RENDERER_URL : undefined;
   if (rendererUrl) await mainWindow.loadURL(rendererUrl);
   else await mainWindow.loadFile(path.join(app.getAppPath(), "apps", "renderer", "dist", "index.html"));
+}
+
+async function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return tray;
+  tray = new Tray(getTrayIconPath());
+  tray.setToolTip("Hermills");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Show Hermills", click: () => { void showMainWindow(); } },
+    { type: "separator" },
+    {
+      label: "Quit Hermills",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]));
+  tray.on("click", () => { void showMainWindow(); });
+  tray.on("double-click", () => { void showMainWindow(); });
+  return tray;
+}
+
+function getTrayIconPath() {
+  const iconNames = process.platform === "win32" ? ["icon.ico", "icon.png"] : ["icon.png", "icon.ico"];
+  const iconRoots = app.isPackaged
+    ? [path.join(process.resourcesPath, "build"), path.join(app.getAppPath(), "build")]
+    : [path.join(app.getAppPath(), "build")];
+  for (const iconRoot of iconRoots) {
+    for (const iconName of iconNames) {
+      const iconPath = path.join(iconRoot, iconName);
+      if (existsSync(iconPath)) return iconPath;
+    }
+  }
+  return path.join(iconRoots[0], iconNames[0]);
 }
 
 function allowDevEndpoints() {
@@ -76,13 +131,17 @@ ipcMain.handle("hermills:select-workspace-directory", async (event) => {
   return { canceled: false, path: selectedPath };
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+  createTray();
+});
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (isQuitting && process.platform !== "darwin") app.quit();
 });
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+  void showMainWindow();
 });
 app.on("before-quit", async () => {
+  isQuitting = true;
   if (serverInstance) await serverInstance.close();
 });

@@ -10,6 +10,8 @@ files:
   - packages/core/dist/**
   - packages/agent-builder/dist/**
   - packages/runtime/dist/**
+  - build/icon.png
+  - build/icon.ico
   - from: packages/core
     to: node_modules/@hermills/core
     filter:
@@ -26,6 +28,12 @@ files:
       - package.json
       - dist/**
   - package.json
+extraResources:
+  - from: build
+    to: build
+    filter:
+      - icon.png
+      - icon.ico
 asar: true
 mac:
   icon: build/icon.icns

@@ -122,6 +122,25 @@ async function checkReleaseArtifacts() {
   else notes.push(`[release] Found ${rel(expectedInstaller)} (${installerStat.size} bytes).`);
 }
 
+async function checkTrayResources() {
+  const trayDir = path.join(root, "release", "win-unpacked", "resources", "build");
+  const requiredIcons = ["icon.ico", "icon.png"];
+  const missing = [];
+  const empty = [];
+  for (const iconName of requiredIcons) {
+    const iconPath = path.join(trayDir, iconName);
+    if (!(await pathExists(iconPath))) {
+      missing.push(rel(iconPath));
+      continue;
+    }
+    const iconStat = await stat(iconPath);
+    if (iconStat.size === 0) empty.push(rel(iconPath));
+  }
+  if (missing.length > 0) failures.push(`[tray] Missing packaged tray resources:\n${indent(missing.map((file) => `- ${file}`).join("\n"))}`);
+  if (empty.length > 0) failures.push(`[tray] Empty packaged tray resources:\n${indent(empty.map((file) => `- ${file}`).join("\n"))}`);
+  if (missing.length === 0 && empty.length === 0) notes.push(`[tray] Checked packaged tray icons in ${rel(trayDir)}.`);
+}
+
 async function checkPackagedAsar() {
   const asarPath = path.join(root, "release", "win-unpacked", "resources", "app.asar");
   if (!(await pathExists(asarPath))) {
@@ -169,6 +188,7 @@ async function main() {
   await checkIcon();
   await checkRendererAssets();
   await checkReleaseArtifacts();
+  await checkTrayResources();
   await checkPackagedAsar();
 
   for (const note of notes) console.log(`INFO ${note}`);
