@@ -179,6 +179,20 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
   });
 
+  it("keeps dark desktop buttons readable in normal and disabled states", async () => {
+    const buttonSource = await readFile(projectFile("apps/renderer/src/components/ui/button.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(buttonSource).not.toContain("disabled:opacity-50");
+    expect(stylesSource).toMatch(/\.first-run-shell \.primary-button,[\s\S]*?\.first-run-card \.primary-button\s*\{[\s\S]*?background:\s*#7c3aed/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.primary-button,\s*\.hermills-dark-shell \.send-button\s*\{[\s\S]*?background:\s*#7c3aed/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="outline"\],[\s\S]*?\.hermills-dark-shell \.soft-button\s*\{[\s\S]*?background:\s*#1a1b26/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="link"\],[\s\S]*?\.hermills-dark-shell \.text-button\s*\{[\s\S]*?color:\s*#fbbf24/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?background:\s*#242633 !important/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?color:\s*#cfd3e5 !important/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?opacity:\s*1/);
+  });
+
   it("keeps outreach and drawers inside the desktop shell instead of creating page-level horizontal scroll", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");

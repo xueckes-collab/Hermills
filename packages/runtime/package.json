@@ -1,11 +1,11 @@
 {
   "name": "@hermills/runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@hermills/core": "0.1.1"
+    "@hermills/core": "0.1.2"
   }
 }

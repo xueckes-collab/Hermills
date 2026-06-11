@@ -227,6 +227,21 @@ p {
   box-shadow: var(--shadow);
 }
 
+.first-run-shell .primary-button,
+.first-run-card .primary-button {
+  border-color: rgba(167, 139, 250, 0.42);
+  background: #7c3aed;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.2);
+}
+
+.first-run-shell .primary-button:hover,
+.first-run-card .primary-button:hover {
+  border-color: #8b5cf6;
+  background: #8b5cf6;
+  color: #ffffff;
+}
+
 .first-run-card .setup-hero {
   grid-template-columns: 50px minmax(0, 1fr);
 }
@@ -287,10 +302,10 @@ p {
 .first-run-card button:disabled,
 .hermills-dark-shell button:disabled,
 .advanced-backdrop.hermills-dark-overlay button:disabled {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.08);
-  color: #8d91a3;
-  opacity: 0.74;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #242633;
+  color: #cfd3e5;
+  opacity: 1;
 }
 
 .onboarding-shell {
@@ -4669,6 +4684,62 @@ details[open] .complex-detail {
   border-color: rgba(167, 139, 250, 0.26);
 }
 
+.hermills-dark-shell [data-slot="button"],
+.hermills-dark-shell .primary-button,
+.hermills-dark-shell .soft-button,
+.hermills-dark-shell .text-button,
+.hermills-dark-shell .icon-button,
+.hermills-dark-shell .send-button {
+  font-weight: 760;
+}
+
+.hermills-dark-shell [data-slot="button"][data-variant="outline"],
+.hermills-dark-shell [data-slot="button"][data-variant="secondary"],
+.hermills-dark-shell .soft-button {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #1a1b26;
+  color: #f7f7fb;
+}
+
+.hermills-dark-shell [data-slot="button"][data-variant="outline"]:hover,
+.hermills-dark-shell [data-slot="button"][data-variant="secondary"]:hover,
+.hermills-dark-shell .soft-button:hover {
+  border-color: rgba(167, 139, 250, 0.36);
+  background: #26213a;
+  color: #ffffff;
+}
+
+.hermills-dark-shell [data-slot="button"][data-variant="ghost"],
+.hermills-dark-shell .icon-button {
+  color: #f0f0f8;
+}
+
+.hermills-dark-shell [data-slot="button"][data-variant="link"],
+.hermills-dark-shell .text-button {
+  color: #fbbf24;
+}
+
+.hermills-dark-shell .primary-button,
+.hermills-dark-shell .send-button {
+  border-color: #7c3aed;
+  background: #7c3aed;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.2);
+}
+
+.hermills-dark-shell .primary-button:hover,
+.hermills-dark-shell .send-button:hover {
+  border-color: #8b5cf6;
+  background: #8b5cf6;
+  color: #ffffff;
+}
+
+.hermills-dark-shell [data-slot="badge"],
+.hermills-dark-shell .status-pill {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #f7f7fb;
+}
+
 .hermills-app-shell {
   position: relative;
   display: grid;
@@ -5726,10 +5797,11 @@ details[open] .complex-detail {
 .first-run-card button:disabled,
 .hermills-dark-shell button:disabled,
 .advanced-backdrop.hermills-dark-overlay button:disabled {
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: #8d91a3 !important;
-  opacity: 0.74;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  background: #242633 !important;
+  color: #cfd3e5 !important;
+  box-shadow: none !important;
+  opacity: 1;
 }
 
 @container hermills-workspace (max-width: 980px) {
