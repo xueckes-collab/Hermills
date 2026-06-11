@@ -3,6 +3,11 @@ productName: Hermills
 copyright: Copyright © 2026 Hermills. All rights reserved.
 directories:
   output: release
+publish:
+  provider: github
+  owner: xueckes-collab
+  repo: Hermills
+  releaseType: release
 files:
   - apps/desktop/**
   - apps/renderer/dist/**

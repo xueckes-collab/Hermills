@@ -48,4 +48,20 @@ describe("desktop main process security contract", () => {
     expect(source).toContain("Quit Hermills");
     expect(source).toContain("app.quit()");
   });
+
+  it("checks app updates from the packaged Windows app with user consent", async () => {
+    const source = await readFile(projectFile("apps/desktop/main.cjs"), "utf8");
+
+    expect(source).toContain("require(\"electron-updater\")");
+    expect(source).toContain("autoUpdater.autoDownload = false");
+    expect(source).toContain("autoUpdater.autoInstallOnAppQuit = false");
+    expect(source).toContain("if (!app.isPackaged || !autoUpdater)");
+    expect(source).toContain("showAppUpdateDialog");
+    expect(source).toContain("Download Update");
+    expect(source).toContain("downloadUpdate()");
+    expect(source).toContain("Restart and Install");
+    expect(source).toContain("quitAndInstall(false, true)");
+    expect(source).toContain("Check for Updates...");
+    expect(source).toContain("checkForAppUpdates(false)");
+  });
 });

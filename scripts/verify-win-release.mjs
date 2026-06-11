@@ -122,6 +122,55 @@ async function checkReleaseArtifacts() {
   else notes.push(`[release] Found ${rel(expectedInstaller)} (${installerStat.size} bytes).`);
 }
 
+async function checkAutoUpdateMetadata() {
+  const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+  const releaseDir = path.join(root, "release");
+  const installerName = `Hermills-${packageJson.version}-x64-setup.exe`;
+  const latestPath = path.join(releaseDir, "latest.yml");
+  const blockmapPath = path.join(releaseDir, `${installerName}.blockmap`);
+  const appUpdateConfigPath = path.join(root, "release", "win-unpacked", "resources", "app-update.yml");
+
+  if (!(await pathExists(latestPath))) {
+    failures.push("[updates] Missing release/latest.yml. Windows auto-update needs this metadata next to the installer asset.");
+  } else {
+    const latestYml = await readFile(latestPath, "utf8");
+    const latestStat = await stat(latestPath);
+    const requiredSnippets = [
+      `version: ${packageJson.version}`,
+      `url: ${installerName}`,
+      `path: ${installerName}`,
+      "sha512:"
+    ];
+    const missingSnippets = requiredSnippets.filter((snippet) => !latestYml.includes(snippet));
+    if (latestStat.size === 0) failures.push(`[updates] ${rel(latestPath)} must not be empty.`);
+    if (missingSnippets.length > 0) {
+      failures.push(`[updates] ${rel(latestPath)} is missing required fields:\n${indent(missingSnippets.map((snippet) => `- ${snippet}`).join("\n"))}`);
+    }
+    if (latestStat.size > 0 && missingSnippets.length === 0) notes.push(`[updates] Checked ${rel(latestPath)} for Windows update metadata.`);
+  }
+
+  if (!(await pathExists(blockmapPath))) {
+    failures.push(`[updates] Missing ${rel(blockmapPath)}. Upload the blockmap with the installer for differential auto-updates.`);
+  } else {
+    const blockmapStat = await stat(blockmapPath);
+    if (blockmapStat.size === 0) failures.push(`[updates] ${rel(blockmapPath)} must not be empty.`);
+    else notes.push(`[updates] Found ${rel(blockmapPath)} (${blockmapStat.size} bytes).`);
+  }
+
+  if (!(await pathExists(appUpdateConfigPath))) {
+    failures.push("[updates] Missing packaged app-update.yml. electron-updater needs a provider config in the installed app.");
+  } else {
+    const appUpdateConfig = await readFile(appUpdateConfigPath, "utf8");
+    const requiredSnippets = ["provider: github", "owner: xueckes-collab", "repo: Hermills"];
+    const missingSnippets = requiredSnippets.filter((snippet) => !appUpdateConfig.includes(snippet));
+    if (missingSnippets.length > 0) {
+      failures.push(`[updates] ${rel(appUpdateConfigPath)} is missing GitHub provider fields:\n${indent(missingSnippets.map((snippet) => `- ${snippet}`).join("\n"))}`);
+    } else {
+      notes.push(`[updates] Checked packaged GitHub provider config in ${rel(appUpdateConfigPath)}.`);
+    }
+  }
+}
+
 async function checkTrayResources() {
   const trayDir = path.join(root, "release", "win-unpacked", "resources", "build");
   const requiredIcons = ["icon.ico", "icon.png"];
@@ -153,6 +202,7 @@ async function checkPackagedAsar() {
     "apps/desktop/preload.cjs",
     "apps/server/dist/index.js",
     "apps/renderer/dist/index.html",
+    "node_modules/electron-updater/out/main.js",
     "node_modules/@hermills/core/package.json",
     "node_modules/@hermills/core/dist/index.js",
     "node_modules/@hermills/agent-builder/package.json",
@@ -188,6 +238,7 @@ async function main() {
   await checkIcon();
   await checkRendererAssets();
   await checkReleaseArtifacts();
+  await checkAutoUpdateMetadata();
   await checkTrayResources();
   await checkPackagedAsar();
 

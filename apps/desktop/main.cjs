@@ -5,12 +5,27 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell, Tray } = require("electron");
 
+let autoUpdater;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch (error) {
+  autoUpdater = undefined;
+}
+
 let mainWindow;
 let tray;
 let isQuitting = false;
 let serverInstance;
 let apiBaseUrl = allowDevEndpoints() ? process.env.HERMILLS_SERVER_URL : undefined;
 const desktopToken = process.env.HERMILLS_DESKTOP_TOKEN || randomUUID();
+const appUpdateState = {
+  configured: false,
+  checking: false,
+  downloading: false,
+  promptOpen: false,
+  manualCheck: false,
+  downloadedInfo: undefined
+};
 
 async function createWindow() {
   await startServerIfNeeded();
@@ -63,8 +78,9 @@ function createTray() {
   if (tray) return tray;
   tray = new Tray(getTrayIconPath());
   tray.setToolTip("Hermills");
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const trayItems = [
     { label: "Show Hermills", click: () => { void showMainWindow(); } },
+    { label: "Check for Updates...", click: () => { void checkForAppUpdates(true); } },
     { type: "separator" },
     {
       label: "Quit Hermills",
@@ -73,7 +89,8 @@ function createTray() {
         app.quit();
       }
     }
-  ]));
+  ];
+  tray.setContextMenu(Menu.buildFromTemplate(trayItems));
   tray.on("click", () => { void showMainWindow(); });
   tray.on("double-click", () => { void showMainWindow(); });
   return tray;
@@ -95,6 +112,184 @@ function getTrayIconPath() {
 
 function allowDevEndpoints() {
   return !app.isPackaged;
+}
+
+function configureAppUpdates() {
+  if (appUpdateState.configured || !autoUpdater) return;
+  appUpdateState.configured = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.autoRunAppAfterInstall = true;
+  autoUpdater.logger = null;
+  autoUpdater.on("checking-for-update", () => {
+    appUpdateState.checking = true;
+  });
+  autoUpdater.on("update-not-available", (info) => {
+    const manual = appUpdateState.manualCheck;
+    appUpdateState.checking = false;
+    appUpdateState.manualCheck = false;
+    if (manual) void showNoAppUpdateDialog(info);
+  });
+  autoUpdater.on("update-available", (info) => {
+    appUpdateState.checking = false;
+    appUpdateState.manualCheck = false;
+    void promptForAppUpdateDownload(info);
+  });
+  autoUpdater.on("download-progress", () => {
+    appUpdateState.downloading = true;
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    appUpdateState.downloading = false;
+    appUpdateState.downloadedInfo = info;
+    void promptForDownloadedAppUpdate(info);
+  });
+  autoUpdater.on("error", (error) => {
+    const manual = appUpdateState.manualCheck;
+    appUpdateState.checking = false;
+    appUpdateState.downloading = false;
+    appUpdateState.manualCheck = false;
+    console.warn("Hermills app update failed:", error);
+    if (manual) void showAppUpdateErrorDialog(error);
+  });
+}
+
+async function checkForAppUpdates(manual = false) {
+  configureAppUpdates();
+  if (!app.isPackaged || !autoUpdater) {
+    if (manual) {
+      await showAppUpdateDialog({
+        type: "info",
+        buttons: ["OK"],
+        defaultId: 0,
+        title: "Hermills updates",
+        message: "Updates are available in the installed Windows app.",
+        detail: "Developer builds do not check GitHub releases automatically."
+      });
+    }
+    return;
+  }
+  if (appUpdateState.downloadedInfo) {
+    await promptForDownloadedAppUpdate(appUpdateState.downloadedInfo);
+    return;
+  }
+  if (appUpdateState.downloading) {
+    if (manual) {
+      await showAppUpdateDialog({
+        type: "info",
+        buttons: ["OK"],
+        defaultId: 0,
+        title: "Hermills update",
+        message: "Hermills is already downloading an update.",
+        detail: "You can keep using the app. Hermills will ask again when the download is ready to install."
+      });
+    }
+    return;
+  }
+  if (appUpdateState.checking) {
+    if (manual) {
+      await showAppUpdateDialog({
+        type: "info",
+        buttons: ["OK"],
+        defaultId: 0,
+        title: "Hermills update",
+        message: "Hermills is already checking for updates."
+      });
+    }
+    return;
+  }
+  appUpdateState.manualCheck = manual;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    appUpdateState.checking = false;
+    appUpdateState.manualCheck = false;
+    console.warn("Hermills app update check failed:", error);
+    if (manual) await showAppUpdateErrorDialog(error);
+  }
+}
+
+async function promptForAppUpdateDownload(info) {
+  if (appUpdateState.promptOpen || appUpdateState.downloading) return;
+  appUpdateState.promptOpen = true;
+  try {
+    const result = await showAppUpdateDialog({
+      type: "info",
+      buttons: ["Download Update", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Hermills update available",
+      message: `Hermills ${formatAppUpdateVersion(info)} is available.`,
+      detail: "Download the update now? Hermills will ask before restarting to install it."
+    });
+    if (result.response !== 0) return;
+    appUpdateState.downloading = true;
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch (error) {
+      appUpdateState.downloading = false;
+      console.warn("Hermills app update download failed:", error);
+      await showAppUpdateErrorDialog(error);
+    }
+  } finally {
+    appUpdateState.promptOpen = false;
+  }
+}
+
+async function promptForDownloadedAppUpdate(info) {
+  if (appUpdateState.promptOpen) return;
+  appUpdateState.promptOpen = true;
+  try {
+    const result = await showAppUpdateDialog({
+      type: "info",
+      buttons: ["Restart and Install", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Hermills update ready",
+      message: `Hermills ${formatAppUpdateVersion(info)} is ready to install.`,
+      detail: "Hermills will close, install the update, and open again when installation finishes."
+    });
+    if (result.response !== 0) return;
+    isQuitting = true;
+    autoUpdater.quitAndInstall(false, true);
+  } finally {
+    appUpdateState.promptOpen = false;
+  }
+}
+
+async function showNoAppUpdateDialog(info) {
+  await showAppUpdateDialog({
+    type: "info",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "Hermills updates",
+    message: "Hermills is up to date.",
+    detail: `Installed version: ${app.getVersion()}. Latest release: ${formatAppUpdateVersion(info)}.`
+  });
+}
+
+async function showAppUpdateErrorDialog(error) {
+  await showAppUpdateDialog({
+    type: "warning",
+    buttons: ["OK"],
+    defaultId: 0,
+    title: "Hermills update failed",
+    message: "Hermills could not check for updates right now.",
+    detail: error && error.message ? error.message : "Please try again later."
+  });
+}
+
+function showAppUpdateDialog(options) {
+  const ownerWindow = getDialogOwnerWindow();
+  return ownerWindow ? dialog.showMessageBox(ownerWindow, options) : dialog.showMessageBox(options);
+}
+
+function getDialogOwnerWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return undefined;
+  return mainWindow;
+}
+
+function formatAppUpdateVersion(info) {
+  return info && info.version ? `v${info.version}` : "the latest version";
 }
 
 async function startServerIfNeeded() {
@@ -135,6 +330,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   await createWindow();
   createTray();
+  setTimeout(() => { void checkForAppUpdates(false); }, 6000);
 });
 app.on("window-all-closed", () => {
   if (isQuitting && process.platform !== "darwin") app.quit();
