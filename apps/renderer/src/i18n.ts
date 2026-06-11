@@ -283,6 +283,10 @@ export type UiCopy = {
     quickTitle: string
     quickSubtitle: string
     navAria: string
+    defaults: {
+      language: string
+      tone: string
+    }
     steps: {
       auto: string
       leads: string
@@ -876,7 +880,7 @@ const en: UiCopy = {
     inlineTitle: 'Computer control is in this chat',
     inlineSubtitle: 'Say what you want Hermes to open, click, type, or check.',
     permissionNudgeTitle: 'One more tap to control this computer',
-    permissionNudgeDetail: 'Allow Hermills when macOS asks, then keep chatting normally.',
+    permissionNudgeDetail: 'Allow Hermills when the system asks, then keep chatting normally.',
     permissionNudgeAction: 'Allow',
     permissionNudgeChecking: 'Checking',
     needsTools: 'Hermes is preparing computer control.',
@@ -888,9 +892,9 @@ const en: UiCopy = {
     consolePlaceholder: 'Ready in chat',
     consolePlaceholderDetail: 'No separate panel is needed.',
     frameTitle: 'Hermes computer control',
-    permissionsEyebrow: 'macOS permissions',
+    permissionsEyebrow: 'System permissions',
     permissionsTitle: 'System permissions appear when needed',
-    permissionsSubtitle: 'Hermills cannot grant these silently. macOS prompts appear only when Hermes needs them.',
+    permissionsSubtitle: 'Hermills cannot grant these silently. System prompts appear only when Hermes needs them.',
     cards: {
       cli: 'Hermes CLI',
       tools: 'Abilities',
@@ -898,9 +902,9 @@ const en: UiCopy = {
       console: 'Chat',
     },
     permissionHints: {
-      'screen-recording': { label: 'Screen Recording', detail: 'macOS may ask for this when Hermes needs to see the screen.' },
-      accessibility: { label: 'Accessibility', detail: 'macOS may ask for this when Hermes needs to click, type, or control apps.' },
-      automation: { label: 'Automation', detail: 'macOS may ask for this when Hermes needs to control another app.' },
+      'screen-recording': { label: 'Screen Recording', detail: 'The system may ask for this when Hermes needs to see the screen.' },
+      accessibility: { label: 'Accessibility', detail: 'The system may ask for this when Hermes needs to click, type, or control apps.' },
+      automation: { label: 'Automation', detail: 'The system may ask for this when Hermes needs to control another app.' },
       files: { label: 'Files and folders', detail: 'Only choose folders you want Hermes to read or write.' },
     },
     actions: {
@@ -1039,6 +1043,7 @@ const en: UiCopy = {
     quickTitle: 'Website + email is enough',
     quickSubtitle: 'Hermes checks the customer website, finds useful context, and writes the first email for you.',
     navAria: 'Open outreach writer',
+    defaults: { language: 'English', tone: 'professional, warm, concise' },
     steps: { auto: 'One-step flow', leads: 'Lead', draft: 'Draft', send: 'Send' },
     fields: {
       companyName: 'Company',
@@ -1522,7 +1527,7 @@ const zhCN = withOverrides(en, {
     inlineTitle: '就在聊天里操作电脑',
     inlineSubtitle: '直接告诉 Hermes 要打开、点击、输入或检查什么。',
     permissionNudgeTitle: '还差一步：允许 Hermills 操作这台电脑',
-    permissionNudgeDetail: 'macOS 弹窗出现时点允许，之后继续正常聊天。',
+    permissionNudgeDetail: '系统询问权限时点允许，之后继续正常聊天。',
     permissionNudgeAction: '允许',
     permissionNudgeChecking: '检查中',
     needsTools: 'Hermes 正在准备电脑操作能力。',
@@ -1534,14 +1539,14 @@ const zhCN = withOverrides(en, {
     consolePlaceholder: '已在聊天里准备好',
     consolePlaceholderDetail: '不需要单独页面。',
     frameTitle: 'Hermes 电脑操作',
-    permissionsEyebrow: 'macOS 权限',
+    permissionsEyebrow: '系统权限',
     permissionsTitle: '系统会在需要时询问',
-    permissionsSubtitle: 'Hermills 不能偷偷授权。只有 Hermes 真正需要看屏幕、点击或读文件时，macOS 才会弹出授权。',
+    permissionsSubtitle: 'Hermills 不能偷偷授权。只有 Hermes 真正需要看屏幕、点击或读文件时，系统才会弹出授权。',
     cards: { cli: 'Hermes 命令', tools: '能力', driver: '本地助手', console: '聊天' },
     permissionHints: {
-      'screen-recording': { label: '屏幕录制', detail: 'Hermes 需要看屏幕时，macOS 可能会询问这个权限。' },
-      accessibility: { label: '辅助功能', detail: 'Hermes 需要点击、输入或控制 App 时，macOS 可能会询问这个权限。' },
-      automation: { label: '自动化', detail: 'Hermes 需要控制其他 App 时，macOS 可能会询问这个权限。' },
+      'screen-recording': { label: '屏幕录制', detail: 'Hermes 需要看屏幕时，系统可能会询问这个权限。' },
+      accessibility: { label: '辅助功能', detail: 'Hermes 需要点击、输入或控制 App 时，系统可能会询问这个权限。' },
+      automation: { label: '自动化', detail: 'Hermes 需要控制其他 App 时，系统可能会询问这个权限。' },
       files: { label: '文件和文件夹', detail: '只选择你愿意让 Hermes 读取或写入的文件夹。' },
     },
     actions: {
@@ -1584,6 +1589,7 @@ const zhCN = withOverrides(en, {
     quickTitle: '只填官网和邮箱',
     quickSubtitle: 'Hermes 会读取客户官网，整理客户背景和可能需求，然后按你的公司资料写第一封邮件。',
     navAria: '打开开发信工具',
+    defaults: { language: '中文', tone: '专业、真诚、简洁' },
     steps: { auto: '一键流程', leads: '客户', draft: '草稿', send: '发送' },
     fields: {
       companyName: '客户公司',
@@ -2045,11 +2051,23 @@ const uiCopies: Record<UiLanguage, UiCopy> = {
 }
 
 export function getUiCopy(language: UiLanguage | string | undefined): UiCopy {
-  return uiCopies[isUiLanguage(language) ? language : 'en']
+  return uiCopies[normalizeUiLanguage(language)]
 }
 
 export function isUiLanguage(language: string | undefined): language is UiLanguage {
   return language === 'zh-CN' || language === 'zh-TW' || language === 'ja' || language === 'ko' || language === 'en'
+}
+
+export function normalizeUiLanguage(language: UiLanguage | string | undefined): UiLanguage {
+  if (isUiLanguage(language)) return language
+  const value = language?.trim().toLowerCase().replace(/_/g, '-')
+  if (!value) return 'zh-CN'
+  if (value === 'zh' || value === 'zh-hans' || value.startsWith('zh-cn') || value.startsWith('zh-hans-')) return 'zh-CN'
+  if (value === 'zh-hant' || value.startsWith('zh-tw') || value.startsWith('zh-hk') || value.startsWith('zh-mo') || value.startsWith('zh-hant-')) return 'zh-TW'
+  if (value.startsWith('ja')) return 'ja'
+  if (value.startsWith('ko')) return 'ko'
+  if (value.startsWith('en')) return 'en'
+  return 'zh-CN'
 }
 
 function withOverrides<T extends Record<string, unknown>>(base: T, overrides: PartialDeep<T>): T {

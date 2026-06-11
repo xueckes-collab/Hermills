@@ -768,8 +768,12 @@ p {
   --green-soft: rgba(139, 92, 246, 0.16);
   --shadow: none;
   --shadow-soft: none;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   gap: 16px;
-  padding: 54px 18px 18px;
+  overflow: hidden;
+  padding: 42px 18px 16px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 220px),
     #07080d;
@@ -802,10 +806,12 @@ p {
 
 .hermills-onboarding-shell .onboarding-card {
   grid-template-columns: 232px minmax(0, 760px);
-  align-self: center;
+  grid-template-rows: minmax(0, 1fr);
+  align-self: stretch;
   width: min(1060px, 100%);
-  min-height: min(720px, calc(100vh - 96px));
-  max-height: calc(100vh - 96px);
+  height: 100%;
+  min-height: 0;
+  max-height: none;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 24px;
   background: #0b0c12;
@@ -875,6 +881,8 @@ p {
 .hermills-onboarding-shell .onboarding-panel {
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 18px;
+  min-height: 0;
+  overflow: hidden;
   padding: 28px 32px;
   background: #0b0c12;
 }
@@ -924,7 +932,10 @@ p {
 }
 
 .hermills-onboarding-shell .onboarding-content {
-  padding-right: 4px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
 }
 
 .hermills-onboarding-shell .onboarding-option-grid,
@@ -1025,6 +1036,7 @@ p {
 
 .hermills-onboarding-shell .company-review-list {
   gap: 10px;
+  padding-bottom: 4px;
 }
 
 .hermills-onboarding-shell .company-review-item {
@@ -1036,7 +1048,9 @@ p {
 }
 
 .hermills-onboarding-shell .onboarding-actions {
-  padding-top: 2px;
+  flex: 0 0 auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.075);
 }
 
 .hermills-onboarding-shell .onboarding-actions .primary-button,
@@ -4684,6 +4698,17 @@ details[open] .complex-detail {
   background: rgba(255, 255, 255, 0.035);
 }
 
+.hermills-sidebar-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermills-sidebar-status button {
+  min-width: 0;
+}
+
 .hermills-recents {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -4791,11 +4816,16 @@ details[open] .complex-detail {
 }
 
 .hermills-chat-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 20px;
   background: #0b0c12;
+}
+
+.hermills-chat-panel .gateway-banner {
+  flex: 0 0 auto;
+  margin: 12px 24px 18px;
 }
 
 .hermills-chat-header {
@@ -4843,6 +4873,7 @@ details[open] .complex-detail {
 
 .hermills-message-stream {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
   min-height: 0;
@@ -4898,14 +4929,27 @@ details[open] .complex-detail {
 .hermills-empty-chat {
   align-self: center;
   width: min(640px, 100%);
+  max-height: 100%;
+  overflow: auto;
   margin: auto;
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(17, 18, 26, 0.84);
 }
 
 .hermills-empty-chat [data-slot="card-header"] {
+  align-self: stretch;
+  justify-self: stretch;
   justify-items: center;
+  padding: 18px 24px 10px;
   text-align: center;
+  width: 100%;
+}
+
+.hermills-empty-chat [data-slot="card-content"] {
+  align-self: stretch;
+  justify-self: stretch;
+  padding: 0 24px 18px;
+  width: 100%;
 }
 
 .hermills-empty-chat [data-slot="card-title"],
@@ -4945,25 +4989,28 @@ details[open] .complex-detail {
 .hermills-empty-chat .empty-chat-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .hermills-empty-chat .empty-chat-entry {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  display: grid !important;
+  grid-template-columns: 42px minmax(0, 1fr) !important;
   align-items: center;
   height: auto;
-  min-height: 82px;
+  min-height: 70px;
   justify-content: start;
+  justify-items: start;
   gap: 12px;
-  padding: 13px 14px;
+  padding: 10px 12px;
   text-align: left;
   white-space: normal;
 }
 
 .hermills-empty-chat .empty-chat-entry > span {
   display: grid;
+  grid-column: 2;
   min-width: 0;
+  width: 100%;
   gap: 3px;
 }
 
@@ -4980,6 +5027,7 @@ details[open] .complex-detail {
 }
 
 .hermills-empty-chat .empty-chat-entry svg {
+  grid-column: 1;
   justify-self: center;
 }
 
@@ -5041,6 +5089,8 @@ details[open] .complex-detail {
 
 .hermills-inspector-card [data-slot="card-description"] {
   color: #9ca3af;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .hermills-inspector-card [data-slot="card-content"] {
@@ -5082,11 +5132,20 @@ details[open] .complex-detail {
 }
 
 .hermills-file-pill,
-.hermills-tool-list,
 .hermills-provider-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  color: #d6d8e2;
+  font-size: 13px;
+}
+
+.hermills-tool-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
   min-height: 32px;
   color: #d6d8e2;
@@ -5115,10 +5174,24 @@ details[open] .complex-detail {
   color: #a78bfa;
 }
 
-.hermills-tool-list span {
-  display: inline-flex;
+.hermills-tool-label {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.hermills-tool-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermills-tool-list [data-slot="badge"],
+.hermills-tool-list button {
+  justify-self: end;
 }
 
 .hermills-provider-row span {
@@ -5176,12 +5249,13 @@ details[open] .complex-detail {
 }
 
 .hermills-dark-shell .service-warning {
-  top: 18px;
-  right: 18px;
-  left: auto;
-  max-width: min(440px, calc(100vw - 36px));
+  position: static;
+  flex: 0 0 auto;
+  z-index: 1;
+  max-width: none;
   transform: none;
   overflow: hidden;
+  margin: 12px 24px 0;
   padding: 9px 12px;
   border-color: rgba(244, 63, 94, 0.28);
   background: rgba(244, 63, 94, 0.12);
@@ -5189,6 +5263,10 @@ details[open] .complex-detail {
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+}
+
+.hermills-dark-shell .hermills-inline-service-warning + .gateway-banner {
+  margin-top: 10px;
 }
 
 .hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
@@ -5574,6 +5652,30 @@ details[open] .complex-detail {
 }
 
 @media (max-width: 820px) {
+  .hermills-onboarding-shell {
+    padding: 46px 12px 12px;
+  }
+
+  .hermills-onboarding-shell .onboarding-card {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .hermills-onboarding-shell .onboarding-steps {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    min-height: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  }
+
+  .hermills-onboarding-shell .onboarding-panel {
+    padding: 18px;
+  }
+
   .hermills-app-shell {
     grid-template-columns: minmax(0, 1fr);
     padding: 10px;

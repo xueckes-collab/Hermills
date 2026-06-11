@@ -166,7 +166,7 @@ describe("Hermills local API", () => {
     expect(runtime.computerPrompts).toEqual(["帮我控制这台 Mac 打开浏览器"]);
     expect(messageResponse.json().messages).toHaveLength(2);
     const assistantMessage = messageResponse.json().messages[1].content as string;
-    expect(assistantMessage).toContain("我已经按你的要求操作这台 Mac。");
+    expect(assistantMessage).toContain("我已经按你的要求操作这台电脑。");
     expect(assistantMessage).toContain("fake computer output");
     expect(assistantMessage).not.toContain("[[HERMILLS_COMPUTER_CONTROL:");
   });

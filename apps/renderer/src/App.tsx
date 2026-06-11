@@ -51,8 +51,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
 import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
-import { getUiCopy } from './i18n.js'
-import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiModeId } from './i18n.js'
+import { getUiCopy, normalizeUiLanguage } from './i18n.js'
+import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
 type AdvancedPanel = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
 type WorkspaceView = 'chat' | 'outreach'
@@ -224,7 +224,7 @@ const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: stri
 }
 
 type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
-type OnboardingLanguage = 'zh-CN' | 'zh-TW' | 'ja' | 'ko' | 'en'
+type OnboardingLanguage = UiLanguage
 type OnboardingProviderChoice = ProviderPresetId | 'skip'
 type OnboardingTheme = 'night' | 'plain'
 type OnboardingFeatureId = 'chat' | 'files' | 'memory' | 'assistants' | 'diagnostics'
@@ -458,6 +458,7 @@ function normalizeOnboardingState(state?: Partial<OnboardingState>): OnboardingS
   return {
     ...fallbackOnboarding,
     ...state,
+    language: normalizeUiLanguage(state?.language),
     theme: state?.theme === 'plain' ? 'plain' : 'night',
     completed: Boolean(state?.completed || state?.onboardingCompletedAt),
     features: state?.features?.length ? state.features : defaultOnboardingFeatures,
@@ -562,6 +563,7 @@ export default function App() {
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
   const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
+  const serviceWarningMessage = serviceWarning ? copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy)) : ''
 
   async function refreshAfterDeploy() {
     runtime.setData(await api.runtimeStatus())
@@ -653,8 +655,6 @@ export default function App() {
 
   return (
     <div className="client-shell hermills-dark-shell">
-      {serviceWarning ? <div className="service-warning">{copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy))}</div> : null}
-
       <ClientWorkspace
         runtime={runtime.data}
         sessions={sessions.data}
@@ -684,6 +684,7 @@ export default function App() {
         openAdvanced={openAdvanced}
         defaultAgentId={onboarding.data.defaultAgentId}
         copy={copy}
+        serviceWarning={serviceWarningMessage}
         openCompanyKnowledge={() => openAdvanced('company')}
       />
 
@@ -750,6 +751,7 @@ function ClientWorkspace({
   openAdvanced,
   defaultAgentId,
   copy,
+  serviceWarning,
   openCompanyKnowledge,
 }: {
   runtime: RuntimeStatus
@@ -780,6 +782,7 @@ function ClientWorkspace({
   openAdvanced: (panel: AdvancedPanel) => void
   defaultAgentId?: string
   copy: UiCopy
+  serviceWarning?: string
   openCompanyKnowledge: () => void
 }) {
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat')
@@ -1158,7 +1161,7 @@ function ClientWorkspace({
   const activeProvider = activeSession?.providerId
     ? providers.find((provider) => provider.id === activeSession.providerId)
     : defaultChatProvider
-  const activeModel = activeSession?.model || activeAgent?.model || activeProvider?.defaultModel || 'Hermes local'
+  const activeModel = activeSession?.model || activeAgent?.model || activeProvider?.defaultModel || copy.assistant.localHermes
   const connectedProviders = providers.filter((provider) => provider.status === 'connected')
   const selectedFileCount = selectedMaterialIds.length
 
@@ -1229,6 +1232,7 @@ function ClientWorkspace({
               <Settings />
             </Button>
           </div>
+          {serviceWarning ? <div className="service-warning hermills-inline-service-warning">{serviceWarning}</div> : null}
         {workspaceView === 'outreach' ? (
           <DevelopmentLetterPage
             companyProfile={companyProfile}
@@ -1495,11 +1499,11 @@ function AppMenuSidebar({
   const [editingTitle, setEditingTitle] = useState('')
 
   const navItems: Array<{ label: string; icon: LucideIcon; active?: boolean; action: () => void }> = [
-    { label: 'Chat', icon: MessageCircle, active: activeWorkspaceView === 'chat', action: () => onSelect(activeSession?.id ?? '') },
-    { label: 'Agents', icon: Bot, action: onOpenAssistants },
-    { label: 'Files', icon: FileText, action: onOpenFiles },
-    { label: 'Providers', icon: KeyRound, action: onOpenProviders },
-    { label: 'Settings', icon: Settings, action: onOpenSettings },
+    { label: copy.common.chat, icon: MessageCircle, active: activeWorkspaceView === 'chat', action: () => onSelect(activeSession?.id ?? '') },
+    { label: copy.common.assistants, icon: Bot, action: onOpenAssistants },
+    { label: copy.common.files, icon: FileText, action: onOpenFiles },
+    { label: copy.common.provider, icon: KeyRound, action: onOpenProviders },
+    { label: copy.common.settings, icon: Settings, action: onOpenSettings },
   ]
 
   function beginRename(session: ChatSession) {
@@ -1522,7 +1526,7 @@ function AppMenuSidebar({
         <div className="brand-mark">H</div>
         <div>
           <strong>Hermills</strong>
-          <span>Desktop AI workspace</span>
+          <span>{copy.common.brandSubtitle}</span>
         </div>
         {onClose ? (
           <Button className="hermills-sidebar-close" variant="ghost" size="icon-sm" aria-label={copy.session.closeAria} onClick={onClose}>
@@ -1533,10 +1537,10 @@ function AppMenuSidebar({
 
       <Button className="hermills-new-chat" type="button" onClick={onNew}>
         <Plus data-icon="inline-start" />
-        New Chat
+        {copy.session.newConversation}
       </Button>
 
-      <nav className="hermills-nav-list" aria-label="Main navigation">
+      <nav className="hermills-nav-list" aria-label={copy.advanced.navAria}>
         {navItems.map((item) => {
           const Icon = item.icon
           return (
@@ -1563,7 +1567,7 @@ function AppMenuSidebar({
 
       <div className="hermills-sidebar-status">
         <span className={`status-dot ${runtime.state}`} />
-        <span>{runtimeStatusLabel(runtime, copy)}</span>
+        <span className="hermills-sidebar-status-label">{runtimeStatusLabel(runtime, copy)}</span>
         {runtime.updateAvailable ? (
           <Button variant="ghost" size="xs" onClick={onOpenUpdate}>
             <RefreshCw data-icon="inline-start" />
@@ -1662,34 +1666,37 @@ function InspectorPanel({
   const providerStatus = activeProvider?.status ?? (connectedProviders.length ? 'connected' : 'missing')
   const toolsReady = computerStatus?.readiness === 'ready'
   const needsPermission = computerStatus?.readiness === 'needs-permission'
+  const providerStatusSummary = connectedProviders.length
+    ? `${connectedProviders.length}/${providers.length} ${copy.providerStatus.connected}`
+    : copy.keys.noProviders
 
   return (
     <aside className="hermills-inspector">
       <Card className="hermills-inspector-card">
         <CardHeader>
-          <CardTitle>Current Agent</CardTitle>
+          <CardTitle>{copy.assistant.drawerTitle}</CardTitle>
           <CardDescription>{activeAgent?.name || copy.chat.defaultAssistant}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="hermills-agent-avatar">
             <Bot />
           </div>
-          <p>{activeAgent?.description || copy.assistant.defaultForm.description}</p>
+          <p>{localizedAgentDescription(activeAgent?.description, copy)}</p>
           <div className="hermills-mini-stack">
             <Badge variant="outline">{activeModel}</Badge>
             <Badge variant={chatReady ? 'default' : 'outline'}>{chatReady ? copy.runtime.meta.ready : copy.runtime.meta.notStarted}</Badge>
           </div>
           <Button variant="outline" size="sm" onClick={onOpenAssistants}>
             <Bot data-icon="inline-start" />
-            Agents
+            {copy.common.assistants}
           </Button>
         </CardContent>
       </Card>
 
       <Card className="hermills-inspector-card">
         <CardHeader>
-          <CardTitle>Files</CardTitle>
-          <CardDescription>{selectedMaterials.length ? copy.files.attached(selectedMaterials.length) : `${materials.length} local files`}</CardDescription>
+          <CardTitle>{copy.files.title}</CardTitle>
+          <CardDescription>{selectedMaterials.length ? copy.files.attached(selectedMaterials.length) : copy.diagnostics.localFiles(materials.length)}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="hermills-file-stack">
@@ -1703,24 +1710,24 @@ function InspectorPanel({
           </div>
           <Button variant="outline" size="sm" onClick={onOpenFiles}>
             <Paperclip data-icon="inline-start" />
-            Files
+            {copy.files.title}
           </Button>
         </CardContent>
       </Card>
 
       <Card className="hermills-inspector-card">
         <CardHeader>
-          <CardTitle>Tools</CardTitle>
-          <CardDescription>{toolsReady ? 'Computer use ready' : needsPermission ? 'Permission needed' : 'Local tools'}</CardDescription>
+          <CardTitle>{copy.computerControl.cards.tools}</CardTitle>
+          <CardDescription>{computerReadinessDescription(computerStatus, copy)}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="hermills-tool-list">
-            <span><Cpu /> Computer control</span>
-            <Badge variant={toolsReady ? 'default' : 'outline'}>{toolsReady ? 'Ready' : computerStatus?.readiness ?? 'Checking'}</Badge>
+            <span className="hermills-tool-label"><Cpu /> <span>{copy.topbar.computer}</span></span>
+            <Badge variant={toolsReady ? 'default' : 'outline'}>{computerReadinessLabel(computerStatus, copy)}</Badge>
           </div>
           <div className="hermills-tool-list">
-            <span><Mail /> Outreach</span>
-            <Button variant="ghost" size="xs" onClick={onOpenOutreach}>Open</Button>
+            <span className="hermills-tool-label"><Mail /> <span>{copy.devLetter.sectionLabel}</span></span>
+            <Button variant="ghost" size="xs" onClick={onOpenOutreach}>{copy.common.details}</Button>
           </div>
           {needsPermission ? (
             <Button variant="secondary" size="sm" onClick={onRequestComputerPermission} disabled={computerPermissionBusy}>
@@ -1733,8 +1740,8 @@ function InspectorPanel({
 
       <Card className="hermills-inspector-card">
         <CardHeader>
-          <CardTitle>Provider Status</CardTitle>
-          <CardDescription>{connectedProviders.length ? `${connectedProviders.length}/${providers.length} connected` : copy.keys.noProviders}</CardDescription>
+          <CardTitle>{copy.common.provider}</CardTitle>
+          <CardDescription>{providerStatusSummary}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="hermills-provider-row">
@@ -1743,7 +1750,7 @@ function InspectorPanel({
           </div>
           <Button variant="outline" size="sm" onClick={onOpenProviders}>
             <KeyRound data-icon="inline-start" />
-            Providers
+            {copy.common.provider}
           </Button>
         </CardContent>
       </Card>
@@ -1853,8 +1860,8 @@ function DevelopmentLetterPage({
   const [selectedEmailId, setSelectedEmailId] = useState('')
   const [draftSubject, setDraftSubject] = useState('')
   const [draftBody, setDraftBody] = useState('')
-  const [language, setLanguage] = useState('English')
-  const [tone, setTone] = useState('professional, warm, concise')
+  const [language, setLanguage] = useState(copy.devLetter.defaults.language)
+  const [tone, setTone] = useState(copy.devLetter.defaults.tone)
   const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile))
   const [senderProviderId, setSenderProviderId] = useState<SenderProviderId>('gmail')
   const [selectedSenderId, setSelectedSenderId] = useState('')
@@ -1864,6 +1871,8 @@ function DevelopmentLetterPage({
   const quickWebsiteRef = useRef<HTMLInputElement>(null)
   const draftBodyRef = useRef<HTMLTextAreaElement>(null)
   const senderEmailRef = useRef<HTMLInputElement>(null)
+  const languageEditedRef = useRef(false)
+  const toneEditedRef = useRef(false)
   const selectedLead = selectedLeadId ? leads.find((lead) => lead.id === selectedLeadId) : undefined
   const selectedSender = selectedSenderId ? senderAccounts.find((account) => account.id === selectedSenderId) : undefined
   const selectedCampaign = selectedCampaignId ? campaigns.find((campaign) => campaign.id === selectedCampaignId) : campaigns[0]
@@ -1909,6 +1918,14 @@ function DevelopmentLetterPage({
     selectedCampaignRecipient.draft.body !== campaignDraftBody
   ))
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
+
+  useEffect(() => {
+    if (!languageEditedRef.current) setLanguage(copy.devLetter.defaults.language)
+  }, [copy.devLetter.defaults.language])
+
+  useEffect(() => {
+    if (!toneEditedRef.current) setTone(copy.devLetter.defaults.tone)
+  }, [copy.devLetter.defaults.tone])
 
   useEffect(() => {
     if (!selectedLead) return
@@ -3039,8 +3056,8 @@ function DevelopmentLetterPage({
             </button>
           </div>
           <div className="lead-form-grid">
-            <Field label={copy.devLetter.fields.language}><input value={language} onChange={(event) => setLanguage(event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.tone}><input value={tone} onChange={(event) => setTone(event.target.value)} /></Field>
+            <Field label={copy.devLetter.fields.language}><input value={language} onChange={(event) => { languageEditedRef.current = true; setLanguage(event.target.value) }} /></Field>
+            <Field label={copy.devLetter.fields.tone}><input value={tone} onChange={(event) => { toneEditedRef.current = true; setTone(event.target.value) }} /></Field>
           </div>
           <Field label={copy.devLetter.fields.subject}><input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></Field>
           <Field label={copy.devLetter.fields.body}><textarea ref={draftBodyRef} className="outreach-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></Field>
@@ -5954,6 +5971,29 @@ function providerStatusLabel(status: Provider['status'], copy: UiCopy = getUiCop
   return copy.providerStatus[status]
 }
 
+function localizedAgentDescription(description: string | undefined, copy: UiCopy = getUiCopy('en')): string {
+  const normalized = description?.trim()
+  if (!normalized || normalized === 'Default assistant created during onboarding.') return copy.assistant.defaultForm.description
+  return normalized
+}
+
+function computerReadinessLabel(status: ComputerControlStatus | undefined, copy: UiCopy = getUiCopy('en')): string {
+  if (!status) return copy.runtime.summary.checking
+  if (status.readiness === 'ready') return copy.runtime.meta.ready
+  if (status.readiness === 'preparing') return copy.runtime.steps.configuring
+  if (status.readiness === 'needs-permission') return copy.computerControl.permissionNudgeTitle
+  if (status.readiness === 'failed') return copy.runtime.steps.failed
+  return copy.computerControl.notReadyHint
+}
+
+function computerReadinessDescription(status: ComputerControlStatus | undefined, copy: UiCopy = getUiCopy('en')): string {
+  if (!status) return copy.runtime.summary.checking
+  if (status.readiness === 'ready') return copy.computerControl.consoleReady
+  if (status.readiness === 'needs-permission') return copy.computerControl.permissionNudgeDetail
+  if (status.readiness === 'failed') return copy.gateway.failed
+  return copy.computerControl.notReadyHint
+}
+
 type RuntimeActionState = {
   kind: 'deploy' | 'update' | 'none'
   label: string
@@ -6080,6 +6120,7 @@ function localizeRuntimeMessage(message: string | undefined, copy: UiCopy): stri
     'Try again. If it still fails, open setup for more options.': copy.gateway.failed,
     'Set up Hermes to enable private local chat.': copy.gateway.notInstalled,
     'Start Hermes to send messages.': copy.gateway.paused,
+    'Hermes is installed. Start Hermes to chat.': copy.gateway.paused,
   }
   return knownMessages[message] ?? message
 }

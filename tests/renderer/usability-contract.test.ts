@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { getUiCopy } from "../../apps/renderer/src/i18n.js";
+import { getUiCopy, normalizeUiLanguage } from "../../apps/renderer/src/i18n.js";
 import type { UiLanguage } from "../../apps/renderer/src/i18n.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -105,8 +105,107 @@ describe("renderer usability contract", () => {
       /setSourcesOpen|setAssistantsOpen|openAdvanced|newSession|copy\.chat\.(?:empty|openSetup|addFile|newConversation)/
     );
     expect(stylesSource).toMatch(/\.hermills-empty-chat \[data-slot="card-title"\],[\s\S]*?width:\s*100%/);
-    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry\s*\{[\s\S]*?grid-template-columns:\s*42px minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \[data-slot="card-header"\]\s*\{[\s\S]*?width:\s*100%/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \[data-slot="card-content"\]\s*\{[\s\S]*?width:\s*100%/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat\s*\{[\s\S]*?max-height:\s*100%/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat\s*\{[\s\S]*?overflow:\s*auto/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry\s*\{[\s\S]*?display:\s*grid !important/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry\s*\{[\s\S]*?grid-template-columns:\s*42px minmax\(0,\s*1fr\) !important/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry > span\s*\{[\s\S]*?grid-column:\s*2/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry svg\s*\{[\s\S]*?grid-column:\s*1/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?position:\s*static/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
+  });
+
+  it("normalizes persisted language aliases instead of falling back to English", () => {
+    expect(normalizeUiLanguage("zh")).toBe("zh-CN");
+    expect(normalizeUiLanguage("zh_CN")).toBe("zh-CN");
+    expect(normalizeUiLanguage("zh-Hans")).toBe("zh-CN");
+    expect(normalizeUiLanguage("zh_Hant")).toBe("zh-TW");
+    expect(normalizeUiLanguage(undefined)).toBe("zh-CN");
+    expect(getUiCopy("zh").common.chat).toBe(getUiCopy("zh-CN").common.chat);
+    expect(getUiCopy("zh_CN").common.chat).toBe(getUiCopy("zh-CN").common.chat);
+  });
+
+  it("keeps the desktop shell chrome and inspector localized", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const sidebar = sourceWindow(appSource, "const navItems", 1800);
+    const inspector = sourceWindow(appSource, "function InspectorPanel", 4200);
+
+    expect(sidebar).toContain("copy.common.chat");
+    expect(sidebar).toContain("copy.common.assistants");
+    expect(sidebar).toContain("copy.common.files");
+    expect(sidebar).toContain("copy.common.provider");
+    expect(sidebar).toContain("copy.common.settings");
+    expect(sidebar).toContain("copy.common.brandSubtitle");
+    expect(sidebar).toContain("copy.session.newConversation");
+    expect(sidebar).toContain("aria-label={copy.advanced.navAria}");
+    expect(sidebar).not.toContain("label: 'Chat'");
+    expect(sidebar).not.toContain("Desktop AI workspace");
+    expect(sidebar).not.toContain("New Chat");
+
+    expect(inspector).toContain("copy.assistant.drawerTitle");
+    expect(inspector).toContain("copy.diagnostics.localFiles");
+    expect(inspector).toContain("copy.computerControl.cards.tools");
+    expect(inspector).toContain("computerReadinessLabel");
+    expect(inspector).toContain("computerReadinessDescription");
+    expect(inspector).toContain("localizedAgentDescription");
+    expect(inspector).toContain('className="hermills-tool-label"');
+    expect(inspector).toContain("copy.providerStatus.connected");
+    expect(inspector).not.toContain("Current Agent");
+    expect(inspector).not.toContain("local files");
+    expect(inspector).not.toContain("Local tools");
+    expect(inspector).not.toContain("Provider Status");
+    expect(inspector).not.toContain(">Open<");
+  });
+
+  it("keeps narrow inspector and sidebar status rows from overlapping text and icons", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain("serviceWarning={serviceWarningMessage}");
+    expect(appSource).toContain("hermills-inline-service-warning");
+    expect(appSource).toContain("copy.assistant.localHermes");
+    expect(appSource).not.toContain("'Hermes local'");
+    expect(stylesSource).toMatch(/\.hermills-sidebar-status-label\s*\{[\s\S]*?text-overflow:\s*ellipsis/);
+    expect(stylesSource).toMatch(/\.hermills-tool-list\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hermills-tool-list\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
+    expect(stylesSource).toMatch(/\.hermills-tool-label\s*\{[\s\S]*?grid-template-columns:\s*16px minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-tool-label span\s*\{[\s\S]*?text-overflow:\s*ellipsis/);
+    expect(stylesSource).toMatch(/\.hermills-inspector-card \[data-slot="card-description"\]\s*\{[\s\S]*?overflow-wrap:\s*anywhere/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?position:\s*static/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
+  });
+
+  it("keeps onboarding actions reachable by scrolling the content region instead of the whole card", async () => {
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell\s*\{[\s\S]*?height:\s*100vh/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell\s*\{[\s\S]*?height:\s*100dvh/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell\s*\{[\s\S]*?overflow:\s*hidden/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-card\s*\{[\s\S]*?height:\s*100%/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-card\s*\{[\s\S]*?min-height:\s*0/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-card\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/@media \(max-width:\s*820px\)[\s\S]*?\.hermills-onboarding-shell \.onboarding-card\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-panel\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto auto/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-content\s*\{[\s\S]*?overflow:\s*auto/);
+    expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-actions\s*\{[\s\S]*?flex:\s*0 0 auto/);
+  });
+
+  it("keeps outreach defaults and system permission copy localized", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const serverSource = await readFile(projectFile("apps/server/src/index.ts"), "utf8");
+
+    expect(getUiCopy("zh-CN").devLetter.defaults.language).toBe("中文");
+    expect(getUiCopy("zh-CN").devLetter.defaults.tone).toBe("专业、真诚、简洁");
+    expect(getUiCopy("zh-CN").computerControl.permissionNudgeDetail).not.toContain("macOS");
+    expect(appSource).toContain("copy.devLetter.defaults.language");
+    expect(appSource).toContain("copy.devLetter.defaults.tone");
+    expect(appSource).not.toContain("useState('English')");
+    expect(appSource).not.toContain("useState('professional, warm, concise')");
+    expect(serverSource).toContain("defaultOnboardingAgentDescription(input.state.language)");
+    expect(serverSource).not.toContain("这台 Mac");
+    expect(serverSource).not.toContain("如果 macOS");
   });
 
   it("sends the chat composer on Enter while keeping Shift+Enter for new lines", async () => {
@@ -211,5 +310,6 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("copy.gateway.failed");
     expect(appSource).toContain("copy.gateway.notInstalled");
     expect(appSource).toContain("copy.gateway.paused");
+    expect(appSource).toContain("'Hermes is installed. Start Hermes to chat.': copy.gateway.paused");
   });
 });

@@ -1318,8 +1318,8 @@ async function createComputerControlReply(runtime: RuntimeAdapter, prompt: strin
     const output = redactSecrets(result.output.trim());
     if (result.ok) {
       replyText = output
-        ? `我已经按你的要求操作这台 Mac。\n\n${output}`
-        : "我已经按你的要求操作这台 Mac。";
+        ? `我已经按你的要求操作这台电脑。\n\n${output}`
+        : "我已经按你的要求操作这台电脑。";
     } else {
       replyText = output
         ? `这次没有完成电脑操作。\n\n${output}`
@@ -1329,7 +1329,7 @@ async function createComputerControlReply(runtime: RuntimeAdapter, prompt: strin
     const detail = redactSecrets(error instanceof Error ? error.message : String(error));
     replyText = [
       "我已经把电脑操作作为内置能力处理，但这次还没有完成。",
-      "如果 macOS 弹出“屏幕录制、辅助功能、自动化、文件夹权限”的请求，请允许 Hermills/Hermes。",
+      "如果系统弹出“屏幕录制、辅助功能、自动化、文件夹权限”的请求，请允许 Hermills/Hermes。",
       `详细原因：${detail}`
     ].join("\n\n");
   }
@@ -1477,7 +1477,7 @@ async function upsertDefaultOnboardingAgent(input: {
   const displayName = displayNameOrDefault(input.state.agentName, "Hermes");
   const agentInput = {
     displayName,
-    description: "Default assistant created during onboarding.",
+    description: defaultOnboardingAgentDescription(input.state.language),
     instructions: defaultOnboardingInstructions(displayName, input.state),
     model: input.state.provider?.defaultModel ?? "hermes-agent",
     providerId: input.providerId,
@@ -1490,6 +1490,15 @@ async function upsertDefaultOnboardingAgent(input: {
   };
   const existing = input.defaultAgentId ? await input.agents.get(input.defaultAgentId) : undefined;
   return existing ? input.agents.update(existing.id, agentInput) : input.agents.create(agentInput);
+}
+
+function defaultOnboardingAgentDescription(language: string | undefined): string {
+  const normalized = language?.toLowerCase().replace(/_/g, "-") ?? "";
+  if (normalized === "zh" || normalized.startsWith("zh-cn") || normalized.startsWith("zh-hans")) return "首次设置时创建的默认助手。";
+  if (normalized.startsWith("zh-tw") || normalized.startsWith("zh-hk") || normalized.startsWith("zh-mo") || normalized.startsWith("zh-hant")) return "首次設定時建立的預設助手。";
+  if (normalized.startsWith("ja")) return "初期設定で作成された既定アシスタントです。";
+  if (normalized.startsWith("ko")) return "초기 설정 중 생성된 기본 도우미입니다.";
+  return "Default assistant created during onboarding.";
 }
 
 function defaultOnboardingInstructions(agentName: string, state: OnboardingState): string {
