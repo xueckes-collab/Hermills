@@ -1525,7 +1525,7 @@ const zhCN = withOverrides(en, {
     startChatting: '开始聊天',
   },
   firstRun: { setupEyebrow: 'Hermes 设置', checkingTitle: '正在准备 Hermes。', checkingDescription: '这里只需要做一次。准备好后会直接进入聊天。', oneTimeSetup: '设置 Hermes', packageCheckFallback: 'Hermes 会帮你完成本地设置。' },
-  topbar: { chats: '对话', devLetter: '开发信', computer: '电脑操作', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务提醒：${message}` },
+  topbar: { chats: '对话', devLetter: '开发信', computer: '电脑操作', assistants: '助手', files: '文件', settingsAria: '高级设置', serviceWarning: (message) => `本地服务：${message}` },
   computerControl: {
     sectionLabel: '电脑',
     title: 'Hermes 电脑操作',

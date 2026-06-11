@@ -115,6 +115,9 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry svg\s*\{[\s\S]*?grid-column:\s*1/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?position:\s*static/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?white-space:\s*normal/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?overflow-wrap:\s*anywhere/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.hermills-inline-service-warning\s*\{[\s\S]*?-webkit-line-clamp:\s*2/);
   });
 
   it("normalizes persisted language aliases instead of falling back to English", () => {
