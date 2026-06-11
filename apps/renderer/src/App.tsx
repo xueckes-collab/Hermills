@@ -565,6 +565,10 @@ export default function App() {
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
   const serviceWarningMessage = serviceWarning ? copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy)) : ''
 
+  useEffect(() => {
+    document.documentElement.lang = normalizeUiLanguage(onboarding.data.language ?? fallbackOnboarding.language)
+  }, [onboarding.data.language])
+
   async function refreshAfterDeploy() {
     runtime.setData(await api.runtimeStatus())
     appState.setData(await api.appState())
@@ -1845,7 +1849,7 @@ function DevelopmentLetterPage({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
-  const [campaignName, setCampaignName] = useState('开发信批量任务')
+  const [campaignName, setCampaignName] = useState(copy.devLetter.batch.defaultName)
   const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('standard')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
@@ -1862,7 +1866,7 @@ function DevelopmentLetterPage({
   const [draftBody, setDraftBody] = useState('')
   const [language, setLanguage] = useState(copy.devLetter.defaults.language)
   const [tone, setTone] = useState(copy.devLetter.defaults.tone)
-  const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile))
+  const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile, copy))
   const [senderProviderId, setSenderProviderId] = useState<SenderProviderId>('gmail')
   const [selectedSenderId, setSelectedSenderId] = useState('')
   const [busy, setBusy] = useState('')
@@ -1871,6 +1875,7 @@ function DevelopmentLetterPage({
   const quickWebsiteRef = useRef<HTMLInputElement>(null)
   const draftBodyRef = useRef<HTMLTextAreaElement>(null)
   const senderEmailRef = useRef<HTMLInputElement>(null)
+  const campaignNameEditedRef = useRef(false)
   const languageEditedRef = useRef(false)
   const toneEditedRef = useRef(false)
   const selectedLead = selectedLeadId ? leads.find((lead) => lead.id === selectedLeadId) : undefined
@@ -1918,6 +1923,18 @@ function DevelopmentLetterPage({
     selectedCampaignRecipient.draft.body !== campaignDraftBody
   ))
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
+  const singleSendBlocker = activeDraftStatus === 'sent'
+    ? copy.devLetter.results.status.sent
+    : !activeDraftId
+      ? copy.devLetter.warnings.draftRequired
+      : singleDraftChanged
+        ? copy.devLetter.quality.saveBeforeReview
+        : !activeQualityReview?.passed
+          ? copy.devLetter.quality.blockedSend
+          : !senderDeliveryReady
+            ? copy.devLetter.warnings.senderNotConfirmed
+            : ''
+  const canSendSingleDraft = !singleSendBlocker && busy !== 'send'
 
   useEffect(() => {
     if (!languageEditedRef.current) setLanguage(copy.devLetter.defaults.language)
@@ -1926,6 +1943,23 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!toneEditedRef.current) setTone(copy.devLetter.defaults.tone)
   }, [copy.devLetter.defaults.tone])
+
+  useEffect(() => {
+    if (!campaignNameEditedRef.current) setCampaignName(copy.devLetter.batch.defaultName)
+  }, [copy.devLetter.batch.defaultName])
+
+  useEffect(() => {
+    setSenderDraft((current) => {
+      if (current.id) return current
+      return {
+        ...current,
+        label: isDefaultSenderLabel(current.label, copy) ? copy.devLetter.mailSetup.defaultSenderLabel : current.label,
+        fromName: isDefaultSenderFromName(current.fromName, companyProfile, copy)
+          ? companyProfile.name || copy.devLetter.mailSetup.defaultSenderFromName
+          : current.fromName,
+      }
+    })
+  }, [companyProfile.name, copy])
 
   useEffect(() => {
     if (!selectedLead) return
@@ -2008,7 +2042,7 @@ function DevelopmentLetterPage({
     if (!preset || id === 'custom') return current
     return {
       ...current,
-      label: current.label && current.label !== 'Company mailbox' ? current.label : `${preset.label} mailbox`,
+      label: isDefaultSenderLabel(current.label, copy) ? copy.devLetter.mailSetup.providerSenderLabel(preset.label) : current.label,
       host: preset.host,
       port: preset.port,
       secure: preset.secure,
@@ -2781,7 +2815,7 @@ function DevelopmentLetterPage({
                 <p>{copy.devLetter.batch.chooseHint}</p>
               </div>
               <Field label={copy.devLetter.batch.fields.name}>
-                <input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} />
+                <input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} />
               </Field>
               <div className="campaign-depth-picker">
                 <div>
@@ -3088,12 +3122,13 @@ function DevelopmentLetterPage({
               <p>{copy.devLetter.mailSetup.subtitle}</p>
             </div>
             <div className="outreach-actions">
-              <button className="primary-button compact" type="button" disabled={busy === 'send' || activeDraftStatus === 'sent' || !senderDeliveryReady || !activeQualityReview?.passed || singleDraftChanged} onClick={sendDraft}>
+              <button className="primary-button compact" type="button" disabled={!canSendSingleDraft} onClick={sendDraft}>
                 <Send size={14} />
                 {busy === 'send' ? copy.devLetter.actions.sending : copy.devLetter.actions.send}
               </button>
             </div>
           </div>
+          {singleSendBlocker ? <p className="mail-test-hint send-blocker">{singleSendBlocker}</p> : null}
           <div className="mail-provider-grid">
             {senderProviderPresets.map((provider) => (
               <button
@@ -3306,10 +3341,10 @@ function leadInputFromForm(form: LeadFormDraft): OutreachLeadInput {
   }
 }
 
-function emptySenderDraft(companyProfile: CompanyProfile): SenderFormDraft {
+function emptySenderDraft(companyProfile: CompanyProfile, copy: UiCopy): SenderFormDraft {
   return {
-    label: 'Company mailbox',
-    fromName: companyProfile.name || 'Sales team',
+    label: copy.devLetter.mailSetup.defaultSenderLabel,
+    fromName: companyProfile.name || copy.devLetter.mailSetup.defaultSenderFromName,
     email: '',
     host: 'smtp.gmail.com',
     port: '587',
@@ -3321,6 +3356,26 @@ function emptySenderDraft(companyProfile: CompanyProfile): SenderFormDraft {
     username: '',
     password: '',
   }
+}
+
+function isDefaultSenderLabel(label: string, copy: UiCopy): boolean {
+  const normalized = label.trim()
+  return !normalized
+    || normalized === copy.devLetter.mailSetup.defaultSenderLabel
+    || normalized === 'Company mailbox'
+    || normalized === '公司发件邮箱'
+    || senderProviderPresets.some((preset) => (
+      normalized === `${preset.label} mailbox` || normalized === `${preset.label} 发件邮箱`
+    ))
+}
+
+function isDefaultSenderFromName(fromName: string, companyProfile: CompanyProfile, copy: UiCopy): boolean {
+  const normalized = fromName.trim()
+  return !normalized
+    || normalized === companyProfile.name
+    || normalized === copy.devLetter.mailSetup.defaultSenderFromName
+    || normalized === 'Sales team'
+    || normalized === '销售团队'
 }
 
 function senderFormFromAccount(account: OutreachSenderAccount): SenderFormDraft {

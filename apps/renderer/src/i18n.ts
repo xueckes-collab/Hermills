@@ -420,6 +420,9 @@ export type UiCopy = {
       authHelperHint: (provider: string, smtp: string) => string
       customAuthHint: string
       testEmailHint: string
+      defaultSenderLabel: string
+      defaultSenderFromName: string
+      providerSenderLabel: (provider: string) => string
       providerDescriptions: Record<'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom', string>
     }
     batch: {
@@ -1178,6 +1181,9 @@ const en: UiCopy = {
       authHelperHint: (provider, smtp) => `${provider} detected · ${smtp}. Open the official page, create an app password, then paste it here.`,
       customAuthHint: 'For a custom mailbox, ask your mail admin for the SMTP host and app password.',
       testEmailHint: 'Hermills sends one test email to your sender mailbox. Click “I received it” when it arrives.',
+      defaultSenderLabel: 'Company mailbox',
+      defaultSenderFromName: 'Sales team',
+      providerSenderLabel: (provider) => `${provider} mailbox`,
       providerDescriptions: {
         gmail: 'Gmail app password',
         outlook: 'Microsoft 365 SMTP',
@@ -1724,6 +1730,9 @@ const zhCN = withOverrides(en, {
       authHelperHint: (provider, smtp) => `已按 ${provider} 准备好 ${smtp}。去官方页面生成授权码，再粘贴回来。`,
       customAuthHint: '自定义邮箱需要向邮箱管理员确认 SMTP 地址和授权码。',
       testEmailHint: '测试邮件会发到你的发件邮箱。收到后点“我收到了”。',
+      defaultSenderLabel: '公司发件邮箱',
+      defaultSenderFromName: '销售团队',
+      providerSenderLabel: (provider) => `${provider} 发件邮箱`,
       providerDescriptions: {
         gmail: 'Gmail 应用专用密码',
         outlook: 'Microsoft 365 发信',

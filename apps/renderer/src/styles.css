@@ -1748,6 +1748,40 @@ textarea,
   display: grid;
 }
 
+.hermills-app-shell > .sources-drawer,
+.hermills-app-shell > .assistant-drawer {
+  position: fixed;
+  z-index: 36;
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
+  width: min(430px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  min-width: 0;
+  max-height: calc(100vh - 28px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.hermills-app-shell.sources-visible > .sources-drawer.open,
+.hermills-app-shell > .assistant-drawer.open {
+  display: grid;
+}
+
+.hermills-app-shell > .sources-drawer {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  padding: 18px 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hermills-app-shell > .assistant-drawer {
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 20px 16px;
+}
+
 .sources-header {
   justify-content: space-between;
 }
@@ -2298,16 +2332,37 @@ textarea,
 .outreach-workspace {
   display: flex;
   flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
-  overflow: auto;
-  padding: 0 2px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px;
 }
 
 .outreach-title {
   flex: 0 0 auto;
   margin-bottom: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.outreach-title .conversation-heading {
+  flex: 1 1 auto;
+  align-items: flex-start;
+}
+
+.outreach-title h1 {
+  overflow: visible;
+  max-width: 100%;
+  font-size: 32px;
+  line-height: 1.08;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .outreach-title p {
@@ -2328,8 +2383,11 @@ textarea,
 }
 
 .outreach-mode-switch {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   width: fit-content;
+  max-width: 100%;
   gap: 4px;
   padding: 4px;
   border: 1px solid rgba(15, 118, 110, 0.16);
@@ -2359,6 +2417,7 @@ textarea,
 .outreach-campaign-panel {
   display: grid;
   gap: 14px;
+  min-width: 0;
   border-color: rgba(14, 118, 109, 0.13);
   background:
     linear-gradient(135deg, rgba(255, 253, 247, 0.88), rgba(239, 250, 246, 0.54)),
@@ -2370,6 +2429,7 @@ textarea,
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
+  min-width: 0;
 }
 
 .campaign-simple-hero span,
@@ -2459,6 +2519,7 @@ textarea,
   grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.1fr);
   gap: 12px;
   align-items: start;
+  min-width: 0;
 }
 
 .campaign-create-box,
@@ -2466,6 +2527,7 @@ textarea,
 .campaign-draft-review {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .campaign-create-box,
@@ -2892,6 +2954,7 @@ textarea,
   grid-template-columns: minmax(320px, 0.92fr) minmax(360px, 1.08fr);
   gap: 14px;
   align-items: start;
+  min-width: 0;
 }
 
 .outreach-panel,
@@ -2900,6 +2963,8 @@ textarea,
 .outreach-send-panel {
   display: grid;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .outreach-quick-panel {
@@ -2920,6 +2985,7 @@ textarea,
   display: grid;
   grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1fr);
   gap: 10px;
+  min-width: 0;
 }
 
 .outreach-workflow-panel {
@@ -2944,6 +3010,7 @@ textarea,
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  min-width: 0;
 }
 
 .outreach-insight-card {
@@ -3043,6 +3110,7 @@ textarea,
 .sender-form-grid {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .lead-form-grid {
@@ -3057,6 +3125,7 @@ textarea,
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+  min-width: 0;
 }
 
 .mail-provider-card {
@@ -3095,10 +3164,12 @@ textarea,
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
+  min-width: 0;
 }
 
 .mail-auth-assistant,
 .mail-test-hint {
+  min-width: 0;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
@@ -3106,9 +3177,10 @@ textarea,
 }
 
 .mail-auth-assistant {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  min-width: 0;
   gap: 8px;
   padding: 7px 9px;
   border: 1px solid rgba(196, 125, 28, 0.2);
@@ -3125,9 +3197,12 @@ textarea,
 }
 
 .mail-auth-copy span {
+  display: -webkit-box;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .mail-auth-copy svg {
@@ -3136,6 +3211,18 @@ textarea,
 
 .mail-auth-link {
   flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.send-blocker {
+  padding: 8px 10px;
+  border: 1px solid rgba(244, 181, 72, 0.24);
+  border-radius: 10px;
+  background: rgba(244, 181, 72, 0.08);
+  color: var(--warning);
 }
 
 .mail-action-row {
@@ -4006,6 +4093,7 @@ details[open] .complex-detail {
   grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.4fr);
   align-items: center;
   gap: 8px 12px;
+  min-width: 0;
   margin-bottom: 8px;
   padding: 9px 11px;
   border: 1px solid rgba(185, 131, 52, 0.24);
@@ -4051,6 +4139,7 @@ details[open] .complex-detail {
 .quick-provider-actions {
   grid-column: 1 / -1;
   justify-content: flex-start;
+  flex-wrap: wrap;
   min-height: 24px;
 }
 
@@ -4594,6 +4683,7 @@ details[open] .complex-detail {
 .hermills-menu-sidebar,
 .hermills-chat-panel,
 .hermills-inspector {
+  min-width: 0;
   min-height: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(13, 14, 21, 0.92);
@@ -4816,6 +4906,8 @@ details[open] .complex-detail {
 }
 
 .hermills-chat-panel {
+  container-name: hermills-workspace;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5042,6 +5134,8 @@ details[open] .complex-detail {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 10px;
+  width: auto;
+  min-width: 0;
   margin: 14px 24px 24px;
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -5280,7 +5374,7 @@ details[open] .complex-detail {
 
 .hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder,
 .hermills-dark-shell textarea::placeholder {
-  color: #6f7482;
+  color: #858b9c;
 }
 
 .hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
@@ -5518,7 +5612,7 @@ details[open] .complex-detail {
 
 .hermills-dark-overlay input::placeholder,
 .hermills-dark-overlay textarea::placeholder {
-  color: #6f7482;
+  color: #858b9c;
 }
 
 .hermills-dark-overlay input:focus,
@@ -5592,8 +5686,8 @@ details[open] .complex-detail {
 .hermills-dark-shell .mail-auth-assistant,
 .hermills-dark-shell .csv-import-box,
 .hermills-dark-shell .quality-review-card {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
   color: #f7f7fb;
   box-shadow: none;
 }
@@ -5607,7 +5701,8 @@ details[open] .complex-detail {
 
 .hermills-dark-shell .quality-review-card.blocked,
 .hermills-dark-shell .quality-review-card.needs-work,
-.hermills-dark-shell .mail-auth-assistant {
+.hermills-dark-shell .mail-auth-assistant,
+.hermills-dark-shell .send-blocker {
   border-color: rgba(244, 181, 72, 0.24);
   background: rgba(244, 181, 72, 0.09);
   color: #f5d48b;
@@ -5635,6 +5730,106 @@ details[open] .complex-detail {
   background: rgba(255, 255, 255, 0.08) !important;
   color: #8d91a3 !important;
   opacity: 0.74;
+}
+
+@container hermills-workspace (max-width: 980px) {
+  .outreach-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .outreach-title h1 {
+    max-width: 100%;
+    font-size: 30px;
+  }
+
+  .outreach-grid,
+  .outreach-quick-grid,
+  .outreach-result-grid,
+  .campaign-setup-grid,
+  .campaign-recipient-grid,
+  .lead-form-grid,
+  .sender-form-grid,
+  .mail-simple-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mail-provider-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .key-nudge,
+  .quick-provider-fields,
+  .quick-provider-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .campaign-simple-hero,
+  .panel-heading-row,
+  .mail-auth-assistant {
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel-heading-row {
+    flex-direction: column;
+  }
+
+  .campaign-primary-actions,
+  .campaign-summary-strip,
+  .campaign-depth-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  .mail-auth-assistant {
+    flex-direction: column;
+  }
+
+  .mail-auth-copy span {
+    white-space: normal;
+  }
+
+  .mail-auth-link,
+  .panel-heading-row .primary-button,
+  .panel-heading-row .soft-button {
+    align-self: stretch;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@container hermills-workspace (max-width: 680px) {
+  .mail-provider-grid,
+  .campaign-primary-actions,
+  .campaign-summary-strip,
+  .campaign-depth-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .outreach-title h1 {
+    font-size: 27px;
+  }
+}
+
+@container hermills-workspace (max-width: 860px) {
+  .hermills-chat-header {
+    flex-direction: column;
+  }
+
+  .hermills-chat-context {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .hermills-chat-title h1 {
+    white-space: normal;
+  }
+
+  .quick-provider-actions {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 1180px) {

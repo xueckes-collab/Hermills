@@ -173,8 +173,33 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.hermills-tool-label\s*\{[\s\S]*?grid-template-columns:\s*16px minmax\(0,\s*1fr\)/);
     expect(stylesSource).toMatch(/\.hermills-tool-label span\s*\{[\s\S]*?text-overflow:\s*ellipsis/);
     expect(stylesSource).toMatch(/\.hermills-inspector-card \[data-slot="card-description"\]\s*\{[\s\S]*?overflow-wrap:\s*anywhere/);
+    expect(stylesSource).toMatch(/\.hermills-composer\s*\{[\s\S]*?width:\s*auto/);
+    expect(stylesSource).toMatch(/\.hermills-composer\s*\{[\s\S]*?min-width:\s*0/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?position:\s*static/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
+  });
+
+  it("keeps outreach and drawers inside the desktop shell instead of creating page-level horizontal scroll", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain("singleSendBlocker");
+    expect(appSource).toContain('className="mail-test-hint send-blocker"');
+    expect(stylesSource).toMatch(/\.hermills-menu-sidebar,\s*\.hermills-chat-panel,\s*\.hermills-inspector\s*\{[\s\S]*?min-width:\s*0/);
+    expect(stylesSource).toMatch(/\.hermills-chat-panel\s*\{[\s\S]*?container-name:\s*hermills-workspace/);
+    expect(stylesSource).toMatch(/\.hermills-chat-panel\s*\{[\s\S]*?container-type:\s*inline-size/);
+    expect(stylesSource).toMatch(/\.outreach-workspace\s*\{[\s\S]*?max-width:\s*100%/);
+    expect(stylesSource).toMatch(/\.outreach-workspace\s*\{[\s\S]*?overflow-x:\s*hidden/);
+    expect(stylesSource).toMatch(/\.outreach-mode-switch\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+    expect(stylesSource).toMatch(/\.outreach-grid\s*\{[\s\S]*?min-width:\s*0/);
+    expect(stylesSource).toMatch(/\.outreach-panel,\s*\.outreach-quick-panel,\s*\.outreach-workflow-panel,\s*\.outreach-send-panel\s*\{[\s\S]*?overflow:\s*hidden/);
+    expect(stylesSource).toMatch(/\.mail-auth-assistant\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
+    expect(stylesSource).toMatch(/\.mail-auth-copy span\s*\{[\s\S]*?white-space:\s*normal/);
+    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.outreach-grid,[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.mail-provider-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.key-nudge,[\s\S]*?\.quick-provider-fields,[\s\S]*?\.quick-provider-details\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-app-shell > \.sources-drawer,[\s\S]*?\.hermills-app-shell > \.assistant-drawer\s*\{[\s\S]*?position:\s*fixed/);
+    expect(stylesSource).toMatch(/\.hermills-app-shell\.sources-visible > \.sources-drawer\.open,[\s\S]*?\.hermills-app-shell > \.assistant-drawer\.open\s*\{[\s\S]*?display:\s*grid/);
   });
 
   it("keeps onboarding actions reachable by scrolling the content region instead of the whole card", async () => {
@@ -198,11 +223,19 @@ describe("renderer usability contract", () => {
 
     expect(getUiCopy("zh-CN").devLetter.defaults.language).toBe("中文");
     expect(getUiCopy("zh-CN").devLetter.defaults.tone).toBe("专业、真诚、简洁");
+    expect(getUiCopy("zh-CN").devLetter.mailSetup.defaultSenderLabel).toBe("公司发件邮箱");
+    expect(getUiCopy("zh-CN").devLetter.mailSetup.defaultSenderFromName).toBe("销售团队");
+    expect(getUiCopy("zh-CN").devLetter.mailSetup.providerSenderLabel("Gmail")).toBe("Gmail 发件邮箱");
     expect(getUiCopy("zh-CN").computerControl.permissionNudgeDetail).not.toContain("macOS");
     expect(appSource).toContain("copy.devLetter.defaults.language");
     expect(appSource).toContain("copy.devLetter.defaults.tone");
+    expect(appSource).toContain("copy.devLetter.batch.defaultName");
+    expect(appSource).toContain("emptySenderDraft(companyProfile, copy)");
+    expect(appSource).toContain("copy.devLetter.mailSetup.providerSenderLabel");
+    expect(appSource).toContain("document.documentElement.lang = normalizeUiLanguage");
     expect(appSource).not.toContain("useState('English')");
     expect(appSource).not.toContain("useState('professional, warm, concise')");
+    expect(appSource).not.toContain("useState('开发信批量任务')");
     expect(serverSource).toContain("defaultOnboardingAgentDescription(input.state.language)");
     expect(serverSource).not.toContain("这台 Mac");
     expect(serverSource).not.toContain("如果 macOS");
