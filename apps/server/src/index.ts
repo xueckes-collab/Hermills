@@ -355,7 +355,13 @@ const OutreachLeadInputBody = z.object({
   email: OptionalOnboardingString(320),
   need: z.string().trim().max(2000).default(""),
   notes: z.string().trim().max(4000).default(""),
-  tags: z.array(z.string().trim().min(1).max(60)).max(24).default([])
+  tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
+  source: z.string().trim().min(1).max(64).optional(),
+  status: z.enum(["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]).optional(),
+  currentState: z.enum(["input_ready", "waiting_user_send", "waiting_user_send_followup", "waiting_response_status", "drafting_reply_email"]).optional(),
+  replyStatus: z.enum(["not_checked", "checking", "no_reply", "reply_received", "bounced", "unsubscribed"]).optional(),
+  statusColor: z.enum(["slate", "blue", "amber", "green", "rose", "violet"]).optional(),
+  currentRound: z.number().int().min(0).max(9).optional()
 }).strict();
 
 const CreateOutreachLeadBody = OutreachLeadInputBody.extend({
@@ -371,6 +377,11 @@ const OutreachLeadListQuery = z.object({
 
 const ImportOutreachLeadsBody = z.object({
   csvText: z.string().min(1).max(1_000_000),
+  profileId: z.string().min(1).optional()
+}).strict();
+
+const DeleteOutreachLeadsBody = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
   profileId: z.string().min(1).optional()
 }).strict();
 
@@ -874,6 +885,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const query = OutreachLeadListQuery.parse(request.query ?? {});
     return outreachLeads.list({ profileId: await resolveProfileId(query.profileId), q: query.q });
   });
+  server.get("/api/outreach/leads/stats", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachLeads.stats({ profileId: await resolveProfileId(query.profileId), q: query.q });
+  });
   server.post("/api/outreach/leads", async (request) => {
     const body = CreateOutreachLeadBody.parse(request.body ?? {});
     return outreachLeads.create({ ...body, profileId: await resolveProfileId(body.profileId) });
@@ -881,6 +896,10 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/outreach/leads/import", async (request) => {
     const body = ImportOutreachLeadsBody.parse(request.body ?? {});
     return outreachLeads.importCsv(body.csvText, await resolveProfileId(body.profileId));
+  });
+  server.post("/api/outreach/leads/delete-many", async (request) => {
+    const body = DeleteOutreachLeadsBody.parse(request.body ?? {});
+    return outreachLeads.removeMany(body.ids, await resolveProfileId(body.profileId));
   });
   server.put("/api/outreach/leads/:id", async (request) => {
     const { id } = request.params as { id: string };
@@ -906,7 +925,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       ? await outreachLeads.require(body.leadId)
       : await outreachLeads.create({ ...body.lead!, profileId });
     await assertActiveProfile(lead.profileId);
-    return generateOutreachDraft({
+    const draft = await generateOutreachDraft({
       lead,
       body,
       profileId,
@@ -916,6 +935,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       materials,
       drafts: outreachDrafts
     });
+    await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
+    return draft;
   });
   server.post("/api/outreach/drafts/auto", async (request) => {
     const body = AutoOutreachDraftBody.parse(request.body ?? {});
@@ -930,11 +951,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       workflows: outreachWorkflows,
       profileId: await resolveProfileId(body.profileId)
     });
+    await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
     return outreachDrafts.require(workflow.draftId);
   });
   server.post("/api/outreach/workflows/auto", async (request) => {
     const body = AutoOutreachDraftBody.parse(request.body ?? {});
-    return generateOutreachWorkflow({
+    const workflow = await generateOutreachWorkflow({
       body,
       runtime,
       providers,
@@ -945,6 +967,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       workflows: outreachWorkflows,
       profileId: await resolveProfileId(body.profileId)
     });
+    await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
+    return workflow;
   });
   server.get("/api/outreach/workflows", async (request) => {
     const query = OutreachLeadListQuery.parse(request.query ?? {});
@@ -1237,7 +1261,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const sender = await outreachSenders.require(body.senderAccountId);
     await assertActiveProfile(sender.profileId);
     const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
-    return sendOutreachDraft({ draft, sender, lead, to: body.to, senders: outreachSenders, drafts: outreachDrafts });
+    const sent = await sendOutreachDraft({ draft, sender, lead, to: body.to, senders: outreachSenders, drafts: outreachDrafts });
+    if (lead) await outreachLeads.update(lead.id, { status: "email_sent", currentState: "waiting_response_status", statusColor: "blue", currentRound: Math.max(lead.currentRound ?? 0, 1) });
+    return sent;
   });
   server.get("/api/outreach/feedback", async (request) => {
     const query = OutreachLeadListQuery.parse(request.query ?? {});
@@ -1517,7 +1543,11 @@ function displayNameOrDefault(value: string | undefined, fallback: string): stri
 }
 
 function allowedRendererOrigins(): string[] {
-  const origins = new Set(["http://127.0.0.1:5177", "http://localhost:5177"]);
+  const origins = new Set<string>();
+  for (const port of [5177, 5178, 5179, 5180, 5181, 5182]) {
+    origins.add(`http://127.0.0.1:${port}`);
+    origins.add(`http://localhost:${port}`);
+  }
   const rendererUrl = process.env.HERMILLS_RENDERER_URL;
   if (rendererUrl) {
     try {
@@ -2351,6 +2381,12 @@ class OutreachLeadRepository {
         need: input.need ?? "",
         notes: input.notes ?? "",
         tags: input.tags ?? [],
+        source: input.source,
+        status: input.status,
+        currentState: input.currentState,
+        replyStatus: input.replyStatus,
+        statusColor: input.statusColor,
+        currentRound: input.currentRound,
         createdAt: now,
         updatedAt: now
       });
@@ -2380,6 +2416,19 @@ class OutreachLeadRepository {
     return { imported, skipped };
   }
 
+  async stats(options: OutreachListOptions = {}): Promise<{ total: number; new: number; drafted: number; sent: number; waiting: number; replied: number; followupDue: number }> {
+    const leads = await this.list(options);
+    return {
+      total: leads.length,
+      new: leads.filter((lead) => lead.status === "new" || lead.currentState === "input_ready").length,
+      drafted: leads.filter((lead) => lead.status === "email_drafted" || lead.status === "followup_drafted" || lead.currentState === "waiting_user_send" || lead.currentState === "waiting_user_send_followup").length,
+      sent: leads.filter((lead) => lead.status === "email_sent" || lead.status === "contacted" || lead.currentState === "waiting_response_status").length,
+      waiting: leads.filter((lead) => lead.currentState === "waiting_response_status").length,
+      replied: leads.filter((lead) => lead.status === "reply_received" || lead.replyStatus === "reply_received").length,
+      followupDue: leads.filter((lead) => lead.status === "followup_due").length
+    };
+  }
+
   async update(id: string, input: z.infer<typeof UpdateOutreachLeadBody>): Promise<OutreachLead> {
     return this.withWriteLock(async () => {
       const document = await this.read();
@@ -2402,6 +2451,18 @@ class OutreachLeadRepository {
       const leads = document.leads.filter((lead) => lead.id !== id);
       if (leads.length === document.leads.length) throw new ClientInputError(`Lead not found: ${id}`);
       await this.write({ leads });
+    });
+  }
+
+  async removeMany(ids: string[], profileId: string): Promise<{ deleted: number; missing: string[] }> {
+    return this.withWriteLock(async () => {
+      const wanted = new Set(ids);
+      const document = await this.read();
+      const missing = ids.filter((id) => !document.leads.some((lead) => lead.id === id && lead.profileId === profileId));
+      const leads = document.leads.filter((lead) => lead.profileId !== profileId || !wanted.has(lead.id));
+      const deleted = document.leads.length - leads.length;
+      await this.write({ leads });
+      return { deleted, missing };
     });
   }
 

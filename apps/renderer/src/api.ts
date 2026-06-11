@@ -418,6 +418,11 @@ export type CompanyProfile = {
   updatedAt?: string;
 };
 
+export type OutreachLeadStatus = "new" | "email_drafted" | "followup_drafted" | "email_sent" | "contacted" | "reply_received" | "followup_due";
+export type OutreachLeadState = "input_ready" | "waiting_user_send" | "waiting_user_send_followup" | "waiting_response_status" | "drafting_reply_email";
+export type OutreachLeadReplyStatus = "not_checked" | "checking" | "no_reply" | "reply_received" | "bounced" | "unsubscribed";
+export type OutreachLeadStatusColor = "slate" | "blue" | "amber" | "green" | "rose" | "violet";
+
 export type OutreachLead = {
   id: string;
   profileId?: string;
@@ -431,6 +436,12 @@ export type OutreachLead = {
   need: string;
   notes: string;
   tags: string[];
+  source: string;
+  status: OutreachLeadStatus;
+  currentState: OutreachLeadState;
+  replyStatus: OutreachLeadReplyStatus;
+  statusColor: OutreachLeadStatusColor;
+  currentRound: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -446,6 +457,22 @@ export type OutreachLeadInput = {
   need?: string;
   notes?: string;
   tags?: string[];
+  source?: string;
+  status?: OutreachLeadStatus;
+  currentState?: OutreachLeadState;
+  replyStatus?: OutreachLeadReplyStatus;
+  statusColor?: OutreachLeadStatusColor;
+  currentRound?: number;
+};
+
+export type OutreachLeadStats = {
+  total: number;
+  new: number;
+  drafted: number;
+  sent: number;
+  waiting: number;
+  replied: number;
+  followupDue: number;
 };
 
 export type OutreachDraft = {
@@ -1230,16 +1257,26 @@ export const api = {
     const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
     return request<OutreachLead[]>(`/api/outreach/leads${suffix}`);
   },
+  async outreachLeadStats(query = ""): Promise<OutreachLeadStats> {
+    const suffix = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+    return request<OutreachLeadStats>(`/api/outreach/leads/stats${suffix}`);
+  },
   async createOutreachLead(input: OutreachLeadInput): Promise<OutreachLead> {
     return request<OutreachLead>("/api/outreach/leads", { method: "POST", body: JSON.stringify(input) });
   },
-  async updateOutreachLead(id: string, input: Partial<Pick<OutreachLead, "companyName" | "website" | "country" | "industry" | "contactName" | "contactTitle" | "email" | "need" | "notes" | "tags">>): Promise<OutreachLead> {
+  async updateOutreachLead(id: string, input: Partial<OutreachLeadInput>): Promise<OutreachLead> {
     return request<OutreachLead>(`/api/outreach/leads/${id}`, { method: "PUT", body: JSON.stringify(input) });
   },
   async importOutreachLeads(csvText: string): Promise<{ imported: OutreachLead[]; skipped: Array<{ row: number; reason: string }> }> {
     return request<{ imported: OutreachLead[]; skipped: Array<{ row: number; reason: string }> }>("/api/outreach/leads/import", {
       method: "POST",
       body: JSON.stringify({ csvText })
+    });
+  },
+  async deleteOutreachLeads(ids: string[]): Promise<{ deleted: number; missing: string[] }> {
+    return request<{ deleted: number; missing: string[] }>("/api/outreach/leads/delete-many", {
+      method: "POST",
+      body: JSON.stringify({ ids })
     });
   },
   async generateOutreachDraft(input: {

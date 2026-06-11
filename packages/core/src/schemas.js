@@ -216,6 +216,12 @@ export const OutreachLeadSchema = z.object({
     need: z.string().trim().max(2000).default(""),
     notes: z.string().trim().max(4000).default(""),
     tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
+    source: z.string().trim().min(1).max(64).default("manual"),
+    status: z.enum(["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]).default("new"),
+    currentState: z.enum(["input_ready", "waiting_user_send", "waiting_user_send_followup", "waiting_response_status", "drafting_reply_email"]).default("input_ready"),
+    replyStatus: z.enum(["not_checked", "checking", "no_reply", "reply_received", "bounced", "unsubscribed"]).default("not_checked"),
+    statusColor: z.enum(["slate", "blue", "amber", "green", "rose", "violet"]).default("slate"),
+    currentRound: z.number().int().min(0).max(9).default(0),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
 }).strict();

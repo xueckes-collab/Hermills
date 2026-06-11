@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Clock,
   Copy,
   Cpu,
   Download,
@@ -37,9 +38,12 @@ import {
   Trash2,
   Upload,
   UserRound,
+  Users,
   Wrench,
   X,
+  Zap,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import type { LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1817,6 +1821,73 @@ type SenderFormDraft = {
 }
 
 type OutreachMode = 'single' | 'campaign'
+type LetterOutreachView = 'dashboard' | 'leads' | 'automation' | 'profile' | 'mail'
+type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
+
+const letterLeadFilters: Array<{ id: LetterLeadFilter; label: string }> = [
+  { id: 'all', label: '全部' },
+  { id: 'new', label: '新客户' },
+  { id: 'drafted', label: '待发送' },
+  { id: 'sent', label: '已发送' },
+  { id: 'replied', label: '已回复' },
+]
+
+const letterStateLabels: Record<string, string> = {
+  input_ready: '待处理',
+  waiting_user_send: '待发送',
+  waiting_user_send_followup: '待发送跟进',
+  waiting_response_status: '等待回复',
+  drafting_reply_email: '回复草稿',
+}
+
+function leadMatchesLetterFilter(lead: OutreachLead, filter: LetterLeadFilter) {
+  if (filter === 'all') return true
+  if (filter === 'new') return lead.status === 'new' || lead.currentState === 'input_ready'
+  if (filter === 'drafted') return lead.status === 'email_drafted' || lead.status === 'followup_drafted' || lead.currentState === 'waiting_user_send' || lead.currentState === 'waiting_user_send_followup'
+  if (filter === 'sent') return lead.status === 'email_sent' || lead.status === 'contacted' || lead.currentState === 'waiting_response_status'
+  return lead.status === 'reply_received' || lead.replyStatus === 'reply_received'
+}
+
+function letterLeadStatusLabel(lead: OutreachLead) {
+  if (lead.status === 'email_drafted') return '邮件已生成'
+  if (lead.status === 'followup_drafted') return '跟进已生成'
+  if (lead.status === 'email_sent' || lead.status === 'contacted') return '已发送'
+  if (lead.status === 'reply_received' || lead.replyStatus === 'reply_received') return '已回复'
+  if (lead.status === 'followup_due') return '需跟进'
+  return '新客户'
+}
+
+function domainCompanyName(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return 'Imported customer'
+  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '').replace(/^www\./i, '')
+  const host = withoutProtocol.split(/[/?#]/)[0] || withoutProtocol
+  const domain = host.split('@').pop() || host
+  const name = domain.split('.')[0] || domain
+  return name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Imported customer'
+}
+
+function csvEscape(value: string) {
+  const normalized = value.replace(/\r?\n/g, ' ').trim()
+  return /[",\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized
+}
+
+function letterRowsToCsv(input: string) {
+  const raw = input.trim()
+  if (!raw) return ''
+  const firstLine = raw.split(/\r?\n/)[0]?.toLowerCase() ?? ''
+  if (/company|公司|email|邮箱|website|网站/.test(firstLine)) return raw
+  const rows = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const converted = rows.map((line) => {
+    const cells = line.split(/[\t,，]+/).map((item) => item.trim()).filter(Boolean)
+    const email = cells.find((item) => /@/.test(item)) ?? ''
+    const website = cells.find((item) => /^https?:\/\//i.test(item) || /\.[a-z]{2,}(\/|$)/i.test(item)) ?? ''
+    const contactName = cells.find((item) => item !== email && item !== website) ?? ''
+    const companyName = domainCompanyName(website || email)
+    return [companyName, email, website, contactName].map(csvEscape).join(',')
+  })
+  return ['company,email,website,contactName', ...converted].join('\n')
+}
 
 function DevelopmentLetterPage({
   companyProfile,
@@ -1849,6 +1920,11 @@ function DevelopmentLetterPage({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
+  const [letterView, setLetterView] = useState<LetterOutreachView>('dashboard')
+  const [leadSearch, setLeadSearch] = useState('')
+  const [leadFilter, setLeadFilter] = useState<LetterLeadFilter>('all')
+  const [selectedLetterLeadIds, setSelectedLetterLeadIds] = useState<string[]>([])
+  const [bulkImportText, setBulkImportText] = useState('')
   const [campaignName, setCampaignName] = useState(copy.devLetter.batch.defaultName)
   const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('standard')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
@@ -1935,6 +2011,24 @@ function DevelopmentLetterPage({
             ? copy.devLetter.warnings.senderNotConfirmed
             : ''
   const canSendSingleDraft = !singleSendBlocker && busy !== 'send'
+  const letterStats = useMemo(() => ({
+    total: leads.length,
+    new: leads.filter((lead) => leadMatchesLetterFilter(lead, 'new')).length,
+    drafted: leads.filter((lead) => leadMatchesLetterFilter(lead, 'drafted')).length,
+    waiting: leads.filter((lead) => lead.currentState === 'waiting_response_status').length,
+    replied: leads.filter((lead) => leadMatchesLetterFilter(lead, 'replied')).length,
+  }), [leads])
+  const filteredLetterLeads = useMemo(() => {
+    const query = leadSearch.trim().toLowerCase()
+    return leads.filter((lead) => {
+      if (!leadMatchesLetterFilter(lead, leadFilter)) return false
+      if (!query) return true
+      return [lead.companyName, lead.email, lead.website, lead.contactName, lead.country, lead.industry]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    })
+  }, [leads, leadFilter, leadSearch])
+  const selectedLetterLeads = useMemo(() => leads.filter((lead) => selectedLetterLeadIds.includes(lead.id)), [leads, selectedLetterLeadIds])
 
   useEffect(() => {
     if (!languageEditedRef.current) setLanguage(copy.devLetter.defaults.language)
@@ -2390,6 +2484,82 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function importLetterLeads(text = bulkImportText) {
+    const csv = letterRowsToCsv(text)
+    if (!csv.trim()) {
+      setError('请先粘贴客户数据或选择 Excel / CSV 文件。')
+      return
+    }
+    setBusy('letterImport')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.importOutreachLeads(csv)
+      const nextLeads = await api.outreachLeads()
+      setLeads(nextLeads)
+      if (result.imported[0]) {
+        setSelectedLeadId(result.imported[0].id)
+        setLetterView('leads')
+      }
+      setBulkImportText('')
+      setNotice(`已导入 ${result.imported.length} 个客户${result.skipped.length ? `，跳过 ${result.skipped.length} 行` : ''}。`)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function importLetterFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setBusy('letterFile')
+    setError('')
+    setNotice('')
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      if (extension === 'xlsx' || extension === 'xls') {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+        const csv = XLSX.utils.sheet_to_csv(firstSheet)
+        setBulkImportText(csv)
+        await importLetterLeads(csv)
+      } else {
+        const text = await file.text()
+        setBulkImportText(text)
+        await importLetterLeads(text)
+      }
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function toggleLetterLeadSelection(id: string) {
+    setSelectedLetterLeadIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  }
+
+  async function deleteSelectedLetterLeads() {
+    if (!selectedLetterLeadIds.length) return
+    if (!window.confirm(`确定删除选中的 ${selectedLetterLeadIds.length} 个客户吗？此操作不可撤销。`)) return
+    setBusy('deleteLeads')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.deleteOutreachLeads(selectedLetterLeadIds)
+      setLeads(leads.filter((lead) => !selectedLetterLeadIds.includes(lead.id)))
+      setSelectedLetterLeadIds([])
+      if (selectedLeadId && selectedLetterLeadIds.includes(selectedLeadId)) setSelectedLeadId('')
+      setNotice(`已删除 ${result.deleted} 个客户。`)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function generateDraft() {
     if (!requireCompanyKnowledge()) return
     let lead = selectedLead
@@ -2411,6 +2581,7 @@ function DevelopmentLetterPage({
       setDraft(next)
       setDraftSubject(next.subject)
       setDraftBody(next.body)
+      setLeads(await api.outreachLeads())
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -2723,6 +2894,7 @@ function DevelopmentLetterPage({
       const sent = await api.sendOutreachDraft(draftId, { senderAccountId: sender.id, to })
       if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError })
       else setDraft(sent)
+      setLeads(await api.outreachLeads())
       setNotice(copy.devLetter.status.sent)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -2731,581 +2903,342 @@ function DevelopmentLetterPage({
     }
   }
 
+  const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
+    { id: 'dashboard', label: '工作台', icon: Mail },
+    { id: 'leads', label: '客户管理', icon: Users },
+    { id: 'automation', label: '自动化', icon: Zap },
+    { id: 'profile', label: '发件人资料', icon: UserRound },
+    { id: 'mail', label: '邮箱设置', icon: Settings },
+  ]
+  const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '工作台'
+  const letterSubtitle = letterView === 'dashboard'
+    ? '管理你的销售外联流程'
+    : letterView === 'leads'
+      ? '查看、筛选和维护所有潜在客户'
+      : letterView === 'automation'
+        ? '批量生成开发信、发送和跟进客户'
+        : letterView === 'profile'
+          ? '维护 AI 写信时使用的公司资料'
+          : '配置 SMTP / IMAP 发件邮箱'
+
   return (
-    <div className="outreach-workspace">
-      <header className="conversation-title outreach-title">
-        <div className="conversation-heading">
-          <div className="outreach-title-icon"><Mail size={22} /></div>
+    <div className="letter-app-shell">
+      <aside className="letter-sidebar" aria-label="外联导航">
+        <div className="letter-brand">
+          <div className="letter-logo"><Mail size={18} /></div>
           <div>
-            <span>{copy.devLetter.sectionLabel}</span>
-            <h1>{copy.devLetter.title}</h1>
-            <p>{copy.devLetter.subtitle}</p>
+            <strong>Outbound Mail OS</strong>
+            <span>Hermills 本地版</span>
           </div>
         </div>
-        <button className="soft-button compact" type="button" onClick={onOpenCompanyKnowledge}>
-          <Building2 size={15} />
-          {copy.devLetter.actions.openCompany}
-        </button>
-      </header>
+        <nav className="letter-nav">
+          {letterNavItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <button key={item.id} className={letterView === item.id ? 'active' : ''} type="button" onClick={() => setLetterView(item.id)}>
+                <Icon size={17} />
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+        <div className="letter-sidebar-footer">
+          <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
+          <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
+        </div>
+      </aside>
 
-      <div className={`status-hint ${companyReady ? 'success' : 'warning'}`}>
-        <Building2 size={15} />
-        {companyReady
-          ? copy.devLetter.status.companyReady(companyProfile.name, companyMaterials.length)
-          : copy.devLetter.status.companyMissing}
-      </div>
-
-      <div className="outreach-mode-switch" role="tablist" aria-label={copy.devLetter.batch.modeAria}>
-        <button className={outreachMode === 'single' ? 'active' : ''} type="button" onClick={() => setOutreachMode('single')}>
-          <Mail size={15} />
-          {copy.devLetter.batch.singleMode}
-        </button>
-        <button className={outreachMode === 'campaign' ? 'active' : ''} type="button" onClick={() => setOutreachMode('campaign')}>
-          <ListChecks size={15} />
-          {copy.devLetter.batch.campaignMode}
-        </button>
-      </div>
-
-      {outreachMode === 'campaign' ? (
-        <section className="quiet-panel outreach-campaign-panel">
-          <div className="campaign-simple-hero">
-            <div>
-              <span>{copy.devLetter.batch.eyebrow}</span>
-              <h3>{copy.devLetter.batch.title}</h3>
-              <p>{copy.devLetter.batch.subtitle}</p>
-              <small className="campaign-agent-hint">{copy.devLetter.batch.agentQueueHint(copy.devLetter.batch.researchDepth[visibleResearchDepth].label)}</small>
-            </div>
-            {selectedCampaign ? (
-              <div className="campaign-primary-actions">
-                <button className="soft-button compact" type="button" disabled={!companyReady || busy === 'campaignGenerate'} onClick={generateCampaign}>
-                  <Search size={14} />
-                  {busy === 'campaignGenerate' ? copy.devLetter.batch.actions.generating : copy.devLetter.batch.actions.generate}
-                </button>
-                <button className="primary-button compact" type="button" disabled={busy === 'campaignSend' || !selectedCampaign.stats.approved} onClick={startCampaign}>
-                  <Send size={14} />
-                  {busy === 'campaignSend' ? copy.devLetter.actions.sending : copy.devLetter.batch.actions.send}
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="campaign-summary-strip">
-            <span className="campaign-stat selected">
-              <strong>{campaignSelectedCount}</strong>
-              {copy.devLetter.batch.summary.selected}
-            </span>
-            <span className="campaign-stat generated">
-              <strong>{campaignReviewCount}</strong>
-              {copy.devLetter.batch.summary.review}
-            </span>
-            <span className="campaign-stat approved">
-              <strong>{campaignReadyCount}</strong>
-              {copy.devLetter.batch.summary.ready}
-            </span>
-            <span className="campaign-stat sent">
-              <strong>{campaignSentCount}</strong>
-              {copy.devLetter.batch.summary.sent}
-            </span>
-          </div>
-
-          <div className="campaign-setup-grid">
-            <div className="campaign-create-box">
-              <div className="campaign-box-heading">
-                <h4>{copy.devLetter.batch.chooseTitle}</h4>
-                <p>{copy.devLetter.batch.chooseHint}</p>
-              </div>
-              <Field label={copy.devLetter.batch.fields.name}>
-                <input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} />
-              </Field>
-              <div className="campaign-depth-picker">
-                <div>
-                  <strong>{copy.devLetter.batch.researchDepthTitle}</strong>
-                  <small>{copy.devLetter.batch.researchDepthHint}</small>
-                </div>
-                <div className="campaign-depth-options" role="radiogroup" aria-label={copy.devLetter.batch.researchDepthTitle}>
-                  {researchDepthOptions.map((depth) => (
-                    <button
-                      className={campaignResearchDepth === depth ? 'active' : ''}
-                      key={depth}
-                      type="button"
-                      role="radio"
-                      aria-checked={campaignResearchDepth === depth}
-                      onClick={() => setCampaignResearchDepth(depth)}
-                    >
-                      <strong>{copy.devLetter.batch.researchDepth[depth].label}</strong>
-                      <span>{copy.devLetter.batch.researchDepth[depth].description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="campaign-lead-list" aria-label={copy.devLetter.batch.customerList}>
-                {leads.length ? leads.map((lead) => {
-                  const ready = Boolean(lead.website && lead.email)
-                  const selected = selectedCampaignLeadIds.includes(lead.id)
-                  return (
-                    <button className={`campaign-lead-row ${selected ? 'active' : ''} ${ready ? '' : 'incomplete'}`} disabled={!ready} key={lead.id} type="button" onClick={() => toggleCampaignLead(lead.id)}>
-                      <span className="check-dot">{selected ? <CheckCircle2 size={15} /> : null}</span>
-                      <span>
-                        <strong>{lead.companyName}</strong>
-                        <small>{lead.email || copy.devLetter.batch.missingEmail} · {lead.website || copy.devLetter.batch.missingWebsite}</small>
-                      </span>
-                    </button>
-                  )
-                }) : <div className="empty-state">{copy.devLetter.status.noLeads}</div>}
-              </div>
-              <div className="campaign-create-footer">
-                <span className="campaign-selected-count">{copy.devLetter.batch.selectedCount(selectedCampaignLeadIds.length)}</span>
-                <div className="outreach-actions">
-                  <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
-                    <Upload size={14} />
-                    {copy.devLetter.actions.importCsv}
-                  </button>
-                  <button className="primary-button compact" type="button" disabled={!companyReady || busy === 'campaignCreate' || !selectedCampaignLeadIds.length} onClick={createCampaign}>
-                    <Plus size={14} />
-                    {busy === 'campaignCreate' ? copy.common.creating : copy.devLetter.batch.actions.create}
-                  </button>
-                </div>
-              </div>
-              {csvOpen ? (
-                <div className="csv-import-box compact">
-                  <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder={copy.devLetter.placeholders.csv} rows={3} />
-                  <button className="primary-button compact" type="button" disabled={busy === 'csv'} onClick={importCsv}>{busy === 'csv' ? copy.common.saving : copy.devLetter.actions.importCsv}</button>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="campaign-review-box">
-              <div className="campaign-box-heading">
-                <h4>{copy.devLetter.batch.reviewTitle}</h4>
-                <p>{selectedCampaign ? copy.devLetter.batch.reviewHint : copy.devLetter.batch.noCampaign}</p>
-              </div>
-
-              {campaigns.length ? <div className="campaign-list-tabs">
-                {campaigns.length ? campaigns.slice(0, 5).map((campaign) => (
-                  <button className={selectedCampaign?.id === campaign.id ? 'active' : ''} key={campaign.id} type="button" onClick={() => setSelectedCampaignId(campaign.id)}>
-                    <strong>{campaign.name}</strong>
-                    <small>{copy.devLetter.batch.campaignStatus[campaign.status]}</small>
-                  </button>
-                )) : null}
-              </div> : null}
-
-              {selectedCampaign ? (
-                <>
-                  <div className="campaign-followup-guard">
-                    <div className="campaign-followup-heading">
-                      <div>
-                        <h4>{copy.devLetter.batch.followUpTitle}</h4>
-                        <p>{copy.devLetter.batch.followUpSummary(campaignFollowUpStats.scheduled, campaignFollowUpStats.ready, campaignFollowUpStats.stopped)}</p>
-                      </div>
-                      <div className="campaign-followup-actions">
-                        <button className="soft-button compact" type="button" disabled={busy === 'followUpsSchedule' || !selectedCampaign.stats.sent} onClick={scheduleCampaignFollowUps}>
-                          <ListChecks size={14} />
-                          {copy.devLetter.batch.actions.scheduleFollowUps}
-                        </button>
-                        <button className="soft-button compact" type="button" disabled={busy === 'followUpsTick'} onClick={runFollowUpTick}>
-                          <RefreshCw size={14} />
-                          {copy.devLetter.batch.actions.checkFollowUps}
-                        </button>
-                        <button className="soft-button compact" type="button" disabled={busy === 'inboxCheck'} onClick={checkCampaignInbox}>
-                          <Mail size={14} />
-                          {copy.devLetter.batch.actions.checkInbox}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="campaign-followup-metrics">
-                      <span><strong>{campaignFollowUpStats.scheduled}</strong>{copy.devLetter.batch.followUpMetrics.scheduled}</span>
-                      <span><strong>{campaignFollowUpStats.ready}</strong>{copy.devLetter.batch.followUpMetrics.ready}</span>
-                      <span><strong>{campaignFollowUpStats.sent}</strong>{copy.devLetter.batch.followUpMetrics.sent}</span>
-                      <span><strong>{campaignFollowUpStats.stopped}</strong>{copy.devLetter.batch.followUpMetrics.stopped}</span>
-                    </div>
-                    <div className="campaign-followup-list">
-                      {nextFollowUps.length ? nextFollowUps.map((job) => (
-                        <span className={`campaign-followup-chip ${job.status}`} key={job.id}>
-                          {copy.devLetter.batch.followUpNext(job.step, job.companyName, new Date(job.sendAt).toLocaleDateString())}
-                          <em>{copy.devLetter.batch.followUpStatus[job.status]}</em>
-                        </span>
-                      )) : (
-                        <span className="campaign-followup-empty">{copy.devLetter.batch.followUpEmpty}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="campaign-recipient-grid">
-                    <div className="campaign-recipient-list">
-                      {campaignRecipients.map((recipient) => (
-                        <button className={`campaign-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`} key={recipient.id} type="button" onClick={() => setSelectedCampaignRecipientId(recipient.id)}>
-                          <span className={`status-dot ${recipient.status}`} />
-                          <span>
-                            <strong>{recipient.companyName}</strong>
-                            <small>{copy.devLetter.batch.recipientStatus[recipient.status]} · {recipient.email}</small>
-                            {recipient.draft?.qualityReview ? <small>{copy.devLetter.quality.score(recipient.draft.qualityReview.score)}</small> : null}
-                            {recipient.researchSummary ? (
-                              <em>{copy.devLetter.batch.researchScore(recipient.researchSummary.confidenceScore, recipient.researchSummary.primaryAngle || recipient.researchSummary.likelyNeed || recipient.researchSummary.buyerType)}</em>
-                            ) : null}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="campaign-draft-review">
-                      {selectedCampaignRecipient?.draft ? (
-                        <>
-                          <div className="campaign-review-heading">
-                            <span>{copy.devLetter.batch.reviewing}</span>
-                            <strong>{selectedCampaignRecipient.companyName}</strong>
-                          </div>
-                          <Field label={copy.devLetter.fields.subject}><input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></Field>
-                          <Field label={copy.devLetter.fields.body}><textarea className="campaign-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></Field>
-                          <QualityReviewCard review={campaignQualityReview} stale={campaignDraftChanged} copy={copy} />
-                          <div className="outreach-actions">
-                            <button className="soft-button compact" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>
-                              <ListChecks size={14} />
-                              {busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}
-                            </button>
-                            <button className="soft-button compact" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>
-                              <RefreshCw size={14} />
-                              {busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}
-                            </button>
-                            <button className="primary-button compact" type="button" disabled={busy === 'campaignApprove' || !campaignQualityPassed} onClick={approveCampaignRecipient}>
-                              <CheckCircle2 size={14} />
-                              {copy.devLetter.batch.actions.approve}
-                            </button>
-                            <button className="soft-button compact" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>
-                              <X size={14} />
-                              {copy.devLetter.batch.actions.skip}
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="empty-state">{copy.devLetter.batch.emptyReview}</div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="empty-state">{copy.devLetter.batch.noCampaign}</div>
-              )}
-
-              {selectedCampaign && (selectedCampaign.status === 'sending' || selectedCampaign.status === 'paused') ? (
-                <div className="campaign-control-row">
-                  <button className="soft-button compact" type="button" disabled={busy === 'campaignPause' || selectedCampaign.status !== 'sending'} onClick={pauseCampaign}>
-                    <PauseCircle size={14} />
-                    {copy.devLetter.batch.actions.pause}
-                  </button>
-                  <button className="soft-button compact" type="button" disabled={busy === 'campaignResume' || selectedCampaign.status !== 'paused'} onClick={resumeCampaign}>
-                    <Play size={14} />
-                    {copy.devLetter.batch.actions.resume}
-                  </button>
-                  <button className="soft-button compact danger" type="button" disabled={busy === 'campaignStop'} onClick={stopCampaign}>
-                    <Trash2 size={14} />
-                    {copy.devLetter.batch.actions.stop}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : (
-        <>
-      <section className="quiet-panel outreach-quick-panel">
-        <div className="panel-heading-row">
+      <main className="letter-main">
+        <header className="letter-page-header">
           <div>
-            <span>{copy.devLetter.steps.auto}</span>
-            <h3>{copy.devLetter.quickTitle}</h3>
-            <p>{copy.devLetter.quickSubtitle}</p>
+            <h1>{letterTitle}</h1>
+            <p>{letterSubtitle}</p>
           </div>
-          <button className="primary-button compact" type="button" disabled={!companyReady || !quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
-            <Mail size={14} />
-            {busy === 'auto' ? copy.devLetter.actions.researching : copy.devLetter.actions.researchGenerate}
-          </button>
-        </div>
-        <div className="outreach-quick-grid">
-          <Field label={copy.devLetter.fields.website}><input ref={quickWebsiteRef} value={quickWebsite} onChange={(event) => setQuickWebsite(event.target.value)} placeholder={copy.devLetter.placeholders.website} /></Field>
-          <Field label={copy.devLetter.fields.email}><input value={quickEmail} onChange={(event) => setQuickEmail(event.target.value)} placeholder={copy.devLetter.placeholders.email} /></Field>
-        </div>
-      </section>
-
-      {workflow ? (
-        <section className="quiet-panel outreach-workflow-panel">
-          <div className="panel-heading-row">
-            <div>
-              <span>{copy.devLetter.results.title}</span>
-              <h3>{workflow.research.companyName}</h3>
-              <p>{copy.devLetter.results.subtitle}</p>
-            </div>
-            <span className="status-pill connected">{workflow.followUps.length + 1} {copy.devLetter.results.emailSequence}</span>
-          </div>
-
-          <div className="outreach-result-grid">
-            <article className="outreach-insight-card">
-              <span>{copy.devLetter.results.customerResearch}</span>
-              <strong>{workflow.research.title || workflow.research.industry || workflow.research.companyName}</strong>
-              <p>{workflow.research.inferredNeed || workflow.research.description || copy.devLetter.results.noDetails}</p>
-              {workflow.research.fetchedUrls[0] ? <small>{workflow.research.fetchedUrls[0]}</small> : null}
-            </article>
-            <article className="outreach-insight-card">
-              <span>{copy.devLetter.results.icp}</span>
-              {workflow.icps.slice(0, 2).map((icp) => (
-                <div className="outreach-mini-block" key={icp.id}>
-                  <strong>{icp.name}</strong>
-                  <p>{icp.painPoints[0] || icp.salesAngles[0] || icp.industrySegment || copy.devLetter.results.noDetails}</p>
-                </div>
-              ))}
-            </article>
-            <article className="outreach-insight-card">
-              <span>{copy.devLetter.results.usp}</span>
-              {workflow.usps.slice(0, 3).map((usp) => (
-                <div className="outreach-mini-block" key={usp.id}>
-                  <strong>{usp.headline}</strong>
-                  <p>{usp.buyerAngle || usp.proof || copy.devLetter.results.noDetails}</p>
-                </div>
-              ))}
-            </article>
-          </div>
-
-          <div className="outreach-email-sequence" aria-label={copy.devLetter.results.emailSequence}>
-            {workflowEmails.map((email) => (
-              <button
-                className={`outreach-email-row ${selectedWorkflowEmail?.id === email.id ? 'active' : ''}`}
-                type="button"
-                key={email.id}
-                onClick={() => selectWorkflowEmail(email)}
-              >
-                <span>{email.step === 0 ? copy.devLetter.results.firstEmail : copy.devLetter.results.followUp(email.step)}</span>
-                <strong>{email.subject}</strong>
-                <small>{email.step === 0 ? copy.devLetter.results.day0 : copy.devLetter.results.daysLater(email.delayDays)} · {email.strategy} · {copy.devLetter.results.status[email.status]}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <div className="outreach-grid">
-        <section className="quiet-panel outreach-panel">
-          <div className="panel-heading-row">
-            <div>
-              <span>{copy.devLetter.steps.draft}</span>
-              <h3>{selectedWorkflowEmail ? selectedWorkflowEmail.strategy : copy.devLetter.fields.body}</h3>
-            </div>
-            <button className="soft-button compact" type="button" disabled={!companyReady || busy === 'generate'} onClick={generateDraft}>
-              {busy === 'generate' ? copy.devLetter.actions.generating : copy.devLetter.actions.generate}
+          {letterView === 'dashboard' ? (
+            <button className="letter-primary compact" type="button" onClick={() => setLetterView('automation')}>
+              前往自动化 <ChevronRight size={16} />
             </button>
-          </div>
-          <div className="lead-form-grid">
-            <Field label={copy.devLetter.fields.language}><input value={language} onChange={(event) => { languageEditedRef.current = true; setLanguage(event.target.value) }} /></Field>
-            <Field label={copy.devLetter.fields.tone}><input value={tone} onChange={(event) => { toneEditedRef.current = true; setTone(event.target.value) }} /></Field>
-          </div>
-          <Field label={copy.devLetter.fields.subject}><input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></Field>
-          <Field label={copy.devLetter.fields.body}><textarea ref={draftBodyRef} className="outreach-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></Field>
-          <QualityReviewCard review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
-          <div className="outreach-actions">
-            {activeDraftStatus ? <span className={`status-pill ${activeDraftStatus}`}>{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
-            <button className="soft-button compact" type="button" disabled={!activeDraftId} onClick={saveDraftEdits}>{copy.devLetter.actions.saveDraft}</button>
-            <button className="soft-button compact" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>
-              <ListChecks size={14} />
-              {busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}
-            </button>
-            <button className="soft-button compact" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>
-              <RefreshCw size={14} />
-              {busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}
-            </button>
-            <button className="soft-button compact" type="button" disabled={!draftSubject || !draftBody} onClick={copyDraft}>
-              <Copy size={14} />
-              {copy.devLetter.actions.copyDraft}
-            </button>
-          </div>
-        </section>
-
-        <section className="quiet-panel outreach-send-panel">
-          <div className="panel-heading-row">
-            <div>
-              <span>{copy.devLetter.steps.send}</span>
-              <h3>{copy.devLetter.mailSetup.title}</h3>
-              <p>{copy.devLetter.mailSetup.subtitle}</p>
-            </div>
-            <div className="outreach-actions">
-              <button className="primary-button compact" type="button" disabled={!canSendSingleDraft} onClick={sendDraft}>
-                <Send size={14} />
-                {busy === 'send' ? copy.devLetter.actions.sending : copy.devLetter.actions.send}
-              </button>
-            </div>
-          </div>
-          {singleSendBlocker ? <p className="mail-test-hint send-blocker">{singleSendBlocker}</p> : null}
-          <div className="mail-provider-grid">
-            {senderProviderPresets.map((provider) => (
-              <button
-                className={`mail-provider-card ${senderProviderId === provider.id ? 'active' : ''}`}
-                type="button"
-                key={provider.id}
-                onClick={() => chooseSenderProvider(provider.id)}
-              >
-                <Mail size={15} />
-                <strong>{provider.label}</strong>
-              </button>
-            ))}
-          </div>
-          <div className="mail-simple-grid">
-            <Field label={copy.devLetter.fields.senderEmail}>
-              <input ref={senderEmailRef} value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" />
-            </Field>
-            <Field label={copy.devLetter.fields.password}>
-              <input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || copy.devLetter.placeholders.password : copy.devLetter.placeholders.password} />
-            </Field>
-          </div>
-          <div className="mail-auth-assistant">
-            <div className="mail-auth-copy">
-              <KeyRound size={15} />
-              <span>{senderAuthGuide.url ? copy.devLetter.mailSetup.authHelperHint(senderProvider.label, senderAuthGuide.smtpLabel) : copy.devLetter.mailSetup.customAuthHint}</span>
-            </div>
-            {senderAuthGuide.url ? (
-              <a className="soft-button compact mail-auth-link" href={senderAuthGuide.url} target="_blank" rel="noreferrer">
-                <ExternalLink size={13} />
-                {copy.devLetter.actions.getAuthCode}
-              </a>
-            ) : null}
-          </div>
-          <div className="mail-action-row">
-            <button className="soft-button compact" type="button" disabled={busy === 'sender'} onClick={saveSender}>{copy.devLetter.actions.saveSender}</button>
-            <button className="soft-button compact" type="button" disabled={busy === 'testSender'} onClick={testSender}>{busy === 'testSender' ? copy.devLetter.actions.testingSender : copy.devLetter.actions.testSender}</button>
-            <button className="soft-button compact" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>
-              {busy === 'testEmail' ? copy.devLetter.actions.sendingTestEmail : copy.devLetter.actions.sendTestEmail}
-            </button>
-            <button className="primary-button compact" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>
-              {copy.devLetter.actions.confirmDelivery}
-            </button>
-          </div>
-          <p className="mail-test-hint">{copy.devLetter.mailSetup.testEmailHint}</p>
-          {selectedSender?.lastError ? <div className="inline-alert compact">{selectedSender.lastError}</div> : null}
-          {senderDeliveryReady ? <div className="status-hint success"><CheckCircle2 size={15} />{copy.devLetter.mailSetup.ready}</div> : null}
-          <details className="mail-advanced-details">
-            <summary>{copy.devLetter.mailSetup.advanced}</summary>
-            <div className="sender-form-grid">
-              <Field label={copy.devLetter.fields.senderLabel}><input value={senderDraft.label} onChange={(event) => updateSender('label', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.fromName}><input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.host}><input value={senderDraft.host} onChange={(event) => {
-                updateSender('host', event.target.value)
-                setSenderProviderId(senderProviderFromHost(event.target.value))
-              }} /></Field>
-              <Field label={copy.devLetter.fields.port}><input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.username}><input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.imapHost}><input value={senderDraft.imapHost} onChange={(event) => updateSender('imapHost', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.imapPort}><input value={senderDraft.imapPort} onChange={(event) => updateSender('imapPort', event.target.value)} /></Field>
-              <Field label={copy.devLetter.fields.imapUsername}><input value={senderDraft.imapUsername} onChange={(event) => updateSender('imapUsername', event.target.value)} /></Field>
-              <label className="check-row outreach-secure-row">
-                <input type="checkbox" checked={senderDraft.secure} onChange={(event) => updateSender('secure', event.target.checked)} />
-                {copy.devLetter.fields.secure}
-              </label>
-              <label className="check-row outreach-secure-row">
-                <input type="checkbox" checked={senderDraft.imapSecure} onChange={(event) => updateSender('imapSecure', event.target.checked)} />
-                {copy.devLetter.fields.imapSecure}
-              </label>
-            </div>
-          </details>
-          <div className="outreach-actions">
-            {senderAccounts.map((account) => (
-              <button className={`sender-chip ${selectedSenderId === account.id ? 'active' : ''}`} type="button" key={account.id} onClick={() => setSelectedSenderId(account.id)}>
-                {account.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <details className="outreach-advanced-panel" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
-        <summary>{copy.devLetter.actions.advancedLead}</summary>
-        <section className="quiet-panel outreach-panel">
-          <div className="panel-heading-row">
-            <div>
-              <span>{copy.devLetter.steps.leads}</span>
-              <h3>{copy.devLetter.fields.companyName}</h3>
-            </div>
-            <button className="soft-button compact" type="button" onClick={() => setCsvOpen(!csvOpen)}>
-              <Upload size={14} />
-              {copy.devLetter.actions.importCsv}
-            </button>
-          </div>
-
-          {csvOpen ? (
-            <div className="csv-import-box">
-              <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} placeholder={copy.devLetter.placeholders.csv} rows={4} />
-              <button className="primary-button compact" type="button" disabled={busy === 'csv'} onClick={importCsv}>{busy === 'csv' ? copy.common.saving : copy.devLetter.actions.importCsv}</button>
-            </div>
           ) : null}
+        </header>
 
-          <div className="lead-form-grid">
-            <Field label={copy.devLetter.fields.companyName}><input value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.email}><input value={leadDraft.email} onChange={(event) => updateLead('email', event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.contactName}><input value={leadDraft.contactName} onChange={(event) => updateLead('contactName', event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.contactTitle}><input value={leadDraft.contactTitle} onChange={(event) => updateLead('contactTitle', event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.website}><input value={leadDraft.website} onChange={(event) => updateLead('website', event.target.value)} /></Field>
-            <Field label={copy.devLetter.fields.country}><input value={leadDraft.country} onChange={(event) => updateLead('country', event.target.value)} /></Field>
+        {error ? <div className="letter-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
+        {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+
+        {letterView === 'dashboard' ? (
+          <div className="letter-view">
+            <section className="letter-stats-grid" aria-label="客户状态统计">
+              {[
+                { label: '总客户', value: letterStats.total, icon: Users, tone: 'orange' },
+                { label: '待生成', value: letterStats.new, icon: Zap, tone: 'blue' },
+                { label: '待发送', value: letterStats.drafted, icon: Send, tone: 'amber' },
+                { label: '等待回复', value: letterStats.waiting, icon: Clock, tone: 'violet' },
+                { label: '已回复', value: letterStats.replied, icon: CheckCircle2, tone: 'green' },
+              ].map((stat) => {
+                const Icon = stat.icon
+                return (
+                  <button className="letter-stat-card" type="button" key={stat.label} onClick={() => setLetterView(stat.label === '总客户' ? 'leads' : 'automation')}>
+                    <span>{stat.label}</span>
+                    <strong>{stat.value}</strong>
+                    <i className={stat.tone}><Icon size={20} /></i>
+                  </button>
+                )
+              })}
+            </section>
+
+            <section className="letter-two-column">
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Globe2 size={18} /> 新增客户</h2>
+                    <p>输入客户网站和邮箱，AI 会自动分析并生成首封开发信。</p>
+                  </div>
+                </div>
+                <div className="letter-form-grid">
+                  <label>客户邮箱<input value={quickEmail} onChange={(event) => setQuickEmail(event.target.value)} placeholder="buyer@company.com" /></label>
+                  <label>客户网站<input value={quickWebsite} onChange={(event) => setQuickWebsite(event.target.value)} placeholder="https://company.com" /></label>
+                </div>
+                <button className="letter-primary full" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
+                  {busy === 'auto' ? '正在分析并生成...' : '开始分析并生成邮件'} <ChevronRight size={16} />
+                </button>
+              </div>
+
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Upload size={18} /> 批量导入</h2>
+                    <p>支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。</p>
+                  </div>
+                </div>
+                <label className="letter-drop-zone">
+                  <FileText size={24} />
+                  <span>点击选择 Excel / CSV 文件</span>
+                  <small>支持 .xlsx、.xls、.csv、.txt</small>
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
+                </label>
+                <textarea className="letter-import-textarea" value={bulkImportText} onChange={(event) => setBulkImportText(event.target.value)} placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com" />
+                <button className="letter-secondary full" type="button" disabled={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
+                  批量导入客户
+                </button>
+              </div>
+            </section>
+
+            {(letterStats.new > 0 || letterStats.drafted > 0) ? (
+              <section className="letter-automation-banner">
+                <div>
+                  <Zap size={18} />
+                  <div>
+                    <strong>自动化中心就绪</strong>
+                    <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setLetterView('automation')}>前往自动化 <ChevronRight size={16} /></button>
+              </section>
+            ) : null}
           </div>
-          <Field label={copy.devLetter.fields.need}><textarea className="short-textarea" value={leadDraft.need} onChange={(event) => updateLead('need', event.target.value)} placeholder={copy.devLetter.placeholders.need} /></Field>
-          <Field label={copy.devLetter.fields.notes}><textarea className="short-textarea" value={leadDraft.notes} onChange={(event) => updateLead('notes', event.target.value)} placeholder={copy.devLetter.placeholders.notes} /></Field>
-          <button className="primary-button icon-label" type="button" disabled={busy === 'lead'} onClick={saveLead}>
-            <CheckCircle2 size={15} />
-            {copy.devLetter.actions.saveLead}
-          </button>
+        ) : null}
 
-          <div className="lead-list-mini">
-            {leads.length ? leads.slice(0, 8).map((lead) => (
-              <button className={`lead-mini-row ${selectedLeadId === lead.id ? 'active' : ''}`} type="button" key={lead.id} onClick={() => setSelectedLeadId(lead.id)}>
-                <strong>{lead.companyName}</strong>
-                <span>{lead.email || lead.website || lead.country || '-'}</span>
-              </button>
-            )) : <div className="empty-state">{copy.devLetter.status.noLeads}</div>}
+        {letterView === 'leads' ? (
+          <div className="letter-view">
+            <section className="letter-toolbar">
+              <label className="letter-search"><Search size={16} /><input value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="搜索公司、邮箱、联系人..." /></label>
+              <div className="letter-filter-row">
+                {letterLeadFilters.map((filter) => (
+                  <button key={filter.id} className={leadFilter === filter.id ? 'active' : ''} type="button" onClick={() => setLeadFilter(filter.id)}>
+                    {filter.label}
+                    <span>{filter.id === 'all' ? leads.length : leads.filter((lead) => leadMatchesLetterFilter(lead, filter.id)).length}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {selectedLetterLeadIds.length ? (
+              <section className="letter-selection-bar">
+                <strong>已选择 {selectedLetterLeadIds.length} 个客户</strong>
+                <button type="button" onClick={() => setSelectedLetterLeadIds(filteredLetterLeads.map((lead) => lead.id))}>全选当前</button>
+                <button type="button" onClick={() => setSelectedLetterLeadIds([])}>取消选择</button>
+                <button className="danger" type="button" disabled={busy === 'deleteLeads'} onClick={deleteSelectedLetterLeads}>删除所选</button>
+              </section>
+            ) : null}
+
+            <section className="letter-leads-layout">
+              <div className="letter-lead-list">
+                <div className="letter-result-count">{filteredLetterLeads.length} 条结果</div>
+                {filteredLetterLeads.length ? filteredLetterLeads.map((lead) => (
+                  <article className={`letter-lead-row ${selectedLeadId === lead.id ? 'active' : ''}`} key={lead.id} onClick={() => { setSelectedLeadId(lead.id); setLeadDraft(leadFormFromLead(lead)) }}>
+                    <input type="checkbox" checked={selectedLetterLeadIds.includes(lead.id)} onChange={() => toggleLetterLeadSelection(lead.id)} onClick={(event) => event.stopPropagation()} />
+                    <div className="letter-lead-avatar"><Building2 size={18} /></div>
+                    <div className="letter-lead-main">
+                      <strong>{lead.companyName || lead.website || lead.email}</strong>
+                      <span>{lead.email || '未填写邮箱'} · {lead.website || '未填写网站'}</span>
+                    </div>
+                    <div className="letter-lead-status">
+                      <span className={`letter-status-dot ${lead.statusColor}`} />
+                      <em>{letterLeadStatusLabel(lead)}</em>
+                      <small>{letterStateLabels[lead.currentState] ?? lead.currentState}</small>
+                    </div>
+                  </article>
+                )) : (
+                  <div className="letter-empty">
+                    <Globe2 size={32} />
+                    <strong>暂无客户数据</strong>
+                    <span>在工作台添加客户网站和邮箱开始分析。</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="letter-panel letter-detail-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2>{selectedLead ? '客户详情' : '新增客户'}</h2>
+                    <p>保存后可以生成开发信，也可以加入批量 campaign。</p>
+                  </div>
+                  {selectedLead ? <span className="letter-badge">{letterLeadStatusLabel(selectedLead)}</span> : null}
+                </div>
+                <div className="letter-form-grid">
+                  <label>公司名称<input value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.target.value)} /></label>
+                  <label>客户邮箱<input value={leadDraft.email} onChange={(event) => updateLead('email', event.target.value)} /></label>
+                  <label>联系人<input value={leadDraft.contactName} onChange={(event) => updateLead('contactName', event.target.value)} /></label>
+                  <label>职位<input value={leadDraft.contactTitle} onChange={(event) => updateLead('contactTitle', event.target.value)} /></label>
+                  <label>网站<input value={leadDraft.website} onChange={(event) => updateLead('website', event.target.value)} /></label>
+                  <label>国家/地区<input value={leadDraft.country} onChange={(event) => updateLead('country', event.target.value)} /></label>
+                </div>
+                <label className="letter-field">客户需求<textarea value={leadDraft.need} onChange={(event) => updateLead('need', event.target.value)} placeholder="客户可能在找什么？" /></label>
+                <label className="letter-field">备注<textarea value={leadDraft.notes} onChange={(event) => updateLead('notes', event.target.value)} /></label>
+                <div className="letter-action-row">
+                  <button className="letter-secondary" type="button" onClick={() => { setSelectedLeadId(''); setLeadDraft(emptyLeadDraft()) }}>新建</button>
+                  <button className="letter-primary" type="button" disabled={busy === 'lead'} onClick={saveLead}>保存客户</button>
+                  <button className="letter-secondary" type="button" disabled={!selectedLead || busy === 'generate'} onClick={generateDraft}>生成草稿</button>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
-      </details>
-        </>
-      )}
+        ) : null}
 
-      {notice ? <div className="status-hint success"><CheckCircle2 size={15} />{notice}</div> : null}
-      {error ? <div className="status-hint error"><AlertCircle size={15} />{error}</div> : null}
+        {letterView === 'automation' ? (
+          <div className="letter-view">
+            <section className="letter-stats-grid compact">
+              {[
+                { label: '待生成', value: letterStats.new, icon: Users, tone: 'blue' },
+                { label: '待发送', value: letterStats.drafted, icon: Mail, tone: 'amber' },
+                { label: 'Campaign 已发送', value: selectedCampaign?.stats.sent ?? 0, icon: Send, tone: 'green' },
+                { label: '需跟进', value: campaignFollowUpStats.ready + campaignFollowUpStats.scheduled, icon: Clock, tone: 'rose' },
+                { label: '已回复', value: selectedCampaign?.stats.replied ?? letterStats.replied, icon: CheckCircle2, tone: 'violet' },
+              ].map((stat) => {
+                const Icon = stat.icon
+                return <div className="letter-stat-card" key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong><i className={stat.tone}><Icon size={20} /></i></div>
+              })}
+            </section>
+
+            <section className="letter-two-column">
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Zap size={18} /> 批量生成</h2>
+                    <p>选择客户后创建 campaign，再让 AI 批量研究和生成邮件。</p>
+                  </div>
+                </div>
+                <div className="letter-action-row wrap">
+                  <button type="button" className="letter-secondary" onClick={() => setSelectedCampaignLeadIds(leads.filter((lead) => leadMatchesLetterFilter(lead, 'new')).map((lead) => lead.id))}>选择待生成客户 ({letterStats.new})</button>
+                  <button type="button" className="letter-secondary" onClick={() => setSelectedCampaignLeadIds(leads.map((lead) => lead.id))}>选择全部客户</button>
+                </div>
+                <label className="letter-field">Campaign 名称<input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} /></label>
+                <div className="letter-action-row">
+                  <button className="letter-primary" type="button" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} onClick={createCampaign}>创建批量任务 ({selectedCampaignLeadIds.length})</button>
+                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'campaignGenerate'} onClick={generateCampaign}>AI 批量生成</button>
+                </div>
+              </div>
+
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Send size={18} /> 发送和跟进</h2>
+                    <p>发送前会检查发件邮箱、草稿质量和用户确认。</p>
+                  </div>
+                  {selectedCampaign ? <span className="letter-badge">{selectedCampaign.status}</span> : null}
+                </div>
+                {selectedCampaign ? (
+                  <div className="letter-campaign-summary">
+                    <strong>{selectedCampaign.name}</strong>
+                    <span>{selectedCampaign.stats.generated} 待审核 · {selectedCampaign.stats.approved} 可发送 · {selectedCampaign.stats.sent} 已发送</span>
+                  </div>
+                ) : <div className="letter-empty small">还没有 campaign。先选择客户创建批量任务。</div>}
+                <div className="letter-action-row wrap">
+                  <button className="letter-primary" type="button" disabled={!selectedCampaign || busy === 'campaignSend'} onClick={startCampaign}>一键发送</button>
+                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</button>
+                  <button className="letter-secondary" type="button" disabled={busy === 'followUpsTick'} onClick={runFollowUpTick}>检查跟进</button>
+                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'inboxCheck'} onClick={checkCampaignInbox}>检查回复</button>
+                </div>
+                {nextFollowUps.length ? (
+                  <div className="letter-followup-list">
+                    {nextFollowUps.map((job) => <span key={job.id}>{job.companyName} · {job.status} · {new Date(job.sendAt).toLocaleString()}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {letterView === 'profile' ? (
+          <div className="letter-view">
+            <section className="letter-panel">
+              <div className="letter-panel-heading">
+                <div>
+                  <h2><UserRound size={18} /> 发件人资料</h2>
+                  <p>Hermills 会用这些公司资料写开发信、研究客户和回复买家。</p>
+                </div>
+                <button className="letter-primary compact" type="button" onClick={onOpenCompanyKnowledge}>编辑公司资料</button>
+              </div>
+              <div className="letter-profile-grid">
+                <div><span>公司名称</span><strong>{companyProfile.name || '还没填写'}</strong></div>
+                <div><span>公司官网</span><strong>{companyProfile.website || '还没填写'}</strong></div>
+                <div><span>主营产品</span><strong>{companyProfile.mainProducts?.join(', ') || '还没填写'}</strong></div>
+                <div><span>认证资质</span><strong>{companyProfile.certifications?.join(', ') || '还没填写'}</strong></div>
+                <div><span>公司资料</span><strong>{companyMaterials.length} 个文件</strong></div>
+                <div><span>状态</span><strong>{companyReady ? '已准备好' : '需要补充资料'}</strong></div>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {letterView === 'mail' ? (
+          <div className="letter-view">
+            <section className="letter-panel">
+              <div className="letter-panel-heading">
+                <div>
+                  <h2><Settings size={18} /> 邮箱设置</h2>
+                  <p>保存 SMTP / IMAP 后先测试，再确认收到测试邮件。</p>
+                </div>
+                {senderDeliveryReady ? <span className="letter-badge success">已确认</span> : <span className="letter-badge">待确认</span>}
+              </div>
+              <div className="letter-provider-grid">
+                {senderProviderPresets.map((preset) => (
+                  <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
+                    <Mail size={15} /> {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="letter-form-grid">
+                <label>发件邮箱<input value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" /></label>
+                <label>SMTP 密码<input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || '邮箱授权码或 SMTP 密码' : '邮箱授权码或 SMTP 密码'} /></label>
+                <label>显示名称<input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></label>
+                <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
+                <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
+                <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
+              </div>
+              <div className="letter-action-row wrap">
+                <button className="letter-primary" type="button" disabled={busy === 'sender'} onClick={saveSender}>保存邮箱</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>测试连接</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>发送测试邮件</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>我收到了</button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </main>
     </div>
   )
 }
 
-function QualityReviewCard({ review, stale, copy }: { review?: OutreachEmailQualityReview; stale?: boolean; copy: UiCopy }) {
-  if (!review) {
-    return (
-      <div className="quality-review-card empty">
-        <div className="quality-review-top">
-          <strong>{copy.devLetter.quality.title}</strong>
-          <span>{copy.devLetter.quality.notReviewed}</span>
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className={`quality-review-card ${review.level} ${stale ? 'stale' : ''}`}>
-      <div className="quality-review-top">
-        <strong>{copy.devLetter.quality.title}</strong>
-        <span>{stale ? copy.devLetter.quality.stale : copy.devLetter.quality.score(review.score)}</span>
-      </div>
-      <div className="quality-review-checks">
-        {review.checks.map((check) => (
-          <span className={check.passed ? 'passed' : 'failed'} key={check.id}>
-            {check.passed ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
-            {copy.devLetter.quality.checks[check.id]}
-          </span>
-        ))}
-      </div>
-      {review.issues.length ? (
-        <p>{review.issues[0]}</p>
-      ) : (
-        <p>{review.summary}</p>
-      )}
-    </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label>
-      <span>{label}</span>
-      {children}
-    </label>
-  )
-}
 
 function emptyLeadDraft(): LeadFormDraft {
   return { companyName: '', website: '', country: '', industry: '', contactName: '', contactTitle: '', email: '', need: '', notes: '', tags: '' }

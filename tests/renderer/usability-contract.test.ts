@@ -201,22 +201,38 @@ describe("renderer usability contract", () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
     expect(appSource).toContain("singleSendBlocker");
-    expect(appSource).toContain('className="mail-test-hint send-blocker"');
+    expect(appSource).toContain('className="letter-app-shell"');
+    expect(appSource).not.toContain('className="outreach-workspace"');
     expect(stylesSource).toMatch(/\.hermills-menu-sidebar,\s*\.hermills-chat-panel,\s*\.hermills-inspector\s*\{[\s\S]*?min-width:\s*0/);
     expect(stylesSource).toMatch(/\.hermills-chat-panel\s*\{[\s\S]*?container-name:\s*hermills-workspace/);
     expect(stylesSource).toMatch(/\.hermills-chat-panel\s*\{[\s\S]*?container-type:\s*inline-size/);
-    expect(stylesSource).toMatch(/\.outreach-workspace\s*\{[\s\S]*?max-width:\s*100%/);
-    expect(stylesSource).toMatch(/\.outreach-workspace\s*\{[\s\S]*?overflow-x:\s*hidden/);
-    expect(stylesSource).toMatch(/\.outreach-mode-switch\s*\{[\s\S]*?flex-wrap:\s*wrap/);
-    expect(stylesSource).toMatch(/\.outreach-grid\s*\{[\s\S]*?min-width:\s*0/);
-    expect(stylesSource).toMatch(/\.outreach-panel,\s*\.outreach-quick-panel,\s*\.outreach-workflow-panel,\s*\.outreach-send-panel\s*\{[\s\S]*?overflow:\s*hidden/);
-    expect(stylesSource).toMatch(/\.mail-auth-assistant\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\) auto/);
-    expect(stylesSource).toMatch(/\.mail-auth-copy span\s*\{[\s\S]*?white-space:\s*normal/);
-    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.outreach-grid,[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.mail-provider-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-    expect(stylesSource).toMatch(/@container hermills-workspace \(max-width:\s*980px\)[\s\S]*?\.key-nudge,[\s\S]*?\.quick-provider-fields,[\s\S]*?\.quick-provider-details\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.letter-app-shell\s*\{[\s\S]*?max-width:\s*100%/);
+    expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow-x:\s*hidden/);
+    expect(stylesSource).toMatch(/\.letter-toolbar\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+    expect(stylesSource).toMatch(/\.letter-filter-row\s*\{[\s\S]*?flex-wrap:\s*wrap/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-leads-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-toolbar\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-filter-row\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(92px,\s*1fr\)\)/);
     expect(stylesSource).toMatch(/\.hermills-app-shell > \.sources-drawer,[\s\S]*?\.hermills-app-shell > \.assistant-drawer\s*\{[\s\S]*?position:\s*fixed/);
     expect(stylesSource).toMatch(/\.hermills-app-shell\.sources-visible > \.sources-drawer\.open,[\s\S]*?\.hermills-app-shell > \.assistant-drawer\.open\s*\{[\s\S]*?display:\s*grid/);
+  });
+
+  it("keeps the Letter App outreach workspace readable and scrollable", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain('className="letter-app-shell"');
+    expect(appSource).toContain("type LetterOutreachView");
+    expect(appSource).toContain("工作台");
+    expect(appSource).toContain("客户管理");
+    expect(appSource).toContain("批量导入");
+    expect(appSource).toContain("importLetterFile");
+    expect(appSource).toContain("deleteOutreachLeads");
+    expect(stylesSource).toMatch(/\.letter-app-shell\s*\{[\s\S]*?overflow:\s*hidden/);
+    expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow:\s*auto/);
+    expect(stylesSource).toMatch(/\.letter-nav button,[\s\S]*?\.letter-primary,[\s\S]*?\.letter-secondary,[\s\S]*?min-height:\s*36px/);
+    expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?color:\s*#111827/);
+    expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   });
 
   it("keeps onboarding actions reachable by scrolling the content region instead of the whole card", async () => {

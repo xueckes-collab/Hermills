@@ -381,6 +381,17 @@ describe("Hermills local API", () => {
     expect(importResponse.statusCode).toBe(200);
     expect(importResponse.json().imported).toHaveLength(1);
     expect(importResponse.json().skipped).toHaveLength(1);
+    expect(importResponse.json().imported[0]).toMatchObject({
+      status: "new",
+      currentState: "input_ready",
+      replyStatus: "not_checked",
+      statusColor: "slate",
+      currentRound: 0
+    });
+
+    const initialStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
+    expect(initialStatsResponse.statusCode).toBe(200);
+    expect(initialStatsResponse.json()).toMatchObject({ total: 1, new: 1, drafted: 0, waiting: 0, replied: 0 });
 
     const leadId = importResponse.json().imported[0].id;
     const draftResponse = await server.inject({
@@ -400,6 +411,10 @@ describe("Hermills local API", () => {
     expect(runtimeContent).toContain("Bright LLC");
     expect(runtimeContent).toContain("Eckes Export");
     expect(runtimeContent).toContain("Return JSON only");
+
+    const draftedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
+    expect(draftedStatsResponse.statusCode).toBe(200);
+    expect(draftedStatsResponse.json()).toMatchObject({ total: 1, new: 0, drafted: 1, waiting: 0 });
 
     const senderResponse = await server.inject({
       method: "POST",
@@ -427,6 +442,17 @@ describe("Hermills local API", () => {
     const confirmResponse = await server.inject({ method: "POST", url: `/api/outreach/sender-accounts/${senderResponse.json().id}/confirm-delivery`, headers });
     expect(confirmResponse.statusCode, confirmResponse.body).toBe(200);
     expect(confirmResponse.json().sender.deliveryConfirmedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const deleteManyResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/delete-many",
+      headers,
+      payload: { ids: [leadId] }
+    });
+    expect(deleteManyResponse.statusCode).toBe(200);
+    expect(deleteManyResponse.json()).toEqual({ deleted: 1, missing: [] });
+    const deletedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
+    expect(deletedStatsResponse.json()).toMatchObject({ total: 0 });
   });
 
   it("refuses outreach generation until company profile has the required basics", async () => {
