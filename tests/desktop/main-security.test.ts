@@ -64,4 +64,35 @@ describe("desktop main process security contract", () => {
     expect(source).toContain("Check for Updates...");
     expect(source).toContain("checkForAppUpdates(false)");
   });
+
+  it("keeps Windows release builds ready for trusted code signing", async () => {
+    const builderConfig = await readFile(projectFile("electron-builder.yml"), "utf8");
+    const signedBuilderConfig = await readFile(projectFile("electron-builder.win-signed.yml"), "utf8");
+    const packageJson = await readFile(projectFile("package.json"), "utf8");
+    const signingPreflight = await readFile(projectFile("scripts/check-win-signing-env.mjs"), "utf8");
+    const signingVerifier = await readFile(projectFile("scripts/verify-win-signing.mjs"), "utf8");
+    const signingDocs = await readFile(projectFile("docs/acceptance/windows-signing.md"), "utf8");
+
+    expect(builderConfig).toContain("signAndEditExecutable: false");
+    expect(signedBuilderConfig).toContain("extends: electron-builder.yml");
+    expect(signedBuilderConfig).toContain("signAndEditExecutable: true");
+    expect(signedBuilderConfig).toContain("verifyUpdateCodeSignature: true");
+    expect(signedBuilderConfig).toContain("signtoolOptions:");
+    expect(signedBuilderConfig).toContain("signingHashAlgorithms:");
+    expect(signedBuilderConfig).toContain("- sha256");
+    expect(signedBuilderConfig).toContain("rfc3161TimeStampServer: http://timestamp.digicert.com");
+    expect(packageJson).toContain('"build:win:signed": "node scripts/check-win-signing-env.mjs');
+    expect(packageJson).toContain('"verify:win:signing": "node scripts/verify-win-signing.mjs"');
+    expect(signingPreflight).toContain("WIN_CSC_LINK");
+    expect(signingPreflight).toContain("WIN_CSC_KEY_PASSWORD");
+    expect(signingPreflight).toContain("HERMILLS_ALLOW_CERT_STORE_SIGNING");
+    expect(signingVerifier).toContain("Get-AuthenticodeSignature");
+    expect(signingVerifier).toContain("release\", \"win-unpacked\", \"Hermills.exe");
+    expect(signingVerifier).toContain("x64-setup.exe");
+    expect(signingVerifier).toContain("Status === \"Valid\"");
+    expect(signingDocs).toContain("WIN_CSC_LINK");
+    expect(signingDocs).toContain("WIN_CSC_KEY_PASSWORD");
+    expect(signingDocs).toContain("OV or EV code-signing certificate");
+    expect(signingDocs).toContain("Windows Developer Mode");
+  });
 });
