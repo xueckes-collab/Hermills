@@ -653,7 +653,7 @@ export default function App() {
 
   return (
     <div className="client-shell hermills-dark-shell">
-      {serviceWarning ? <div className="service-warning">{copy.topbar.serviceWarning(serviceWarning)}</div> : null}
+      {serviceWarning ? <div className="service-warning">{copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy))}</div> : null}
 
       <ClientWorkspace
         runtime={runtime.data}

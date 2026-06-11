@@ -4826,9 +4826,9 @@ details[open] .complex-detail {
 .hermills-chat-title h1 {
   overflow: hidden;
   color: #ffffff;
-  font-size: clamp(24px, 3vw, 40px);
-  font-weight: 760;
-  line-height: 1.02;
+  font-size: clamp(25px, 2.4vw, 34px);
+  font-weight: 780;
+  line-height: 1.08;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4897,7 +4897,7 @@ details[open] .complex-detail {
 
 .hermills-empty-chat {
   align-self: center;
-  width: min(620px, 100%);
+  width: min(640px, 100%);
   margin: auto;
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(17, 18, 26, 0.84);
@@ -4906,6 +4906,23 @@ details[open] .complex-detail {
 .hermills-empty-chat [data-slot="card-header"] {
   justify-items: center;
   text-align: center;
+}
+
+.hermills-empty-chat [data-slot="card-title"],
+.hermills-empty-chat [data-slot="card-description"] {
+  width: 100%;
+  max-width: 520px;
+}
+
+.hermills-empty-chat [data-slot="card-title"] {
+  color: #ffffff;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+.hermills-empty-chat [data-slot="card-description"] {
+  color: #a8adbb;
+  line-height: 1.6;
 }
 
 .hermills-empty-icon {
@@ -4928,32 +4945,42 @@ details[open] .complex-detail {
 .hermills-empty-chat .empty-chat-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .hermills-empty-chat .empty-chat-entry {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
   height: auto;
+  min-height: 82px;
   justify-content: start;
-  padding: 12px;
+  gap: 12px;
+  padding: 13px 14px;
   text-align: left;
   white-space: normal;
 }
 
 .hermills-empty-chat .empty-chat-entry > span {
   display: grid;
+  min-width: 0;
   gap: 3px;
 }
 
 .hermills-empty-chat .empty-chat-entry strong {
   color: #ffffff;
   font-size: 13px;
+  line-height: 1.35;
 }
 
 .hermills-empty-chat .empty-chat-entry span span {
   color: #9ca3af;
   font-size: 12px;
+  line-height: 1.45;
+}
+
+.hermills-empty-chat .empty-chat-entry svg {
+  justify-self: center;
 }
 
 .hermills-file-action-bar {
@@ -5149,10 +5176,19 @@ details[open] .complex-detail {
 }
 
 .hermills-dark-shell .service-warning {
-  left: 14px;
-  right: 14px;
+  top: 18px;
+  right: 18px;
+  left: auto;
+  max-width: min(440px, calc(100vw - 36px));
+  transform: none;
+  overflow: hidden;
+  padding: 9px 12px;
+  border-color: rgba(244, 63, 94, 0.28);
   background: rgba(244, 63, 94, 0.12);
   color: #ffe4e6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
 }
 
 .hermills-dark-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),

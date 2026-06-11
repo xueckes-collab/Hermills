@@ -29,6 +29,12 @@ describe("desktop main process security contract", () => {
     expect(source).toContain("return { action: \"deny\" }");
   });
 
+  it("removes the default Electron application menu from the desktop shell", async () => {
+    const source = await readFile(projectFile("apps/desktop/main.cjs"), "utf8");
+
+    expect(source).toContain("Menu.setApplicationMenu(null)");
+  });
+
   it("keeps the app running in the tray when the window close button is clicked", async () => {
     const source = await readFile(projectFile("apps/desktop/main.cjs"), "utf8");
 

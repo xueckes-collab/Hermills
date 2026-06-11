@@ -96,6 +96,7 @@ describe("renderer usability contract", () => {
   it("keeps an actionable entry in the chat empty state", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const emptyChat = sourceWindow(appSource, 'className="empty-chat hermills-empty-chat"');
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
     expect(emptyChat).toContain("copy.chat.emptyTitle");
     expect(emptyChat).toContain("copy.chat.emptyDescription");
@@ -103,6 +104,9 @@ describe("renderer usability contract", () => {
     expect(emptyChat, "The empty chat entry should open setup, files, assistants, or a new conversation.").toMatch(
       /setSourcesOpen|setAssistantsOpen|openAdvanced|newSession|copy\.chat\.(?:empty|openSetup|addFile|newConversation)/
     );
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \[data-slot="card-title"\],[\s\S]*?width:\s*100%/);
+    expect(stylesSource).toMatch(/\.hermills-empty-chat \.empty-chat-entry\s*\{[\s\S]*?grid-template-columns:\s*42px minmax\(0,\s*1fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \.service-warning\s*\{[\s\S]*?transform:\s*none/);
   });
 
   it("sends the chat composer on Enter while keeping Shift+Enter for new lines", async () => {
