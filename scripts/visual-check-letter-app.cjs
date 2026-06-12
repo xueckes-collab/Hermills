@@ -10,9 +10,10 @@ const apiBaseUrl = process.env.VISUAL_HERMILLS_API_BASE_URL || "http://127.0.0.1
 const desktopToken = process.env.VISUAL_HERMILLS_DESKTOP_TOKEN || "dev-token";
 const viewports = [
   { name: "desktop", width: 1366, height: 768 },
-  { name: "narrow", width: 760, height: 820 }
+  { name: "tablet", width: 820, height: 720 },
+  { name: "mobile", width: 390, height: 844 }
 ];
-const views = ["工作台", "客户管理", "批量队列", "发件人资料", "签名Logo", "邮箱设置"];
+const views = ["今日外联", "客户", "写信", "批量任务", "邮箱", "签名Logo", "公司资料"];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,7 +110,7 @@ async function runViewport({ name, width, height }) {
       })()
     `);
     await delay(250);
-    if (view === "客户管理") {
+    if (view === "客户") {
       await win.webContents.executeJavaScript(`
         (() => {
           const firstLead = document.querySelector('.letter-lead-row');
@@ -127,7 +128,7 @@ async function runViewport({ name, width, height }) {
           return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
         };
         const main = shell.querySelector('.letter-main');
-        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row, .letter-draft-card, .letter-thinking-panel, .letter-campaign-review-grid, .letter-recipient-row, .letter-campaign-draft-view, .letter-drop-zone-primary, .signature-settings-panel, .signature-logo-box, .signature-preview')]
+        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-action-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row, .letter-draft-card, .letter-thinking-panel, .letter-campaign-review-grid, .letter-recipient-row, .letter-campaign-draft-view, .letter-drop-zone-primary, .signature-settings-panel, .signature-logo-box, .signature-preview')]
           .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 3 && getComputedStyle(el).overflowX !== 'auto')
           .slice(0, 8)
           .map((el) => ({
@@ -137,17 +138,28 @@ async function runViewport({ name, width, height }) {
             scrollWidth: el.scrollWidth,
             clientWidth: el.clientWidth
           }));
+        const horizontalScrollEls = [...shell.querySelectorAll('.letter-sidebar, .letter-nav, .letter-main')]
+          .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 3)
+          .slice(0, 8)
+          .map((el) => ({
+            tag: el.tagName,
+            className: el.className,
+            text: (el.textContent || '').trim().slice(0, 80),
+            scrollWidth: el.scrollWidth,
+            clientWidth: el.clientWidth
+          }));
         return {
           docOverflow: document.documentElement.scrollWidth > window.innerWidth + 3,
           shellOverflow: shell.scrollWidth > shell.clientWidth + 3,
           mainOverflow: main ? main.scrollWidth > main.clientWidth + 3 : false,
           shellHeight: shell.getBoundingClientRect().height,
           viewportHeight: window.innerHeight,
-          overflowEls
+          overflowEls,
+          horizontalScrollEls
         };
       })()
     `);
-    if (result.docOverflow || result.shellOverflow || result.mainOverflow || result.overflowEls.length) {
+    if (result.docOverflow || result.shellOverflow || result.mainOverflow || result.overflowEls.length || result.horizontalScrollEls.length) {
       failures.push({ view, result });
     }
   }

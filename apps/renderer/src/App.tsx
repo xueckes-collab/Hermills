@@ -673,7 +673,7 @@ export default function App() {
   }
 
   return (
-    <div className="client-shell hermills-dark-shell">
+    <div className="client-shell hermills-crm-shell">
       <ClientWorkspace
         runtime={runtime.data}
         sessions={sessions.data}
@@ -804,7 +804,7 @@ function ClientWorkspace({
   serviceWarning?: string
   openCompanyKnowledge: () => void
 }) {
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat')
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('outreach')
   const [activeSessionId, setActiveSessionId] = useState('')
   const [preferredAgentId, setPreferredAgentId] = useState('')
   const [sessionQuery, setSessionQuery] = useState('')
@@ -1186,7 +1186,7 @@ function ClientWorkspace({
 
   return (
     <TooltipProvider>
-      <main className={`hermills-app-shell ${sourcesOpen ? 'sources-visible' : ''}`}>
+      <main className={`hermills-app-shell hermills-crm-workbench ${workspaceView === 'outreach' ? 'outreach-home' : ''} ${sourcesOpen ? 'sources-visible' : ''}`}>
         <AppMenuSidebar
           runtime={runtime}
           sessions={visibleSessions}
@@ -1264,6 +1264,8 @@ function ClientWorkspace({
             setSenderAccounts={setOutreachSenders}
             providers={providers}
             onOpenCompanyKnowledge={openCompanyKnowledge}
+            onOpenChat={() => setWorkspaceView('chat')}
+            onOpenSettings={() => openAdvanced('setup')}
             copy={copy}
           />
         ) : (
@@ -1416,11 +1418,17 @@ function ClientWorkspace({
         </section>
 
         <InspectorPanel
+          activeWorkspaceView={workspaceView}
           activeAgent={activeAgent}
           activeProvider={activeProvider}
           activeModel={activeModel}
           connectedProviders={connectedProviders}
           providers={providers}
+          companyProfile={companyProfile}
+          companyMaterials={companyMaterials}
+          outreachLeads={outreachLeads}
+          outreachCampaigns={outreachCampaigns}
+          senderAccounts={outreachSenders}
           materials={materials}
           selectedMaterials={selectedMaterials}
           computerStatus={computerStatus}
@@ -1429,6 +1437,7 @@ function ClientWorkspace({
           onOpenFiles={() => setSourcesOpen(true)}
           onOpenProviders={() => openAdvanced('keys')}
           onOpenOutreach={() => setWorkspaceView('outreach')}
+          onOpenCompanyKnowledge={openCompanyKnowledge}
           onRequestComputerPermission={requestComputerControlPermission}
           computerPermissionBusy={computerPermissionBusy}
           copy={copy}
@@ -1518,6 +1527,7 @@ function AppMenuSidebar({
   const [editingTitle, setEditingTitle] = useState('')
 
   const navItems: Array<{ label: string; icon: LucideIcon; active?: boolean; action: () => void }> = [
+    { label: copy.devLetter.sectionLabel, icon: Mail, active: activeWorkspaceView === 'outreach', action: onOpenOutreach },
     { label: copy.common.chat, icon: MessageCircle, active: activeWorkspaceView === 'chat', action: () => onSelect(activeSession?.id ?? '') },
     { label: copy.common.assistants, icon: Bot, action: onOpenAssistants },
     { label: copy.common.files, icon: FileText, action: onOpenFiles },
@@ -1648,11 +1658,17 @@ function AppMenuSidebar({
 }
 
 function InspectorPanel({
+  activeWorkspaceView,
   activeAgent,
   activeProvider,
   activeModel,
   connectedProviders,
   providers,
+  companyProfile,
+  companyMaterials,
+  outreachLeads,
+  outreachCampaigns,
+  senderAccounts,
   materials,
   selectedMaterials,
   computerStatus,
@@ -1661,15 +1677,22 @@ function InspectorPanel({
   onOpenFiles,
   onOpenProviders,
   onOpenOutreach,
+  onOpenCompanyKnowledge,
   onRequestComputerPermission,
   computerPermissionBusy,
   copy,
 }: {
+  activeWorkspaceView: WorkspaceView
   activeAgent?: Agent
   activeProvider?: Provider
   activeModel: string
   connectedProviders: Provider[]
   providers: Provider[]
+  companyProfile: CompanyProfile
+  companyMaterials: Material[]
+  outreachLeads: OutreachLead[]
+  outreachCampaigns: OutreachCampaign[]
+  senderAccounts: OutreachSenderAccount[]
   materials: Material[]
   selectedMaterials: Material[]
   computerStatus?: ComputerControlStatus
@@ -1678,6 +1701,7 @@ function InspectorPanel({
   onOpenFiles: () => void
   onOpenProviders: () => void
   onOpenOutreach: () => void
+  onOpenCompanyKnowledge: () => void
   onRequestComputerPermission: () => void
   computerPermissionBusy: boolean
   copy: UiCopy
@@ -1688,6 +1712,101 @@ function InspectorPanel({
   const providerStatusSummary = connectedProviders.length
     ? `${connectedProviders.length}/${providers.length} ${copy.providerStatus.connected}`
     : copy.keys.noProviders
+  const outreachPipelineCount = outreachCampaigns.filter((campaign) => (
+    campaign.status === 'draft' ||
+    campaign.status === 'generating' ||
+    campaign.status === 'ready' ||
+    campaign.status === 'sending' ||
+    campaign.status === 'paused'
+  )).length
+  const approvedRecipients = outreachCampaigns.reduce((total, campaign) => total + (campaign.stats.approved ?? 0), 0)
+  const sentRecipients = outreachCampaigns.reduce((total, campaign) => total + (campaign.stats.sent ?? 0), 0)
+  const readySender = senderAccounts.find((account) => account.deliveryConfirmedAt) ?? senderAccounts[0]
+
+  if (activeWorkspaceView === 'outreach') {
+    return (
+      <aside className="hermills-inspector crm-assistant-panel">
+        <Card className="hermills-inspector-card crm-assistant-hero">
+          <CardHeader>
+            <CardTitle>{copy.devLetter.sectionLabel}助手</CardTitle>
+            <CardDescription>{copy.devLetter.subtitle}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="hermills-agent-avatar">
+              <Bot />
+            </div>
+            <p>使用 {activeModel} 串起客户背调、草稿质量检查和发件前确认。</p>
+            <div className="hermills-mini-stack">
+              <Badge variant={companyProfile.name ? 'default' : 'outline'}>
+                {companyProfile.name ? copy.devLetter.status.companyReady(companyProfile.name, companyMaterials.length) : copy.devLetter.status.companyMissing}
+              </Badge>
+            </div>
+            <Button variant="outline" size="sm" onClick={onOpenCompanyKnowledge}>
+              <Building2 data-icon="inline-start" />
+              {copy.devLetter.actions.openCompany}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="hermills-inspector-card">
+          <CardHeader>
+            <CardTitle>今日外联概览</CardTitle>
+            <CardDescription>客户、队列和邮箱状态集中在这里。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="crm-assistant-metric">
+              <span>{copy.devLetter.batch.customerList}</span>
+              <strong>{formatNumber(outreachLeads.length)}</strong>
+            </div>
+            <div className="crm-assistant-metric">
+              <span>进行中的批量任务</span>
+              <strong>{formatNumber(outreachPipelineCount)}</strong>
+            </div>
+            <div className="crm-assistant-metric">
+              <span>已通过 / 已发送</span>
+              <strong>{formatNumber(approvedRecipients)} / {formatNumber(sentRecipients)}</strong>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hermills-inspector-card">
+          <CardHeader>
+            <CardTitle>{copy.devLetter.mailSetup.title}</CardTitle>
+            <CardDescription>{readySender?.email || copy.devLetter.warnings.senderRequired}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="hermills-provider-row">
+              <span>{readySender?.label || copy.devLetter.mailSetup.defaultSenderLabel}</span>
+              <Badge variant={readySender?.deliveryConfirmedAt ? 'default' : 'outline'}>
+                {readySender?.deliveryConfirmedAt ? copy.devLetter.mailSetup.ready : copy.devLetter.mailSetup.confirmInbox}
+              </Badge>
+            </div>
+            <Button variant="outline" size="sm" onClick={onOpenOutreach}>
+              <Mail data-icon="inline-start" />
+              {copy.common.details}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="hermills-inspector-card">
+          <CardHeader>
+            <CardTitle>{copy.common.provider}</CardTitle>
+            <CardDescription>{providerStatusSummary}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="hermills-provider-row">
+              <span>{activeProvider?.name || copy.assistant.localHermes}</span>
+              <Badge variant={providerStatus === 'connected' ? 'default' : 'outline'}>{providerStatusLabel(providerStatus, copy)}</Badge>
+            </div>
+            <Button variant="outline" size="sm" onClick={onOpenProviders}>
+              <KeyRound data-icon="inline-start" />
+              {copy.common.provider}
+            </Button>
+          </CardContent>
+        </Card>
+      </aside>
+    )
+  }
 
   return (
     <aside className="hermills-inspector">
@@ -1844,7 +1963,7 @@ type SignatureFormDraft = {
 }
 
 type OutreachMode = 'single' | 'campaign'
-type LetterOutreachView = 'dashboard' | 'leads' | 'automation' | 'profile' | 'signature' | 'mail'
+type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'mail' | 'signature' | 'profile'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
 type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
@@ -2021,6 +2140,8 @@ function DevelopmentLetterPage({
   setSenderAccounts,
   providers,
   onOpenCompanyKnowledge,
+  onOpenChat,
+  onOpenSettings,
   copy,
 }: {
   companyProfile: CompanyProfile
@@ -2033,6 +2154,8 @@ function DevelopmentLetterPage({
   setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
   providers: Provider[]
   onOpenCompanyKnowledge: () => void
+  onOpenChat: () => void
+  onOpenSettings: () => void
   copy: UiCopy
 }) {
   const [leadDraft, setLeadDraft] = useState<LeadFormDraft>(() => emptyLeadDraft())
@@ -3304,25 +3427,28 @@ function DevelopmentLetterPage({
   }
 
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
-    { id: 'dashboard', label: '工作台', icon: Mail },
-    { id: 'leads', label: '客户管理', icon: Users },
-    { id: 'automation', label: '批量队列', icon: Zap },
-    { id: 'profile', label: '发件人资料', icon: UserRound },
+    { id: 'dashboard', label: '今日外联', icon: Clock },
+    { id: 'leads', label: '客户', icon: Users },
+    { id: 'compose', label: '写信', icon: Pencil },
+    { id: 'automation', label: '批量任务', icon: Zap },
+    { id: 'mail', label: '邮箱', icon: Settings },
     { id: 'signature', label: '签名Logo', icon: ImageIcon },
-    { id: 'mail', label: '邮箱设置', icon: Settings },
+    { id: 'profile', label: '公司资料', icon: UserRound },
   ]
-  const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '工作台'
+  const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '今日外联'
   const letterSubtitle = letterView === 'dashboard'
-    ? '管理你的销售外联流程'
+    ? '查看今天要处理的客户、草稿、发送和回复'
     : letterView === 'leads'
       ? '查看、筛选和维护所有潜在客户'
+      : letterView === 'compose'
+        ? '输入客户网站和邮箱，生成可审核的开发信'
         : letterView === 'automation'
           ? '批量生成开发信、逐封审核和跟进客户'
-          : letterView === 'profile'
-            ? '维护 AI 写信时使用的公司资料'
+          : letterView === 'mail'
+            ? '配置 SMTP、API 通道和外发测试'
             : letterView === 'signature'
               ? '保存邮件签名和 Logo，之后所有开发信自动使用'
-              : '配置 SMTP / IMAP 发件邮箱'
+              : '维护 AI 写信时使用的公司资料'
 
   return (
     <div className="letter-app-shell">
@@ -3348,6 +3474,8 @@ function DevelopmentLetterPage({
         <div className="letter-sidebar-footer">
           <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
+          <button type="button" onClick={onOpenChat}><Bot size={15} /> AI 助手</button>
+          <button type="button" onClick={onOpenSettings}><Settings size={15} /> 系统设置</button>
         </div>
       </aside>
 
@@ -3358,8 +3486,8 @@ function DevelopmentLetterPage({
             <p>{letterSubtitle}</p>
           </div>
           {letterView === 'dashboard' ? (
-            <button className="letter-primary compact" type="button" onClick={() => setLetterView('automation')}>
-              前往批量队列 <ChevronRight size={16} />
+            <button className="letter-primary compact" type="button" onClick={() => setLetterView('compose')}>
+              开始写信 <ChevronRight size={16} />
             </button>
           ) : null}
         </header>
@@ -3396,6 +3524,46 @@ function DevelopmentLetterPage({
               })}
             </section>
 
+            <section className="letter-quick-actions" aria-label="今日外联快捷入口">
+              <button className="letter-action-card" type="button" onClick={() => setLetterView('compose')}>
+                <span><Mail size={18} /></span>
+                <strong>写新开发信</strong>
+                <small>输入客户网站和邮箱，生成首封邮件和跟进序列。</small>
+              </button>
+              <button className="letter-action-card" type="button" onClick={() => setLetterView('leads')}>
+                <span><Users size={18} /></span>
+                <strong>整理客户</strong>
+                <small>筛选待生成、待发送、已回复客户并补齐资料。</small>
+              </button>
+              <button className="letter-action-card" type="button" onClick={() => setLetterView('automation')}>
+                <span><Zap size={18} /></span>
+                <strong>处理批量任务</strong>
+                <small>逐封审核批量草稿，安排发送、跟进和回复检查。</small>
+              </button>
+              <button className="letter-action-card" type="button" onClick={() => setLetterView('mail')}>
+                <span><Settings size={18} /></span>
+                <strong>检查邮箱</strong>
+                <small>{senderDeliveryReady ? '发件邮箱已确认，可以发送已审核邮件。' : '先保存并测试邮箱，确认收到测试邮件。'}</small>
+              </button>
+            </section>
+
+            {(letterStats.new > 0 || letterStats.drafted > 0) ? (
+              <section className="letter-automation-banner">
+                <div>
+                  <Zap size={18} />
+                  <div>
+                    <strong>自动化中心就绪</strong>
+                    <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+
+        {letterView === 'compose' ? (
+          <div className="letter-view">
             <section className="letter-two-column">
               <div className="letter-panel">
                 <div className="letter-panel-heading">
@@ -3470,7 +3638,7 @@ function DevelopmentLetterPage({
                     <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往批量队列 <ChevronRight size={16} /></button>
+                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
               </section>
             ) : null}
           </div>
@@ -3520,7 +3688,7 @@ function DevelopmentLetterPage({
                   <div className="letter-empty">
                     <Globe2 size={32} />
                     <strong>暂无客户数据</strong>
-                    <span>在工作台添加客户网站和邮箱开始分析。</span>
+                    <span>在写信页添加客户网站和邮箱开始分析。</span>
                   </div>
                 )}
               </div>
@@ -3529,7 +3697,7 @@ function DevelopmentLetterPage({
                 <div className="letter-panel-heading">
                   <div>
                     <h2>{selectedLead ? '客户详情' : '新增客户'}</h2>
-                    <p>保存后可以生成开发信，也可以加入批量 campaign。</p>
+                    <p>保存后可以生成开发信，也可以加入批量任务。</p>
                   </div>
                   {selectedLead ? <span className="letter-badge">{letterLeadStatusLabel(selectedLead)}</span> : null}
                 </div>
@@ -3602,7 +3770,7 @@ function DevelopmentLetterPage({
               {[
                 { label: '待生成', value: letterStats.new, icon: Users, tone: 'blue' },
                 { label: '待发送', value: letterStats.drafted, icon: Mail, tone: 'amber' },
-                { label: 'Campaign 已发送', value: selectedCampaign?.stats.sent ?? 0, icon: Send, tone: 'green' },
+                { label: '批量已发送', value: selectedCampaign?.stats.sent ?? 0, icon: Send, tone: 'green' },
                 { label: '需跟进', value: campaignFollowUpStats.ready + campaignFollowUpStats.scheduled, icon: Clock, tone: 'rose' },
                 { label: '已回复', value: selectedCampaign?.stats.replied ?? letterStats.replied, icon: CheckCircle2, tone: 'violet' },
               ].map((stat) => {
@@ -3643,7 +3811,7 @@ function DevelopmentLetterPage({
                     <strong>{selectedCampaign.name}</strong>
                     <span>{selectedCampaign.stats.generated} 待审核 · {selectedCampaign.stats.approved} 可发送 · {selectedCampaign.stats.sent} 已发送</span>
                   </div>
-                ) : <div className="letter-empty small">还没有 campaign。先选择客户创建批量任务。</div>}
+                ) : <div className="letter-empty small">还没有批量任务。先选择客户创建批量任务。</div>}
                 <div className="letter-action-row wrap">
                   <button className="letter-primary" type="button" disabled={!selectedCampaign || busy === 'campaignSend'} onClick={startCampaign}>一键发送</button>
                   <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</button>
@@ -3730,7 +3898,7 @@ function DevelopmentLetterPage({
             <section className="letter-panel">
               <div className="letter-panel-heading">
                 <div>
-                  <h2><UserRound size={18} /> 发件人资料</h2>
+                  <h2><UserRound size={18} /> 公司资料</h2>
                   <p>Hermills 会用这些公司资料写开发信、研究客户和回复买家。</p>
                 </div>
                 <button className="letter-primary compact" type="button" onClick={onOpenCompanyKnowledge}>编辑公司资料</button>
@@ -3799,7 +3967,7 @@ function DevelopmentLetterPage({
             <section className="letter-panel mail-settings-panel">
               <div className="letter-panel-heading">
                 <div>
-                  <h2><Settings size={18} /> 邮箱设置</h2>
+                  <h2><Settings size={18} /> 邮箱</h2>
                   <p>先选择发送通道；当前 SMTP 通道可直接保存和测试。</p>
                 </div>
                 {senderDeliveryReady ? <span className="letter-badge success">已确认</span> : <span className="letter-badge">待确认</span>}

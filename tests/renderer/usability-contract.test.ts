@@ -132,8 +132,8 @@ describe("renderer usability contract", () => {
 
   it("keeps the desktop shell chrome and inspector localized", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
-    const sidebar = sourceWindow(appSource, "const navItems", 1800);
-    const inspector = sourceWindow(appSource, "function InspectorPanel", 4200);
+    const sidebar = sourceWindow(appSource, "const navItems", 2600);
+    const inspector = sourceWindow(appSource, "function InspectorPanel", 11000);
 
     expect(sidebar).toContain("copy.common.chat");
     expect(sidebar).toContain("copy.common.assistants");
@@ -232,9 +232,15 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain('className="letter-app-shell"');
     expect(appSource).toContain("workspaceView === 'outreach' ? 'outreach-active' : ''");
     expect(appSource).toContain("type LetterOutreachView");
-    expect(appSource).toContain("工作台");
-    expect(appSource).toContain("客户管理");
+    expect(appSource).toContain("今日外联");
+    expect(appSource).toContain("写信");
+    expect(appSource).toContain("批量任务");
+    expect(appSource).toContain("签名Logo");
+    expect(appSource).toContain("公司资料");
     expect(appSource).toContain("批量导入");
+    expect(appSource).toContain("letter-quick-actions");
+    expect(appSource).toContain("onOpenChat");
+    expect(appSource).toContain("onOpenSettings");
     expect(appSource).toContain("importLetterFile");
     expect(appSource).toContain("deleteOutreachLeads");
     expect(appSource).toContain("LetterGenerationTrace");
@@ -243,12 +249,13 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("letter-campaign-review-grid");
     expect(stylesSource).toMatch(/\.letter-app-shell\s*\{[\s\S]*?overflow:\s*hidden/);
     expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow:\s*auto/);
-    expect(stylesSource).toMatch(/\.letter-nav button,[\s\S]*?\.letter-primary,[\s\S]*?\.letter-secondary,[\s\S]*?min-height:\s*36px/);
+    expect(stylesSource).toMatch(/\.letter-nav button,[\s\S]*?\.letter-primary,[\s\S]*?\.letter-secondary,[\s\S]*?min-height:\s*38px/);
     expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?color:\s*#111827/);
     expect(stylesSource).toMatch(/\.letter-thinking-panel\s*\{/);
     expect(stylesSource).toMatch(/\.letter-draft-card\s*\{/);
-    expect(stylesSource).toMatch(/\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*0\.72fr\) minmax\(320px,\s*1\.28fr\)/);
-    expect(stylesSource).toMatch(/\.hermills-chat-panel\.outreach-active \.mobile-workspace-toolbar\s*\{[\s\S]*?position:\s*static/);
+    expect(stylesSource).toMatch(/\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*0\.72fr\) minmax\(0,\s*1\.28fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-crm-shell \.hermills-app-shell\.outreach-home > \.hermills-menu-sidebar\s*\{[\s\S]*?display:\s*none/);
+    expect(stylesSource).toMatch(/\.hermills-crm-shell \.hermills-chat-panel\.outreach-active \.mobile-workspace-toolbar\s*\{[\s\S]*?display:\s*none/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-sidebar\s*\{[\s\S]*?display:\s*grid/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-brand\s*\{[\s\S]*?padding:\s*0/);
     expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout,[\s\S]*?\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
@@ -286,7 +293,7 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("api.sendOutreachSenderTestEmail(sender.id, target)");
     expect(appSource).toContain("测试外部收件箱");
     expect(stylesSource).toMatch(/\.letter-alert-copy\s*\{[\s\S]*?color:\s*#881337/);
-    expect(stylesSource).toMatch(/\.letter-detail-panel\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 128px\)/);
+    expect(stylesSource).toMatch(/\.letter-detail-panel\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 136px\)/);
     expect(stylesSource).toMatch(/\.letter-detail-panel\s*\{[\s\S]*?overflow:\s*auto/);
     expect(stylesSource).toMatch(/\.letter-sticky-actions\s*\{[\s\S]*?position:\s*sticky/);
     expect(stylesSource).toMatch(/\.letter-sticky-actions\s*\{[\s\S]*?box-shadow:\s*0 -10px 22px/);

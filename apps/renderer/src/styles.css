@@ -113,6 +113,663 @@ button {
   cursor: pointer;
 }
 
+/* Light CRM shell prototype */
+.client-shell.hermills-crm-shell {
+  color-scheme: light;
+  --bg: #f3f6fb;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --soft: #94a3b8;
+  --line: #dbe4ef;
+  --line-strong: #cbd5e1;
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-subtle: #f8fafc;
+  --shadow: 0 18px 38px rgb(15 23 42 / 0.09);
+  --shadow-soft: 0 6px 18px rgb(15 23 42 / 0.06);
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f8fafc;
+  --secondary-foreground: #334155;
+  --accent: #e0f2fe;
+  --accent-foreground: #075985;
+  --border: #dbe4ef;
+  --input: #cbd5e1;
+  --ring: #38bdf8;
+  --button-primary-bg: #2563eb;
+  --button-primary-bg-hover: #1d4ed8;
+  --button-primary-border: #2563eb;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #ffffff;
+  --button-secondary-bg-hover: #eff6ff;
+  --button-secondary-border: #cbd5e1;
+  --button-secondary-text: #1e293b;
+  --button-subtle-bg: #f8fafc;
+  --button-subtle-bg-hover: #e0f2fe;
+  --button-subtle-border: #dbeafe;
+  --button-subtle-text: #334155;
+  --button-disabled-bg: #e2e8f0;
+  --button-disabled-border: #cbd5e1;
+  --button-disabled-text: #64748b;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #f3f6fb;
+  color: #0f172a;
+}
+
+.hermills-crm-shell h1,
+.hermills-crm-shell h2,
+.hermills-crm-shell h3,
+.hermills-crm-shell strong {
+  color: #0f172a;
+}
+
+.hermills-crm-shell p,
+.hermills-crm-shell span,
+.hermills-crm-shell small {
+  letter-spacing: 0;
+}
+
+.hermills-crm-shell [data-slot="button"] {
+  border-radius: 8px;
+  color: var(--button-secondary-text);
+  font-weight: 720;
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="default"],
+.hermills-crm-shell .primary-button,
+.hermills-crm-shell .send-button {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgb(37 99 235 / 0.16);
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="default"]:hover,
+.hermills-crm-shell .primary-button:hover,
+.hermills-crm-shell .send-button:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="outline"],
+.hermills-crm-shell [data-slot="button"][data-variant="secondary"],
+.hermills-crm-shell .soft-button {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="outline"]:hover,
+.hermills-crm-shell [data-slot="button"][data-variant="secondary"]:hover,
+.hermills-crm-shell .soft-button:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="ghost"],
+.hermills-crm-shell .icon-button {
+  color: #475569;
+}
+
+.hermills-crm-shell [data-slot="button"][data-variant="ghost"]:hover,
+.hermills-crm-shell [data-slot="button"][data-variant="ghost"][data-active="true"],
+.hermills-crm-shell .icon-button:hover {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.hermills-crm-shell [data-slot="badge"] {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hermills-crm-shell [data-slot="badge"][data-variant="default"] {
+  border-color: #bbf7d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.hermills-crm-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.hermills-crm-shell select,
+.hermills-crm-shell textarea {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.hermills-crm-shell input:not([type="checkbox"]):not([type="radio"]):not([type="file"])::placeholder,
+.hermills-crm-shell textarea::placeholder {
+  color: #94a3b8;
+}
+
+.hermills-crm-workbench.hermills-app-shell {
+  grid-template-columns: 248px minmax(620px, 1fr) 324px;
+  gap: 0;
+  padding: 0;
+  background: #f3f6fb;
+}
+
+.hermills-crm-workbench .hermills-menu-sidebar,
+.hermills-crm-workbench .hermills-chat-panel,
+.hermills-crm-workbench .hermills-inspector {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.hermills-crm-workbench .hermills-menu-sidebar {
+  gap: 16px;
+  padding: 18px 14px;
+  border: 0;
+  border-right: 1px solid #dbe4ef;
+  background: #fbfdff;
+}
+
+.hermills-crm-workbench .hermills-menu-brand .brand-mark {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hermills-crm-workbench .hermills-menu-brand strong {
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .hermills-menu-brand span,
+.hermills-crm-workbench .hermills-recents-header,
+.hermills-crm-workbench .hermills-sidebar-status,
+.hermills-crm-workbench .hermills-muted-line {
+  color: #64748b;
+}
+
+.hermills-crm-workbench .hermills-new-chat {
+  height: 38px;
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  box-shadow: none;
+}
+
+.hermills-crm-workbench .hermills-nav-list {
+  gap: 4px;
+}
+
+.hermills-crm-workbench .hermills-nav-button {
+  height: 38px;
+  border: 1px solid transparent;
+  color: #475569;
+}
+
+.hermills-crm-workbench .hermills-nav-button[data-active="true"] {
+  border-color: #bfdbfe;
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.hermills-crm-workbench .hermills-sidebar-separator {
+  background: #e2e8f0;
+}
+
+.hermills-crm-workbench .hermills-sidebar-status {
+  border-color: #dbe4ef;
+  background: #f8fafc;
+}
+
+.hermills-crm-workbench .hermills-search-field {
+  border-color: #dbe4ef;
+  background: #ffffff;
+  color: #94a3b8;
+}
+
+.hermills-crm-workbench .hermills-search-field input {
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .hermills-session-row {
+  border-color: transparent;
+  background: transparent;
+}
+
+.hermills-crm-workbench .hermills-session-row:hover,
+.hermills-crm-workbench .hermills-session-row.active {
+  border-color: #dbeafe;
+  background: #eff6ff;
+}
+
+.hermills-crm-workbench .hermills-session-row strong {
+  color: #1e293b;
+}
+
+.hermills-crm-workbench .hermills-session-row span {
+  color: #64748b;
+}
+
+.hermills-crm-workbench .hermills-chat-panel {
+  border: 0;
+  background: #f3f6fb;
+}
+
+.hermills-crm-workbench .hermills-inspector {
+  border: 0;
+  border-left: 1px solid #dbe4ef;
+  background: #ffffff;
+}
+
+.hermills-crm-workbench .hermills-inspector-card {
+  border-color: #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+.hermills-crm-workbench .hermills-inspector-card [data-slot="card-title"] {
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .hermills-inspector-card [data-slot="card-description"],
+.hermills-crm-workbench .hermills-inspector-card p {
+  color: #64748b;
+}
+
+.hermills-crm-workbench .hermills-agent-avatar {
+  border-color: #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.hermills-crm-workbench .hermills-file-pill {
+  border-color: #dbe4ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.hermills-crm-workbench .hermills-file-pill svg,
+.hermills-crm-workbench .hermills-tool-list svg {
+  color: #2563eb;
+}
+
+.hermills-crm-workbench .hermills-tool-list,
+.hermills-crm-workbench .hermills-provider-row {
+  color: #334155;
+}
+
+.crm-assistant-panel {
+  gap: 12px;
+  padding: 18px 16px;
+}
+
+.crm-assistant-hero {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+.crm-assistant-metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  border-bottom: 1px solid #eef2f7;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.crm-assistant-metric:last-child {
+  border-bottom: 0;
+}
+
+.crm-assistant-metric strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.hermills-crm-workbench .letter-app-shell {
+  grid-template-columns: 232px minmax(0, 1fr);
+  background: #f3f6fb;
+}
+
+.hermills-crm-workbench .letter-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 12px;
+  border-right: 1px solid #dbe4ef;
+  border-bottom: 0;
+  background: #ffffff;
+}
+
+.hermills-crm-workbench .letter-brand {
+  padding: 0;
+}
+
+.hermills-crm-workbench .letter-logo {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.hermills-crm-workbench .letter-nav {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.hermills-crm-workbench .letter-nav button {
+  width: 100%;
+  flex: none;
+  justify-content: flex-start;
+  min-height: 34px;
+  border-radius: 8px;
+  color: #475569;
+  text-align: left;
+}
+
+.hermills-crm-workbench .letter-nav button:hover,
+.hermills-crm-workbench .letter-nav button.active {
+  border-color: #bfdbfe;
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.hermills-crm-workbench .letter-sidebar-footer {
+  display: grid;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: auto;
+  padding: 14px 8px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.hermills-crm-workbench .letter-sidebar-footer span {
+  border-radius: 999px;
+}
+
+.hermills-crm-workbench .letter-main {
+  padding: 20px 22px 28px;
+}
+
+.hermills-crm-workbench .letter-page-header {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.hermills-crm-workbench .letter-page-header h1 {
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.hermills-crm-workbench .letter-page-header p,
+.hermills-crm-workbench .letter-panel-heading p {
+  color: #64748b;
+}
+
+.hermills-crm-workbench .letter-panel,
+.hermills-crm-workbench .letter-stat-card,
+.hermills-crm-workbench .letter-lead-row,
+.hermills-crm-workbench .letter-recipient-row,
+.hermills-crm-workbench .sender-channel-card,
+.hermills-crm-workbench .letter-campaign-summary,
+.hermills-crm-workbench .letter-followup-list,
+.hermills-crm-workbench .letter-profile-grid div,
+.hermills-crm-workbench .signature-preview,
+.hermills-crm-workbench .signature-logo-box {
+  border-color: #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+.hermills-crm-workbench .letter-panel-heading h2,
+.hermills-crm-workbench .letter-lead-main strong,
+.hermills-crm-workbench .letter-recipient-row strong,
+.hermills-crm-workbench .sender-subsection-heading span,
+.hermills-crm-workbench .letter-profile-grid strong {
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .letter-stat-card strong {
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .letter-stat-card span,
+.hermills-crm-workbench .letter-lead-main span,
+.hermills-crm-workbench .letter-recipient-row span,
+.hermills-crm-workbench .letter-draft-heading p {
+  color: #64748b;
+}
+
+.hermills-crm-workbench .letter-primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.hermills-crm-workbench .letter-primary:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+}
+
+.hermills-crm-workbench .letter-secondary,
+.hermills-crm-workbench .letter-filter-row button,
+.hermills-crm-workbench .letter-selection-bar button,
+.hermills-crm-workbench .letter-provider-grid button,
+.hermills-crm-workbench .letter-automation-banner button,
+.hermills-crm-workbench .letter-email-sequence-tabs button,
+.hermills-crm-workbench .letter-sidebar-footer button {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.hermills-crm-workbench .letter-secondary:hover,
+.hermills-crm-workbench .letter-filter-row button:hover,
+.hermills-crm-workbench .letter-selection-bar button:hover,
+.hermills-crm-workbench .letter-provider-grid button:hover,
+.hermills-crm-workbench .letter-email-sequence-tabs button:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hermills-crm-workbench .letter-filter-row button.active,
+.hermills-crm-workbench .letter-provider-grid button.active,
+.hermills-crm-workbench .letter-email-sequence-tabs button.active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.hermills-crm-workbench .letter-search,
+.hermills-crm-workbench .letter-form-grid input,
+.hermills-crm-workbench .letter-form-grid textarea,
+.hermills-crm-workbench .letter-field input,
+.hermills-crm-workbench .letter-field textarea,
+.hermills-crm-workbench .letter-search input,
+.hermills-crm-workbench .letter-import-textarea {
+  border-color: #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.hermills-crm-workbench .letter-drop-zone {
+  border-color: #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.hermills-crm-workbench .letter-drop-zone-primary,
+.hermills-crm-workbench .letter-thinking-panel {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hermills-crm-workbench .letter-automation-banner {
+  border-color: #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.hermills-crm-workbench .letter-sticky-actions {
+  border-color: #dbe4ef;
+  background: rgb(255 255 255 / 0.96);
+}
+
+.hermills-crm-shell .hermills-app-shell > .sources-drawer,
+.hermills-crm-shell .hermills-app-shell > .assistant-drawer {
+  border-color: #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 18px 38px rgb(15 23 42 / 0.14);
+}
+
+.hermills-crm-shell .sources-header,
+.hermills-crm-shell .assistant-header {
+  border-color: #dbe4ef;
+}
+
+.hermills-crm-shell .upload-dropzone,
+.hermills-crm-shell .material-row,
+.hermills-crm-shell .assistant-card,
+.hermills-crm-shell .quiet-panel,
+.hermills-crm-shell .settings-form {
+  border-color: #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.hermills-crm-shell .inline-alert,
+.hermills-crm-shell .computer-permission-nudge,
+.hermills-crm-shell .key-setup-nudge,
+.hermills-crm-shell .service-warning {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.hermills-crm-shell .hermills-mobile-sheet {
+  border-color: #dbe4ef;
+  background: #ffffff;
+}
+
+@media (max-width: 1180px) {
+  .hermills-crm-workbench.hermills-app-shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .hermills-crm-workbench .hermills-inspector {
+    display: none;
+  }
+
+  .hermills-crm-workbench .letter-sidebar {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .hermills-crm-workbench .letter-sidebar-footer {
+    justify-content: stretch;
+  }
+}
+
+@media (max-width: 820px) {
+  .hermills-crm-workbench.hermills-app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .hermills-crm-workbench .hermills-menu-sidebar {
+    display: none;
+  }
+
+  .hermills-crm-workbench .mobile-workspace-toolbar {
+    display: flex;
+    border-bottom: 1px solid #dbe4ef;
+    background: #ffffff;
+  }
+
+  .hermills-crm-workbench .letter-main {
+    padding: 16px;
+  }
+
+  .hermills-crm-workbench .letter-sidebar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid #dbe4ef;
+    overflow: visible;
+  }
+
+  .hermills-crm-workbench .letter-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hermills-crm-workbench .letter-nav button {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .hermills-crm-workbench .letter-sidebar-footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 0;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .hermills-crm-workbench .letter-sidebar-footer span {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 540px) {
+  .hermills-crm-workbench .letter-nav,
+  .hermills-crm-workbench .letter-sidebar-footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .hermills-crm-workbench .letter-app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hermills-crm-workbench .letter-sidebar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    min-height: auto;
+    overflow: visible;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid #dbe4ef;
+  }
+
+  .hermills-crm-workbench .letter-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hermills-crm-workbench .letter-sidebar-footer {
+    grid-template-columns: 1fr;
+    margin-top: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
 button:disabled {
   cursor: not-allowed;
 }
@@ -2713,8 +3370,8 @@ textarea,
 
 .letter-depth-picker {
   margin-top: 12px;
-  border-color: #ddd6fe;
-  background: #faf7ff;
+  border-color: #99f6e4;
+  background: #f0fdfa;
 }
 
 .letter-depth-picker .campaign-depth-options {
@@ -2723,6 +3380,12 @@ textarea,
 
 .letter-depth-picker .campaign-depth-options button {
   min-height: 50px;
+  background: #ffffff;
+}
+
+.letter-depth-picker .campaign-depth-options button.active {
+  border-color: #0f766e;
+  background: #ccfbf1;
 }
 
 .campaign-lead-list,
@@ -6165,25 +6828,221 @@ details[open] .complex-detail {
   }
 }
 
+.hermills-crm-shell {
+  --button-primary-bg: #0f766e;
+  --button-primary-bg-hover: #0d9488;
+  --button-primary-border: rgba(15, 118, 110, 0.34);
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #ffffff;
+  --button-secondary-bg-hover: #f1f5f9;
+  --button-secondary-border: #cbd5e1;
+  --button-secondary-text: #0f172a;
+  --button-subtle-bg: #ecfdf5;
+  --button-subtle-bg-hover: #d1fae5;
+  --button-subtle-border: #99f6e4;
+  --button-subtle-text: #134e4a;
+  --button-disabled-bg: #e2e8f0;
+  --button-disabled-border: #cbd5e1;
+  --button-disabled-text: #64748b;
+  background: #eef2f7;
+  color: #111827;
+}
+
+.hermills-crm-shell .hermills-app-shell {
+  grid-template-columns: 268px minmax(0, 1fr) 292px;
+  gap: 12px;
+  padding: 12px;
+  background: #eef2f7;
+}
+
+.hermills-crm-shell .hermills-app-shell.outreach-home {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  background: #f4f7fb;
+}
+
+.hermills-crm-shell .hermills-app-shell.outreach-home > .hermills-menu-sidebar {
+  display: none;
+}
+
+.hermills-crm-shell .hermills-app-shell.outreach-home > .hermills-inspector {
+  display: none;
+}
+
+.hermills-crm-shell .hermills-app-shell.outreach-home > .hermills-chat-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.hermills-crm-shell .hermills-chat-panel.outreach-active .mobile-workspace-toolbar {
+  display: none;
+}
+
+.hermills-crm-shell .hermills-chat-panel.outreach-active .hermills-inline-service-warning {
+  margin: 12px 12px 0;
+}
+
+.hermills-crm-shell .hermills-menu-sidebar,
+.hermills-crm-shell .hermills-chat-panel,
+.hermills-crm-shell .hermills-inspector {
+  border-color: #dbe3ec;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.hermills-crm-shell .hermills-menu-sidebar,
+.hermills-crm-shell .hermills-chat-panel,
+.hermills-crm-shell .hermills-inspector,
+.hermills-crm-shell .hermills-inspector-card {
+  color: #111827;
+}
+
+.hermills-crm-shell .hermills-menu-brand .brand-mark,
+.hermills-crm-shell .hermills-agent-avatar {
+  border-color: #99f6e4;
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.hermills-crm-shell .hermills-menu-brand strong,
+.hermills-crm-shell .hermills-chat-title h1,
+.hermills-crm-shell .hermills-session-row strong,
+.hermills-crm-shell .hermills-inspector-card [data-slot="card-title"],
+.hermills-crm-shell .hermills-provider-row span,
+.hermills-crm-shell .hermills-tool-label {
+  color: #111827;
+}
+
+.hermills-crm-shell .hermills-menu-brand span,
+.hermills-crm-shell .hermills-recents-header,
+.hermills-crm-shell .hermills-sidebar-status,
+.hermills-crm-shell .hermills-muted-line,
+.hermills-crm-shell .hermills-chat-title span,
+.hermills-crm-shell .hermills-session-row span,
+.hermills-crm-shell .hermills-inspector-card [data-slot="card-description"],
+.hermills-crm-shell .hermills-inspector-card p {
+  color: #64748b;
+}
+
+.hermills-crm-shell .hermills-new-chat {
+  border-color: #99f6e4 !important;
+  background: #0f766e !important;
+  color: #ffffff !important;
+}
+
+.hermills-crm-shell .hermills-nav-button {
+  color: #334155;
+}
+
+.hermills-crm-shell .hermills-nav-button[data-active="true"],
+.hermills-crm-shell .hermills-nav-button:hover {
+  border-color: #99f6e4 !important;
+  background: #ecfdf5 !important;
+  color: #0f766e !important;
+}
+
+.hermills-crm-shell .hermills-sidebar-separator {
+  background: #e5e7eb;
+}
+
+.hermills-crm-shell .hermills-sidebar-status,
+.hermills-crm-shell .hermills-search-field,
+.hermills-crm-shell .hermills-session-row,
+.hermills-crm-shell .hermills-file-pill {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+
+.hermills-crm-shell .hermills-search-field input {
+  color: #111827;
+}
+
+.hermills-crm-shell .hermills-chat-header {
+  border-bottom-color: #e5e7eb;
+}
+
+.hermills-crm-shell .hermills-message-stream .message {
+  border-color: #dbe3ec;
+  background: #ffffff;
+  color: #111827;
+}
+
+.hermills-crm-shell .hermills-message-stream .message.user {
+  border-color: #99f6e4;
+  background: #ecfdf5;
+}
+
+.hermills-crm-shell .hermills-message-stream .message.agent {
+  background: #f8fafc;
+}
+
+.hermills-crm-shell .hermills-composer,
+.hermills-crm-shell .setup-banner,
+.hermills-crm-shell .gateway-banner {
+  border-color: #dbe3ec;
+  background: #ffffff;
+}
+
+@media (max-width: 820px) {
+  .hermills-crm-shell .hermills-app-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+
+  .hermills-crm-shell .hermills-app-shell > .hermills-menu-sidebar,
+  .hermills-crm-shell .hermills-app-shell > .hermills-inspector {
+    display: none;
+  }
+
+  .hermills-crm-shell .mobile-workspace-toolbar {
+    display: flex;
+  }
+
+  .hermills-crm-shell .hermills-chat-panel {
+    border-radius: 0;
+  }
+}
+
 .letter-app-shell {
+  --button-primary-bg: #0f766e;
+  --button-primary-bg-hover: #0d9488;
+  --button-primary-border: rgba(15, 118, 110, 0.34);
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #ffffff;
+  --button-secondary-bg-hover: #f1f5f9;
+  --button-secondary-border: #cbd5e1;
+  --button-secondary-text: #0f172a;
+  --button-subtle-bg: #ecfdf5;
+  --button-subtle-bg-hover: #d1fae5;
+  --button-subtle-border: #99f6e4;
+  --button-subtle-text: #134e4a;
+  --button-disabled-bg: #e2e8f0;
+  --button-disabled-border: #cbd5e1;
+  --button-disabled-text: #64748b;
   container-type: inline-size;
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
-  min-height: 100%;
+  grid-template-columns: 232px minmax(0, 1fr);
+  min-height: 0;
   height: 100%;
   max-width: 100%;
   overflow: hidden;
-  background: #f6f8fb;
-  color: #171717;
+  background: #f4f7fb;
+  color: #0f172a;
 }
 
 .letter-sidebar {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 18px 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 12px;
   border-right: 1px solid #dbe3ec;
-  background: #eef2f7;
+  background: #e8eef5;
 }
 
 .letter-brand {
@@ -6219,7 +7078,9 @@ details[open] .complex-detail {
 
 .letter-nav {
   display: grid;
-  gap: 6px;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
 }
 
 .letter-nav button,
@@ -6234,16 +7095,31 @@ details[open] .complex-detail {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 36px;
-  border: 1px solid transparent;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--button-secondary-border);
   border-radius: 8px;
   padding: 8px 12px;
   font: inherit;
   font-size: 14px;
-  font-weight: 650;
-  line-height: 1.2;
+  font-weight: 760;
+  line-height: 1.25;
   cursor: pointer;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.letter-nav button svg,
+.letter-sidebar-footer button svg,
+.letter-primary svg,
+.letter-secondary svg,
+.letter-filter-row button svg,
+.letter-selection-bar button svg,
+.letter-provider-grid button svg,
+.letter-automation-banner button svg {
+  flex: 0 0 auto;
 }
 
 .letter-nav button {
@@ -6252,6 +7128,14 @@ details[open] .complex-detail {
   color: var(--button-subtle-text);
   border-color: transparent;
   background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.letter-nav button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .letter-nav button:hover,
@@ -6272,11 +7156,14 @@ details[open] .complex-detail {
 .letter-sidebar-footer span {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 28px;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .letter-sidebar-footer span.ready { color: #047857; background: #ecfdf5; }
@@ -6289,17 +7176,26 @@ details[open] .complex-detail {
 
 .letter-main {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   overflow: auto;
   overflow-x: hidden;
   padding: 18px 20px 28px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .letter-page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.letter-page-header > div {
+  min-width: min(360px, 100%);
 }
 
 .letter-page-header h1 {
@@ -6315,11 +7211,15 @@ details[open] .complex-detail {
   margin: 5px 0 0;
   color: #6b7280;
   font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .letter-view {
   display: grid;
   gap: 18px;
+  min-width: 0;
+  padding-bottom: 8px;
 }
 
 .letter-alert {
@@ -6367,12 +7267,12 @@ details[open] .complex-detail {
 
 .letter-stats-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 12px;
 }
 
 .letter-stats-grid.compact {
-  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
 }
 
 .letter-stat-card {
@@ -6392,7 +7292,12 @@ details[open] .complex-detail {
 
 button.letter-stat-card { cursor: pointer; }
 .letter-stat-card span { color: #6b7280; font-size: 12px; font-weight: 650; }
-.letter-stat-card strong { color: #111827; font-size: 26px; line-height: 1; }
+.letter-stat-card strong { padding-right: 52px; color: #111827; font-size: 26px; line-height: 1; }
+
+.letter-stat-card:hover {
+  border-color: #99f6e4;
+  box-shadow: 0 10px 24px rgb(15 118 110 / 0.1);
+}
 
 .letter-stat-card i {
   position: absolute;
@@ -6413,15 +7318,72 @@ button.letter-stat-card { cursor: pointer; }
 .letter-stat-card i.green { color: #059669; background: #ecfdf5; }
 .letter-stat-card i.rose { color: #e11d48; background: #fff1f2; }
 
+.letter-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.letter-action-card {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+  min-height: 136px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  padding: 16px;
+  color: #0f172a;
+  background: #ffffff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.letter-action-card:hover {
+  border-color: #5eead4;
+  background: #f0fdfa;
+  box-shadow: 0 10px 24px rgb(15 118 110 / 0.11);
+}
+
+.letter-action-card > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+.letter-action-card strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.letter-action-card small {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .letter-two-column,
 .letter-leads-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(300px, 1fr));
   gap: 16px;
+  min-width: 0;
+  align-items: start;
 }
 
 .letter-leads-layout {
-  grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(300px, 0.95fr) minmax(380px, 1.05fr);
   align-items: start;
 }
 
@@ -6432,14 +7394,20 @@ button.letter-stat-card { cursor: pointer; }
   padding: 18px;
   background: #ffffff;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+  overflow-wrap: anywhere;
 }
 
 .letter-panel-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.letter-panel-heading > div {
+  min-width: 0;
 }
 
 .letter-panel-heading h2 {
@@ -6486,6 +7454,16 @@ button.letter-stat-card { cursor: pointer; }
   line-height: 1.35;
 }
 
+.letter-form-grid input:focus,
+.letter-form-grid textarea:focus,
+.letter-field input:focus,
+.letter-field textarea:focus,
+.letter-search input:focus,
+.letter-import-textarea:focus {
+  border-color: #14b8a6;
+  outline: 3px solid rgb(20 184 166 / 0.16);
+}
+
 .letter-form-grid textarea {
   min-height: 96px;
   resize: vertical;
@@ -6516,12 +7494,13 @@ button.letter-stat-card { cursor: pointer; }
   color: var(--button-secondary-text);
   border-color: var(--button-secondary-border);
   background: var(--button-secondary-bg);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
 }
 
 .letter-secondary:hover {
-  border-color: #c4b5fd;
+  border-color: #94a3b8;
   background: var(--button-secondary-bg-hover);
-  color: #ffffff;
+  color: var(--button-secondary-text);
 }
 
 .letter-primary:disabled,
@@ -6562,12 +7541,18 @@ button.letter-stat-card { cursor: pointer; }
   background: #fafafa;
   text-align: center;
   cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.letter-drop-zone:hover {
+  border-color: #14b8a6;
+  background: #f0fdfa;
 }
 
 .letter-drop-zone-primary {
-  border-color: #8b5cf6;
-  color: #4c1d95;
-  background: #f5f3ff;
+  border-color: #14b8a6;
+  color: #134e4a;
+  background: #ecfdf5;
 }
 
 .letter-drop-zone input { display: none; }
@@ -6577,7 +7562,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-toggle-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
   color: #374151;
@@ -6589,6 +7574,12 @@ button.letter-stat-card { cursor: pointer; }
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.letter-toggle-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .signature-settings-panel {
@@ -6597,7 +7588,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .signature-logo-box {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(108px, auto) minmax(92px, auto);
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -6626,6 +7617,7 @@ button.letter-stat-card { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
   min-height: 36px;
   padding: 8px 12px;
   border-radius: 8px;
@@ -6663,6 +7655,7 @@ button.letter-stat-card { cursor: pointer; }
 .signature-preview pre {
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   color: #374151;
   font: inherit;
   font-size: 13px;
@@ -6673,6 +7666,7 @@ button.letter-stat-card { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
   border: 1px solid #c4b5fd;
   border-radius: 8px;
@@ -6689,7 +7683,7 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-automation-banner strong,
-.letter-automation-banner span { display: block; }
+.letter-automation-banner span { display: block; overflow-wrap: anywhere; }
 .letter-automation-banner span { margin-top: 2px; color: #5b21b6; font-size: 13px; }
 .letter-automation-banner button {
   color: #ffffff;
@@ -6709,6 +7703,7 @@ button.letter-stat-card { cursor: pointer; }
   align-items: center;
   flex: 1 1 260px;
   min-width: min(220px, 100%);
+  min-height: 40px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   padding: 0 10px;
@@ -6734,6 +7729,7 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-filter-row button {
+  flex: 1 1 auto;
   color: var(--button-subtle-text);
   border-color: var(--button-subtle-border);
   background: var(--button-subtle-bg);
@@ -6764,6 +7760,11 @@ button.letter-stat-card { cursor: pointer; }
   background: #fff1f2;
 }
 
+.letter-selection-bar strong {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
 .letter-selection-bar button {
   color: var(--button-secondary-text);
   border-color: var(--button-secondary-border);
@@ -6778,8 +7779,13 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-lead-list {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-width: 0;
+  max-height: calc(100dvh - 230px);
+  overflow: auto;
+  padding-right: 3px;
+  overscroll-behavior: contain;
 }
 
 .letter-result-count {
@@ -6790,7 +7796,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-lead-row {
   display: grid;
-  grid-template-columns: 18px 40px minmax(0, 1fr) auto;
+  grid-template-columns: 18px 40px minmax(0, 1fr) minmax(84px, auto);
   align-items: center;
   gap: 12px;
   min-height: 72px;
@@ -6836,7 +7842,7 @@ button.letter-stat-card { cursor: pointer; }
   display: grid;
   justify-items: end;
   gap: 3px;
-  min-width: 92px;
+  min-width: 0;
   color: #6b7280;
   font-size: 11px;
 }
@@ -6881,14 +7887,16 @@ button.letter-stat-card { cursor: pointer; }
   position: sticky;
   top: 0;
   display: grid;
-  max-height: calc(100dvh - 128px);
+  max-height: calc(100dvh - 136px);
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .letter-badge {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   min-height: 28px;
   border-radius: 999px;
   padding: 5px 10px;
@@ -6896,6 +7904,7 @@ button.letter-stat-card { cursor: pointer; }
   background: #f3f4f6;
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .letter-badge.success { color: #047857; background: #ecfdf5; }
@@ -6912,7 +7921,12 @@ button.letter-stat-card { cursor: pointer; }
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+.letter-draft-heading > div {
+  min-width: 0;
 }
 
 .letter-draft-heading.compact {
@@ -6939,7 +7953,7 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-draft-body {
-  min-height: 220px;
+  min-height: clamp(180px, 32vh, 360px);
   resize: vertical;
 }
 
@@ -6955,6 +7969,7 @@ button.letter-stat-card { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   cursor: pointer;
   list-style: none;
@@ -6979,7 +7994,8 @@ button.letter-stat-card { cursor: pointer; }
   font-size: 12px;
   font-style: normal;
   font-weight: 800;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .letter-thinking-note {
@@ -7053,6 +8069,8 @@ button.letter-stat-card { cursor: pointer; }
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .letter-email-sequence-tabs button.active {
@@ -7067,8 +8085,9 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-campaign-review-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.72fr) minmax(320px, 1.28fr);
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.28fr);
   gap: 14px;
+  align-items: start;
   margin-top: 14px;
 }
 
@@ -7076,9 +8095,10 @@ button.letter-stat-card { cursor: pointer; }
   display: grid;
   align-content: start;
   gap: 8px;
-  max-height: 520px;
+  max-height: min(520px, calc(100dvh - 270px));
   overflow: auto;
   padding-right: 2px;
+  overscroll-behavior: contain;
 }
 
 .letter-recipient-row {
@@ -7140,8 +8160,8 @@ button.letter-stat-card { cursor: pointer; }
 .letter-action-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  gap: 10px;
   margin-top: 14px;
 }
 
@@ -7149,16 +8169,15 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-action-row .letter-primary,
 .letter-action-row .letter-secondary {
-  flex: 1 1 140px;
+  flex: 1 1 150px;
+  min-width: min(170px, 100%);
 }
 
 .letter-sticky-actions {
   position: sticky;
-  bottom: -18px;
+  bottom: 0;
   z-index: 2;
-  margin-right: -18px;
-  margin-bottom: -18px;
-  margin-left: -18px;
+  margin: 16px -18px -18px;
   border-top: 1px solid #e5e7eb;
   border-radius: 0 0 8px 8px;
   padding: 12px 18px 14px;
@@ -7168,7 +8187,14 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-draft-card .letter-sticky-actions {
-  bottom: -18px;
+  position: static;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .letter-campaign-summary,
@@ -7190,7 +8216,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-profile-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
@@ -7226,8 +8252,8 @@ button.letter-stat-card { cursor: pointer; }
 
 .mail-settings-panel .sender-action-row .letter-primary,
 .mail-settings-panel .sender-action-row .letter-secondary {
-  flex: 1 1 170px;
-  min-width: 150px;
+  flex: 1 1 180px;
+  min-width: min(180px, 100%);
 }
 
 .sender-channel-section {
@@ -7239,6 +8265,7 @@ button.letter-stat-card { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
   color: #111827;
@@ -7252,6 +8279,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .sender-subsection-heading small {
   min-width: 0;
+  max-width: 100%;
   border: 1px solid #bfdbfe;
   border-radius: 999px;
   padding: 3px 8px;
@@ -7264,7 +8292,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .sender-channel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -7312,6 +8340,7 @@ button.letter-stat-card { cursor: pointer; }
 .sender-channel-top > span {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
   min-width: 0;
   color: #0f172a;
@@ -7350,6 +8379,7 @@ button.letter-stat-card { cursor: pointer; }
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   border-radius: 8px;
   padding: 12px;
@@ -7406,7 +8436,7 @@ button.letter-stat-card { cursor: pointer; }
 
 .letter-provider-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
 }
 
@@ -7431,6 +8461,10 @@ button.letter-stat-card { cursor: pointer; }
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
+  .letter-quick-actions {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
   .letter-two-column,
   .letter-leads-layout,
   .letter-campaign-review-grid {
@@ -7439,6 +8473,14 @@ button.letter-stat-card { cursor: pointer; }
 
   .letter-detail-panel {
     position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .letter-lead-list,
+  .letter-recipient-list {
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -7450,6 +8492,8 @@ button.letter-stat-card { cursor: pointer; }
   .letter-sidebar {
     display: grid;
     gap: 12px;
+    min-height: auto;
+    overflow: visible;
     padding: 16px;
     border-right: 0;
     border-bottom: 1px solid #dbe3ec;
@@ -7460,7 +8504,7 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-nav {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 
   .letter-sidebar-footer {
@@ -7471,6 +8515,10 @@ button.letter-stat-card { cursor: pointer; }
   .letter-stats-grid,
   .letter-stats-grid.compact {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .letter-quick-actions {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 
   .letter-two-column,
@@ -7512,10 +8560,18 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-form-grid,
-  .letter-profile-grid,
   .letter-provider-grid,
   .sender-channel-grid {
     grid-template-columns: 1fr;
+  }
+
+  .signature-logo-box {
+    grid-template-columns: 1fr;
+  }
+
+  .signature-logo-box .letter-secondary,
+  .signature-logo-box .file-button {
+    width: 100%;
   }
 
   .sender-subsection-heading,
@@ -7532,12 +8588,17 @@ button.letter-stat-card { cursor: pointer; }
 @container (max-width: 540px) {
   .letter-stats-grid,
   .letter-stats-grid.compact,
+  .letter-quick-actions,
   .letter-nav {
     grid-template-columns: 1fr;
   }
 
   .letter-main {
     padding: 16px;
+  }
+
+  .letter-page-header .letter-primary {
+    width: 100%;
   }
 
   .letter-action-row {
@@ -7559,6 +8620,17 @@ button.letter-stat-card { cursor: pointer; }
     min-width: 0;
   }
 
+  .letter-sticky-actions {
+    position: static;
+    margin: 12px 0 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    background: #f8fafc;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
   .letter-alert-copy {
     justify-content: center;
     width: 100%;
@@ -7576,6 +8648,8 @@ button.letter-stat-card { cursor: pointer; }
   .letter-sidebar {
     display: grid;
     gap: 12px;
+    min-height: auto;
+    overflow: visible;
     padding: 16px;
     border-right: 0;
     border-bottom: 1px solid #dbe3ec;
@@ -7586,7 +8660,7 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-nav {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 
   .letter-sidebar-footer {
@@ -7602,7 +8676,6 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-form-grid,
-  .letter-profile-grid,
   .letter-provider-grid,
   .sender-channel-grid {
     grid-template-columns: 1fr;
@@ -7616,11 +8689,16 @@ button.letter-stat-card { cursor: pointer; }
 
   .letter-lead-row {
     grid-template-columns: 18px 36px minmax(0, 1fr);
+    gap: 10px;
   }
 
   .letter-lead-status {
     grid-column: 3;
     justify-items: start;
     min-width: 0;
+  }
+
+  .signature-logo-box {
+    grid-template-columns: 1fr;
   }
 }
