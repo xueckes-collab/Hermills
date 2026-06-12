@@ -190,6 +190,90 @@ async function checkTrayResources() {
   if (missing.length === 0 && empty.length === 0) notes.push(`[tray] Checked packaged tray icons in ${rel(trayDir)}.`);
 }
 
+async function findChromiumExecutables(browserDir) {
+  return collectFiles(browserDir, (filePath) => {
+    const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+    return normalized.includes("/chromium-") && /\/chrome-win(?:64)?\/chrome\.exe$/i.test(normalized);
+  });
+}
+
+async function checkEngineResources() {
+  const resourcePath = "hermills-engines/deep-research";
+  const engineDir = path.join(root, "release", "win-unpacked", "resources", ...resourcePath.split("/"));
+  if (!(await pathExists(engineDir))) {
+    failures.push([
+      `[engines] Missing packaged Deep Research engine resources at ${rel(engineDir)}.`,
+      "Run npm run build:win:engines before npm run build:win, then rebuild the Windows package."
+    ].join("\n"));
+    return;
+  }
+
+  const requiredFiles = [
+    ["manifest", path.join(engineDir, "manifest.json")],
+    ["python runtime", path.join(engineDir, "python", "python.exe")],
+    ["python launcher", path.join(engineDir, "bin", "run-python.cmd")]
+  ];
+  const missingFiles = [];
+  const emptyFiles = [];
+  for (const [label, filePath] of requiredFiles) {
+    if (!(await pathExists(filePath))) {
+      missingFiles.push(`${label}: ${rel(filePath)}`);
+      continue;
+    }
+    const fileStat = await stat(filePath);
+    if (fileStat.size === 0) emptyFiles.push(`${label}: ${rel(filePath)}`);
+  }
+  if (missingFiles.length > 0) failures.push(`[engines] Missing packaged engine files:\n${indent(missingFiles.map((entry) => `- ${entry}`).join("\n"))}`);
+  if (emptyFiles.length > 0) failures.push(`[engines] Empty packaged engine files:\n${indent(emptyFiles.map((entry) => `- ${entry}`).join("\n"))}`);
+
+  const manifestPath = path.join(engineDir, "manifest.json");
+  if (await pathExists(manifestPath)) {
+    try {
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      const expectedValues = [
+        ["id", manifest.id, "deep-research"],
+        ["resourcePath", manifest.resourcePath, resourcePath],
+        ["packagedFor.platform", manifest.packagedFor?.platform, "win32"],
+        ["packagedFor.arch", manifest.packagedFor?.arch, "x64"],
+        ["python.executable", manifest.python?.executable, "python/python.exe"],
+        ["python.launcher", manifest.python?.launcher, "bin/run-python.cmd"],
+        ["playwright.browsersPath", manifest.playwright?.browsersPath, "ms-playwright"]
+      ];
+      const mismatches = expectedValues
+        .filter(([, actual, expected]) => actual !== expected)
+        .map(([field, actual, expected]) => `${field}: expected ${expected}, got ${actual ?? "<missing>"}`);
+      if (mismatches.length > 0) failures.push(`[engines] Packaged engine manifest has unexpected values:\n${indent(mismatches.map((entry) => `- ${entry}`).join("\n"))}`);
+    } catch (error) {
+      failures.push(`[engines] Could not parse ${rel(manifestPath)} as JSON: ${error.message}`);
+    }
+  }
+
+  const appDir = path.join(engineDir, "app");
+  const appFiles = await collectFiles(appDir);
+  if (appFiles.length === 0) {
+    failures.push(`[engines] Packaged Deep Research sidecar app is empty or missing: ${rel(appDir)}.`);
+  }
+
+  const sitePackagesDir = path.join(engineDir, "python-site-packages");
+  if (!(await pathExists(sitePackagesDir))) {
+    failures.push(`[engines] Missing packaged Python dependency directory: ${rel(sitePackagesDir)}.`);
+  }
+
+  const browserDir = path.join(engineDir, "ms-playwright");
+  const chromiumExecutables = await findChromiumExecutables(browserDir);
+  if (chromiumExecutables.length === 0) {
+    failures.push([
+      `[engines] Missing packaged Playwright Chromium under ${rel(browserDir)}.`,
+      "Expected a Chromium chrome.exe path like ms-playwright/chromium-*/chrome-win*/chrome.exe."
+    ].join("\n"));
+  }
+
+  if (missingFiles.length === 0 && emptyFiles.length === 0 && appFiles.length > 0 && chromiumExecutables.length > 0) {
+    notes.push(`[engines] Checked packaged Deep Research engine in ${rel(engineDir)}.`);
+    notes.push(`[engines] Found Playwright Chromium at ${rel(chromiumExecutables[0])}.`);
+  }
+}
+
 async function checkPackagedAsar() {
   const asarPath = path.join(root, "release", "win-unpacked", "resources", "app.asar");
   if (!(await pathExists(asarPath))) {
@@ -240,6 +324,7 @@ async function main() {
   await checkReleaseArtifacts();
   await checkAutoUpdateMetadata();
   await checkTrayResources();
+  await checkEngineResources();
   await checkPackagedAsar();
 
   for (const note of notes) console.log(`INFO ${note}`);

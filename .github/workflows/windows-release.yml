@@ -35,6 +35,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Set up bundled Python runtime source
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage Deep Research engine
+        shell: pwsh
+        run: |
+          $runtime = python -c "import pathlib, sys; print(pathlib.Path(sys.executable).parent)"
+          npm run build:win:engines -- --python-runtime "$runtime"
+
       - name: Build Windows installer
         run: npm run build:win -- --publish never
 

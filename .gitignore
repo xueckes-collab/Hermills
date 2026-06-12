@@ -4,5 +4,6 @@ release/
 coverage/
 tmp/
 build/icon.ico
+build/hermills-engines/
 *.log
 .DS_Store

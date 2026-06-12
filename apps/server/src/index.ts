@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import tls from "node:tls";
@@ -51,6 +53,7 @@ import {
   type ChatMessage,
   type ChatSession,
   type CompanyProfile,
+  type DeepResearchSidecarConfig,
   type InstallEvent,
   type InstallRequest,
   type JobRecord,
@@ -92,6 +95,7 @@ export interface ServerOptions {
   allowInsecureDev?: boolean;
   runtimeService?: RuntimeAdapter;
   fetchImpl?: typeof fetch;
+  deepResearch?: Partial<DeepResearchSidecarConfig>;
 }
 
 export interface RuntimeAdapter {
@@ -403,6 +407,7 @@ const AutoOutreachDraftBody = z.object({
   email: z.string().trim().min(3).max(320),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  researchDepth: OutreachResearchDepthSchema.default("standard"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional()
 }).strict();
@@ -517,6 +522,14 @@ const SendOutreachTestEmailBody = z.object({
   to: OptionalOnboardingString(320)
 }).strict();
 
+const DeepResearchRuntimeConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  url: z.string().trim().url().optional(),
+  timeoutMs: z.number().int().min(1).max(120_000).default(30_000),
+  maxPages: z.number().int().min(1).max(20).default(8),
+  apiKey: z.string().trim().min(1).max(4000).optional()
+}).strict();
+
 export async function createServer(options: ServerOptions = {}): Promise<FastifyInstance> {
   const server = Fastify({ logger: false });
   server.addContentTypeParser(/^multipart\/form-data/i, { parseAs: "buffer", bodyLimit: MAX_MATERIAL_FILE_BYTES + 16_384 }, (_request, body, done) => {
@@ -558,6 +571,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const channels = new ChannelRepository(options.baseDir);
   const logs = new LogRepository(options.baseDir);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const researchFetchImpl: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
+  const deepResearch = new DeepResearchClient({ baseDir: options.baseDir, config: options.deepResearch, fetchImpl: researchFetchImpl, logs });
   const resolveProfileId = async (profileId?: string) => {
     const state = await profiles.list();
     const nextProfileId = profileId ?? state.activeProfileId;
@@ -648,6 +663,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/computer-control/dashboard/stop", async () => runtime.stopComputerControlDashboard());
 
   server.addHook("onClose", async () => {
+    await deepResearch.dispose();
     await runtime.dispose?.();
   });
 
@@ -949,6 +965,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
+      deepResearch,
       profileId: await resolveProfileId(body.profileId)
     });
     await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -965,6 +982,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
+      deepResearch,
       profileId: await resolveProfileId(body.profileId)
     });
     await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -1025,7 +1043,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
-      campaigns: outreachCampaigns
+      campaigns: outreachCampaigns,
+      deepResearch
     });
   });
   server.post("/api/outreach/campaigns/:id/recipients/:recipientId/approve", async (request) => {
@@ -3323,8 +3342,37 @@ interface CustomerResearchResult {
   title: string;
   description: string;
   fetchedUrls: string[];
+  evidence: CustomerResearchEvidence[];
   textPreview: string;
   error?: string;
+}
+
+interface CustomerResearchEvidence {
+  label: string;
+  value: string;
+  sourceUrl: string;
+  snippet: string;
+}
+
+interface OutreachGenerationBrief {
+  buyerReason: string;
+  buyerSegment: string;
+  likelyPain: string;
+  procurementTrigger: string;
+  selectedUsp: {
+    headline: string;
+    buyerAngle: string;
+    proof: string;
+  };
+  microOffer: string;
+  missingEvidence: string[];
+}
+
+interface PolishedOutreachDraft {
+  subject: string;
+  body: string;
+  qualityReview: OutreachEmailQualityReview;
+  repairAttempts: number;
 }
 
 interface WebsitePageResult {
@@ -3333,10 +3381,428 @@ interface WebsitePageResult {
   error?: string;
 }
 
-async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "standard"): Promise<CustomerResearchResult> {
+type DeepResearchInsight = {
+  label?: string;
+  value?: string;
+  sourceUrl?: string;
+  source_url?: string;
+  snippet?: string;
+};
+
+type DeepResearchSource = {
+  sourceUrl?: string;
+  source_url?: string;
+  url?: string;
+  statusCode?: number;
+  status_code?: number;
+  title?: string;
+  description?: string;
+  snippet?: string;
+  evidence?: DeepResearchInsight[];
+};
+
+type DeepResearchCompanyResponse = {
+  website?: string;
+  websiteUrl?: string;
+  website_url?: string;
+  companyName?: string;
+  company_name?: string;
+  confidenceScore?: number;
+  confidence_score?: number;
+  buyerType?: string;
+  buyer_type?: string;
+  industry?: string;
+  inferredNeed?: string;
+  inferred_need?: string;
+  recommendedAngle?: string;
+  recommended_angle?: string;
+  title?: string;
+  description?: string;
+  productSignals?: string[];
+  product_signals?: string[];
+  buyingSignals?: string[];
+  buying_signals?: string[];
+  painSignals?: string[];
+  pain_signals?: string[];
+  fetchedUrls?: string[];
+  fetched_urls?: string[];
+  textPreview?: string;
+  text_preview?: string;
+  summary?: string;
+  status?: string;
+  sources?: DeepResearchSource[];
+  warnings?: string[];
+  errors?: Array<{ sourceUrl?: string; source_url?: string; code?: string; message?: string }>;
+  evidence?: DeepResearchInsight[];
+  error?: string;
+};
+
+class DeepResearchClient {
+  private child?: ChildProcess;
+  private endpoint?: string;
+  private readonly config: DeepResearchSidecarConfig;
+  private token = process.env.HERMILLS_DEEP_RESEARCH_TOKEN || randomUUID();
+  private missingLogged = false;
+  private readonly fetchImpl: typeof fetch;
+  private readonly logs: LogRepository;
+  private readonly baseDir?: string;
+
+  constructor(options: { baseDir?: string; config?: Partial<DeepResearchSidecarConfig>; fetchImpl: typeof fetch; logs: LogRepository }) {
+    this.baseDir = options.baseDir;
+    this.config = resolveDeepResearchSidecarConfig(options.config);
+    if (this.config.apiKey) this.token = this.config.apiKey;
+    this.fetchImpl = options.fetchImpl;
+    this.logs = options.logs;
+  }
+
+  async research(input: { website: string; email?: string; maxPages: number; timeoutMs: number }): Promise<CustomerResearchResult | undefined> {
+    if (!this.config.enabled) return undefined;
+    const endpoint = await this.ensureEndpoint();
+    if (!endpoint) return undefined;
+    const controller = new AbortController();
+    const timeoutMs = this.config.timeoutMs || input.timeoutMs;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    try {
+      const response = await this.fetchImpl(`${endpoint}/v1/research/company`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "authorization": `Bearer ${this.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          website: input.website,
+          email: input.email
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json() as DeepResearchCompanyResponse;
+      return normalizeDeepResearchResult(input.website, payload);
+    } catch (error) {
+      const message = timedOut ? `timed out after ${timeoutMs} ms` : error instanceof Error ? error.message : String(error);
+      await this.logs.create({ source: "server", level: "warn", message: `Deep research engine failed; falling back to lightweight research: ${redactSecrets(message)}` });
+      throw new Error(message);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async dispose(): Promise<void> {
+    if (!this.child) return;
+    this.child.kill();
+    this.child = undefined;
+  }
+
+  private async ensureEndpoint(): Promise<string | undefined> {
+    if (this.config.url) {
+      this.endpoint = this.config.url.replace(/\/+$/, "");
+      return this.endpoint;
+    }
+    if (this.endpoint && this.child && !this.child.killed) return this.endpoint;
+    const executable = deepResearchExecutablePath(this.baseDir);
+    if (!executable) {
+      if (!this.missingLogged) {
+        this.missingLogged = true;
+        await this.logs.create({ source: "server", level: "info", message: "Deep research engine is not bundled yet; using lightweight website research." });
+      }
+      return undefined;
+    }
+    const port = await findOpenLocalPort();
+    this.endpoint = `http://127.0.0.1:${port}`;
+    this.child = spawn(executable.command, executable.args, {
+      cwd: executable.cwd,
+      env: {
+        ...process.env,
+        DEEP_RESEARCH_HOST: "127.0.0.1",
+        DEEP_RESEARCH_PORT: String(port),
+        DEEP_RESEARCH_TOKEN: this.token,
+        DEEP_RESEARCH_MAX_PAGES: String(this.config.maxPages ?? 8),
+        DEEP_RESEARCH_TIMEOUT_SECONDS: String(Math.max(1, Math.ceil(timeoutMsToSeconds(this.config.timeoutMs || 30_000)))),
+        HERMILLS_RESEARCH_HOST: "127.0.0.1",
+        HERMILLS_RESEARCH_PORT: String(port),
+        HERMILLS_RESEARCH_TOKEN: this.token,
+        PYTHONHOME: "",
+        PYTHONPATH: ""
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      windowsHide: true
+    });
+    this.child.once("exit", () => {
+      this.endpoint = undefined;
+      this.child = undefined;
+    });
+    const ready = await waitForDeepResearchHealth(this.fetchImpl, this.endpoint, this.token, 12_000);
+    if (!ready) {
+      await this.dispose();
+      await this.logs.create({ source: "server", level: "warn", message: "Deep research engine did not become ready; using lightweight website research." });
+      return undefined;
+    }
+    return this.endpoint;
+  }
+}
+
+function resolveDeepResearchSidecarConfig(input?: Partial<DeepResearchSidecarConfig>): DeepResearchSidecarConfig {
+  const envUrl = process.env.HERMILLS_DEEP_RESEARCH_URL || process.env.HERMILLS_DEEP_RESEARCH_SIDECAR_URL || undefined;
+  const envEnabled = parseOptionalBoolean(process.env.HERMILLS_DEEP_RESEARCH_ENABLED);
+  const envTimeoutMs = parseOptionalPositiveInteger(process.env.HERMILLS_DEEP_RESEARCH_TIMEOUT_MS);
+  const envMaxPages = parseOptionalPositiveInteger(process.env.HERMILLS_DEEP_RESEARCH_MAX_PAGES);
+  return DeepResearchRuntimeConfigSchema.parse({
+    enabled: input?.enabled ?? envEnabled ?? true,
+    url: input?.url ?? envUrl,
+    timeoutMs: input?.timeoutMs ?? envTimeoutMs ?? undefined,
+    maxPages: input?.maxPages ?? envMaxPages ?? undefined,
+    apiKey: input?.apiKey ?? process.env.HERMILLS_DEEP_RESEARCH_API_KEY ?? undefined
+  });
+}
+
+function timeoutMsToSeconds(value: number): number {
+  return value / 1000;
+}
+
+function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (/^(1|true|yes|on)$/i.test(value)) return true;
+  if (/^(0|false|no|off)$/i.test(value)) return false;
+  return undefined;
+}
+
+function parseOptionalPositiveInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizeDeepResearchResult(website: string, payload: DeepResearchCompanyResponse): CustomerResearchResult {
+  const normalizedWebsite = normalizeWebsiteUrl(payload.website || payload.websiteUrl || payload.website_url || website);
+  const sources = normalizeDeepResearchSources(payload.sources ?? []);
+  const sourceEvidence = sources.flatMap((source) => source.evidence.length ? source.evidence : [{
+    label: source.title ? "Page title" : "Page text",
+    value: source.title || source.description || source.snippet,
+    sourceUrl: source.sourceUrl,
+    snippet: source.snippet || source.description || source.title
+  }]);
+  const evidence = normalizeResearchEvidence([...(payload.evidence ?? []), ...sourceEvidence]);
+  const title = payload.title?.trim() || sources.find((source) => source.title)?.title || "";
+  const description = payload.description?.trim() || sources.find((source) => source.description)?.description || "";
+  const sourceTextPreview = sources.map((source) => [source.title, source.description, source.snippet].filter(Boolean).join("\n")).filter(Boolean).join("\n\n");
+  const textPreview = truncateForContext(payload.textPreview || payload.text_preview || payload.summary || sourceTextPreview || evidence.map((item) => `${item.label}: ${item.value}\n${item.snippet}`).join("\n\n"), researchDepthLimits("deep").textChars);
+  const productSignals = (normalizeStringArray(payload.productSignals ?? payload.product_signals).length
+    ? normalizeStringArray(payload.productSignals ?? payload.product_signals)
+    : inferProductSignals(textPreview)).slice(0, 12);
+  const buyingSignals = (normalizeStringArray(payload.buyingSignals ?? payload.buying_signals).length
+    ? normalizeStringArray(payload.buyingSignals ?? payload.buying_signals)
+    : inferBuyingSignals(textPreview)).slice(0, 12);
+  const painSignals = (normalizeStringArray(payload.painSignals ?? payload.pain_signals).length
+    ? normalizeStringArray(payload.painSignals ?? payload.pain_signals)
+    : inferPainSignals(textPreview)).slice(0, 12);
+  const industry = truncatePlain(payload.industry?.trim() || inferIndustry(textPreview), 160);
+  const inferredNeed = truncatePlain(payload.inferredNeed?.trim() || payload.inferred_need?.trim() || inferCustomerNeed(textPreview), 2000);
+  const buyerType = truncatePlain(payload.buyerType?.trim() || payload.buyer_type?.trim() || inferBuyerType(textPreview, industry), 160);
+  const recommendedAngle = truncatePlain(payload.recommendedAngle?.trim() || payload.recommended_angle?.trim() || inferRecommendedAngle({ buyerType, industry, inferredNeed, productSignals, buyingSignals, painSignals }), 800);
+  const fetchedUrls = Array.from(new Set([
+    ...normalizeStringArray(payload.fetchedUrls ?? payload.fetched_urls),
+    ...sources.map((source) => source.sourceUrl)
+  ])).map((url) => truncatePlain(url, 1000)).slice(0, 12);
+  const errors = payload.errors?.map((error) => [error.code, error.message].filter(Boolean).join(": ")).filter(Boolean) ?? [];
+  const researchNote = [payload.error, ...(payload.warnings ?? []), ...errors].filter(Boolean).join(" ");
+  return {
+    website: normalizedWebsite,
+    companyName: truncatePlain(payload.companyName?.trim() || payload.company_name?.trim() || inferCompanyName(title, description, normalizedWebsite), 180),
+    depth: "deep",
+    confidenceScore: clampInteger(payload.confidenceScore ?? payload.confidence_score, 0, 100, scoreResearchConfidence({
+      fetchedPages: fetchedUrls.length,
+      title,
+      description,
+      industry,
+      inferredNeed,
+      productSignals,
+      buyingSignals,
+      painSignals
+    })),
+    buyerType,
+    productSignals,
+    buyingSignals,
+    painSignals,
+    recommendedAngle,
+    industry,
+    inferredNeed,
+    title: truncatePlain(title, 240),
+    description: truncatePlain(description, 1000),
+    fetchedUrls,
+    evidence,
+    textPreview,
+    error: researchNote || undefined
+  };
+}
+
+function normalizeDeepResearchSources(items: DeepResearchSource[]): Array<{
+  sourceUrl: string;
+  title: string;
+  description: string;
+  snippet: string;
+  evidence: DeepResearchInsight[];
+}> {
+  return items.map((item) => ({
+    sourceUrl: truncatePlain(String(item.sourceUrl ?? item.source_url ?? item.url ?? "").trim(), 1000),
+    title: truncatePlain(String(item.title ?? "").trim(), 240),
+    description: truncatePlain(String(item.description ?? "").trim(), 1000),
+    snippet: truncatePlain(String(item.snippet ?? "").trim(), 800),
+    evidence: item.evidence ?? []
+  })).filter((item) => item.sourceUrl).slice(0, 20);
+}
+
+function normalizeResearchEvidence(items: DeepResearchInsight[]): CustomerResearchEvidence[] {
+  return items.map((item) => {
+    const snippet = truncatePlain(String(item.snippet ?? "").trim(), 800);
+    const value = truncatePlain(String(item.value ?? snippet ?? "").trim(), 600);
+    return {
+      label: truncatePlain(String(item.label ?? "Website evidence").trim(), 160) || "Website evidence",
+      value,
+      sourceUrl: truncatePlain(String(item.sourceUrl ?? item.source_url ?? "").trim(), 1000),
+      snippet
+    };
+  }).filter((item) => item.value && item.sourceUrl).slice(0, 40);
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean);
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function deepResearchExecutablePath(baseDir?: string): { command: string; args: string[]; cwd: string } | undefined {
+  const envPath = process.env.HERMILLS_DEEP_RESEARCH_EXE;
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  const candidates = [
+    envPath,
+    resourcesPath ? path.join(resourcesPath, "hermills-engines", "deep-research", "bin", process.platform === "win32" ? "run-python.cmd" : "run-python") : undefined,
+    resourcesPath ? path.join(resourcesPath, "hermills-engines", "deep-research", process.platform === "win32" ? "HermillsResearch.exe" : "HermillsResearch") : undefined,
+    resourcesPath ? path.join(resourcesPath, "deep-research", process.platform === "win32" ? "HermillsResearch.exe" : "HermillsResearch") : undefined,
+    baseDir ? path.join(baseDir, "hermills-engines", "deep-research", "bin", process.platform === "win32" ? "run-python.cmd" : "run-python") : undefined,
+    baseDir ? path.join(baseDir, "deep-research", process.platform === "win32" ? "HermillsResearch.exe" : "HermillsResearch") : undefined
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const executable = candidates.find((candidate) => existsSync(candidate));
+  if (!executable) return undefined;
+  if (/run-python\.cmd$/i.test(executable)) {
+    const comspec = process.env.ComSpec || "cmd.exe";
+    return { command: comspec, args: ["/d", "/s", "/c", `"${executable}" -m deep_research`], cwd: path.dirname(path.dirname(executable)) };
+  }
+  if (/run-python$/i.test(executable)) {
+    return { command: executable, args: ["-m", "deep_research"], cwd: path.dirname(path.dirname(executable)) };
+  }
+  return { command: executable, args: [], cwd: path.dirname(executable) };
+}
+
+async function findOpenLocalPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close(() => port ? resolve(port) : reject(new Error("No local port was assigned.")));
+    });
+  });
+}
+
+async function waitForDeepResearchHealth(fetchImpl: typeof fetch, endpoint: string, token: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchImpl(`${endpoint}/health`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(1500)
+      });
+      if (response.ok) return true;
+    } catch {
+      // Retry until deadline.
+    }
+    await delay(300);
+  }
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertPublicResearchWebsite(website: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(website);
+  } catch {
+    throw new ClientInputError("Enter a valid customer website.");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new ClientInputError("Customer website must use http or https.");
+  const host = parsed.hostname.replace(/\.$/, "").toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) {
+    throw new ClientInputError("Customer website must be a public company website.");
+  }
+  const ipVersion = net.isIP(host);
+  if (ipVersion && isPrivateOrLocalIp(host)) throw new ClientInputError("Customer website must not point to a local or private network address.");
+}
+
+function isPrivateOrLocalIp(host: string): boolean {
+  const normalized = host.replace(/^\[|\]$/g, "").toLowerCase();
+  if (normalized === "0.0.0.0" || normalized === "255.255.255.255") return true;
+  if (normalized === "::" || normalized === "::1") return true;
+  if (net.isIP(normalized) === 4) {
+    const octets = normalized.split(".").map((part) => Number(part));
+    if (octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+    const [a, b] = octets;
+    return a === 10
+      || a === 127
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127);
+  }
+  if (net.isIP(normalized) === 6) {
+    return normalized === "::1"
+      || normalized.startsWith("fc")
+      || normalized.startsWith("fd")
+      || normalized.startsWith("fe80:")
+      || normalized.startsWith("::ffff:127.")
+      || normalized.startsWith("::ffff:10.")
+      || normalized.startsWith("::ffff:192.168.")
+      || normalized.startsWith("::ffff:169.254.");
+  }
+  return false;
+}
+
+async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "standard", options: { email?: string; deepResearch?: DeepResearchClient } = {}): Promise<CustomerResearchResult> {
   const website = normalizeWebsiteUrl(rawWebsite);
+  assertPublicResearchWebsite(website);
+  let deepResearchFallbackReason = "";
+  if (depth === "deep" && options.deepResearch) {
+    try {
+      const deepResult = await options.deepResearch.research({
+        website,
+        email: options.email,
+        maxPages: researchDepthLimits(depth).pages,
+        timeoutMs: 30_000
+      });
+      if (deepResult) return deepResult;
+    } catch (error) {
+      deepResearchFallbackReason = redactSecrets(error instanceof Error ? error.message : String(error));
+    }
+  }
   const limits = researchDepthLimits(depth);
   const initial = await fetchWebsitePage(website);
+  const fallbackNote = deepResearchFallbackReason
+    ? `Deep research sidecar failed (${deepResearchFallbackReason}); used Node website research fallback.`
+    : "";
   if (!initial.html) {
     return {
       website,
@@ -3353,8 +3819,9 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
       title: "",
       description: "",
       fetchedUrls: [],
+      evidence: [],
       textPreview: "",
-      error: initial.error || "Could not fetch customer website."
+      error: [fallbackNote, initial.error || "Could not fetch customer website."].filter(Boolean).join(" ")
     };
   }
 
@@ -3397,8 +3864,40 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
     title,
     description,
     fetchedUrls: successfulPages.map((page) => page.url),
-    textPreview
+    evidence: localResearchEvidence({
+      website,
+      title,
+      description,
+      productSignals,
+      buyingSignals,
+      painSignals,
+      fetchedUrls: successfulPages.map((page) => page.url),
+      textPreview
+    }),
+    textPreview,
+    error: fallbackNote || undefined
   };
+}
+
+function localResearchEvidence(input: {
+  website: string;
+  title: string;
+  description: string;
+  productSignals: string[];
+  buyingSignals: string[];
+  painSignals: string[];
+  fetchedUrls: string[];
+  textPreview: string;
+}): CustomerResearchEvidence[] {
+  const sourceUrl = input.fetchedUrls[0] ?? input.website;
+  const snippets = input.textPreview.split(/[.!?。]\s+/).map((part) => part.trim()).filter(Boolean);
+  const evidence: CustomerResearchEvidence[] = [];
+  if (input.title) evidence.push({ label: "Page title", value: input.title, sourceUrl, snippet: snippets[0] ?? input.title });
+  if (input.description) evidence.push({ label: "Meta description", value: input.description, sourceUrl, snippet: input.description });
+  for (const signal of input.productSignals) evidence.push({ label: "Product signal", value: signal, sourceUrl, snippet: snippets.find((item) => /product|catalog|category|range|collection|oem|custom/i.test(item)) ?? signal });
+  for (const signal of input.buyingSignals) evidence.push({ label: "Buying signal", value: signal, sourceUrl, snippet: snippets.find((item) => /supplier|sourcing|stock|launch|season|compliance|reorder/i.test(item)) ?? signal });
+  for (const signal of input.painSignals) evidence.push({ label: "Risk signal", value: signal, sourceUrl, snippet: snippets.find((item) => /delivery|quality|certification|testing|cost|margin|packaging/i.test(item)) ?? signal });
+  return evidence.slice(0, 24);
 }
 
 async function fetchWebsitePage(url: string): Promise<WebsitePageResult> {
@@ -3644,6 +4143,7 @@ function formatCustomerResearchNotes(research: CustomerResearchResult): string {
     research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
     research.recommendedAngle ? `Recommended angle: ${research.recommendedAngle}` : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
+    research.evidence.length ? `Evidence: ${formatCustomerResearchEvidence(research.evidence)}` : "",
     research.error ? `Research note: ${research.error}` : ""
   ].filter(Boolean).join("\n");
 }
@@ -3664,9 +4164,17 @@ function formatCustomerResearchContext(research: CustomerResearchResult): string
     research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
     research.recommendedAngle ? `Recommended outreach angle: ${research.recommendedAngle}` : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
+    research.evidence.length ? `Evidence: ${formatCustomerResearchEvidence(research.evidence)}` : "",
     research.textPreview ? `Website text preview:\n${research.textPreview}` : "",
     research.error ? `Research limitation: ${research.error}` : ""
   ].filter(Boolean).join("\n");
+}
+
+function formatCustomerResearchEvidence(evidence: CustomerResearchEvidence[]): string {
+  return evidence.slice(0, 8).map((item) => {
+    const snippet = item.snippet ? ` (${truncatePlain(item.snippet, 160)})` : "";
+    return `${item.label}: ${item.value} - ${item.sourceUrl}${snippet}`;
+  }).join("; ");
 }
 
 function summarizeCustomerResearch(research: CustomerResearchResult) {
@@ -3679,6 +4187,160 @@ function summarizeCustomerResearch(research: CustomerResearchResult) {
     riskNotes: research.painSignals,
     checkedPages: research.fetchedUrls.length
   });
+}
+
+function buildOutreachGenerationBrief(input: {
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  companyKnowledgeContext: string;
+}): OutreachGenerationBrief {
+  const facts = extractCompanyKnowledgeFacts(input.companyKnowledgeContext);
+  const product = facts.mainProducts[0] || input.lead.need || "this product category";
+  const buyerSegment = input.research?.buyerType || input.lead.industry || "Potential B2B buyer";
+  const buyerReason = strongestResearchSignal(input.research) || input.lead.need || input.lead.notes || `appears relevant to ${product}`;
+  const likelyPain = input.research?.painSignals[0]
+    ?? input.research?.inferredNeed
+    ?? input.lead.need
+    ?? "Needs a faster way to judge supplier fit without reading a full catalog.";
+  const procurementTrigger = input.research?.buyingSignals[0]
+    ?? triggerFromBuyerSegment(buyerSegment)
+    ?? "Supplier comparison or category-fit review.";
+  const selectedUsp = selectOutreachUsp({ facts, product, likelyPain, buyerSegment });
+  return {
+    buyerReason: truncatePlain(buyerReason, 260),
+    buyerSegment: truncatePlain(buyerSegment, 160),
+    likelyPain: truncatePlain(likelyPain, 260),
+    procurementTrigger: truncatePlain(procurementTrigger, 260),
+    selectedUsp,
+    microOffer: selectMicroOffer({ facts, likelyPain, product }),
+    missingEvidence: missingOutreachEvidence(facts)
+  };
+}
+
+function extractCompanyKnowledgeFacts(companyKnowledgeContext: string): {
+  companyName: string;
+  mainProducts: string[];
+  certifications: string[];
+  paymentTerms: string[];
+  shippingTerms: string[];
+  brandVoice: string;
+} {
+  return {
+    companyName: firstCompanyKnowledgeLine(companyKnowledgeContext, "Company name"),
+    mainProducts: splitCompanyKnowledgeList(firstCompanyKnowledgeLine(companyKnowledgeContext, "Main products")),
+    certifications: splitCompanyKnowledgeList(firstCompanyKnowledgeLine(companyKnowledgeContext, "Certifications")),
+    paymentTerms: splitCompanyKnowledgeList(firstCompanyKnowledgeLine(companyKnowledgeContext, "Payment terms")),
+    shippingTerms: splitCompanyKnowledgeList(firstCompanyKnowledgeLine(companyKnowledgeContext, "Shipping terms")),
+    brandVoice: firstCompanyKnowledgeLine(companyKnowledgeContext, "Brand voice")
+  };
+}
+
+function firstCompanyKnowledgeLine(context: string, label: string): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = context.match(new RegExp(`^${escaped}:\\s*(.+)$`, "im"));
+  return match?.[1]?.trim() ?? "";
+}
+
+function splitCompanyKnowledgeList(value: string): string[] {
+  return value.split(/[,;，、]/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
+}
+
+function strongestResearchSignal(research?: CustomerResearchResult): string {
+  if (!research) return "";
+  return [
+    research.description,
+    research.productSignals[0],
+    research.buyingSignals[0],
+    research.painSignals[0],
+    research.inferredNeed,
+    research.recommendedAngle
+  ].find((item) => item && item.trim()) ?? "";
+}
+
+function triggerFromBuyerSegment(segment: string): string {
+  if (/retail|ecommerce|brand|category/i.test(segment)) return "Category refresh, new SKU testing, or seasonal stock planning.";
+  if (/import|distributor|wholesale/i.test(segment)) return "Repeat sourcing, supplier comparison, or replenishment planning.";
+  if (/manufacturer|oem|production/i.test(segment)) return "Component or specification review before production planning.";
+  return "";
+}
+
+function selectOutreachUsp(input: {
+  facts: ReturnType<typeof extractCompanyKnowledgeFacts>;
+  product: string;
+  likelyPain: string;
+  buyerSegment: string;
+}): OutreachGenerationBrief["selectedUsp"] {
+  if (input.facts.certifications.length && /proof|certification|quality|compliance|testing/i.test(input.likelyPain)) {
+    return {
+      headline: `${input.product} proof pack`,
+      buyerAngle: "Reduces buyer risk before sampling by putting certification or inspection evidence in the first review.",
+      proof: input.facts.certifications.slice(0, 3).join(", ")
+    };
+  }
+  if (input.facts.shippingTerms.length && /lead time|delivery|logistics|supply|repeat|replenishment/i.test(input.likelyPain)) {
+    return {
+      headline: "Clear supply and delivery comparison",
+      buyerAngle: "Helps the buyer compare lead time, MOQ, and shipment terms before committing to a long supplier conversation.",
+      proof: input.facts.shippingTerms.slice(0, 3).join(", ")
+    };
+  }
+  if (/retail|ecommerce|brand|category/i.test(input.buyerSegment)) {
+    return {
+      headline: `Category-fit ${input.product} options`,
+      buyerAngle: "Gives the buyer a small set of options matched to their channel instead of a broad catalog.",
+      proof: input.facts.mainProducts.length ? `Available product line: ${input.facts.mainProducts.slice(0, 3).join(", ")}` : "Proof needed: add product catalog, sample range, MOQ, and lead-time evidence."
+    };
+  }
+  return {
+    headline: `${input.product} fit check`,
+    buyerAngle: "Keeps the first step low-risk by offering only the few details needed to judge supplier fit.",
+    proof: [
+      input.facts.mainProducts.length ? `Products: ${input.facts.mainProducts.slice(0, 3).join(", ")}` : "",
+      input.facts.certifications.length ? `Certifications: ${input.facts.certifications.slice(0, 3).join(", ")}` : ""
+    ].filter(Boolean).join("; ") || "Proof needed: add product, certification, MOQ, lead-time, or sample evidence."
+  };
+}
+
+function selectMicroOffer(input: {
+  facts: ReturnType<typeof extractCompanyKnowledgeFacts>;
+  likelyPain: string;
+  product: string;
+}): string {
+  if (input.facts.certifications.length && /proof|certification|quality|compliance|testing/i.test(input.likelyPain)) {
+    return "a short certification/spec pack plus 2 matched options";
+  }
+  if (/lead time|delivery|logistics|supply|repeat|replenishment/i.test(input.likelyPain)) {
+    return "a small MOQ and lead-time comparison for 2-3 options";
+  }
+  if (/catalog|range|selection|sku|category/i.test(input.likelyPain)) {
+    return `2-3 ${input.product} options matched to their channel`;
+  }
+  return "2-3 matched options with MOQ, lead time, and proof notes";
+}
+
+function missingOutreachEvidence(facts: ReturnType<typeof extractCompanyKnowledgeFacts>): string[] {
+  return [
+    facts.certifications.length ? "" : "certifications or compliance proof",
+    facts.shippingTerms.length ? "" : "lead-time or shipping terms",
+    facts.paymentTerms.length ? "" : "payment terms",
+    facts.mainProducts.length ? "" : "specific product list"
+  ].filter(Boolean);
+}
+
+function formatOutreachGenerationBrief(brief: OutreachGenerationBrief): string {
+  return [
+    "--- Private outreach brief ---",
+    "Use this brief internally to write the email. Do not expose this section or mention that a workflow exists.",
+    `Buyer reason: ${brief.buyerReason}`,
+    `Buyer segment: ${brief.buyerSegment}`,
+    `Likely pain/risk: ${brief.likelyPain}`,
+    `Procurement trigger: ${brief.procurementTrigger}`,
+    `Single USP to use: ${brief.selectedUsp.headline}`,
+    `Why it matters to buyer: ${brief.selectedUsp.buyerAngle}`,
+    `Allowed proof: ${brief.selectedUsp.proof}`,
+    `Low-friction next step: ${brief.microOffer}`,
+    brief.missingEvidence.length ? `Missing evidence to avoid inventing: ${brief.missingEvidence.join(", ")}` : "Missing evidence to avoid inventing: none obvious"
+  ].join("\n");
 }
 
 const outreachTemplatePhrases = [
@@ -3881,7 +4543,11 @@ async function generateOutreachDraft(input: {
     defaultModel: providerRecord.defaultModel
   } : undefined;
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
-  const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, input.customerResearchContext);
+  const generationBrief = buildOutreachGenerationBrief({
+    lead: input.lead,
+    companyKnowledgeContext
+  });
+  const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, generationBrief, input.customerResearchContext);
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
     model: input.body.model ?? providerRecord?.defaultModel,
@@ -3889,19 +4555,29 @@ async function generateOutreachDraft(input: {
     provider
   });
   const parsed = parseGeneratedOutreachDraft(replyText);
-  const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead });
+  const polished = await polishOutreachDraft({
+    candidate: parsed,
+    lead: input.lead,
+    brief: generationBrief,
+    language: input.body.language,
+    tone: input.body.tone,
+    companyKnowledgeContext,
+    runtime: input.runtime,
+    provider,
+    model: input.body.model ?? providerRecord?.defaultModel
+  });
   return input.drafts.create({
     profileId: input.profileId,
     leadId: input.lead.id,
-    subject: parsed.subject,
-    body: parsed.body,
+    subject: polished.subject,
+    body: polished.body,
     language: input.body.language,
     tone: input.body.tone,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
     model: input.body.model ?? providerRecord?.defaultModel,
-    usage: estimateMessageUsage(prompt, `${parsed.subject}\n${parsed.body}`),
-    qualityReview
+    usage: estimateMessageUsage(prompt, `${polished.subject}\n${polished.body}`),
+    qualityReview: polished.qualityReview
   });
 }
 
@@ -3916,11 +4592,16 @@ async function generateOutreachWorkflow(input: {
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
+  deepResearch?: DeepResearchClient;
   research?: CustomerResearchResult;
   researchDepth?: OutreachResearchDepth;
 }): Promise<OutreachWorkflow> {
   await assertCompanyProfileReady(input.companyProfile);
-  const research = input.research ?? await researchCustomerWebsite(input.body.website, input.researchDepth ?? "standard");
+  const researchDepth = input.researchDepth ?? input.body.researchDepth ?? "standard";
+  const research = input.research ?? await researchCustomerWebsite(input.body.website, researchDepth, {
+    email: input.body.email,
+    deepResearch: input.deepResearch
+  });
   const lead = input.lead ?? await input.leads.create({
     profileId: input.profileId,
     companyName: research.companyName || companyNameFromWebsite(research.website) || companyNameFromEmail(input.body.email),
@@ -3944,9 +4625,15 @@ async function generateOutreachWorkflow(input: {
   } : undefined;
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
   const customerResearchContext = formatCustomerResearchContext(research);
+  const generationBrief = buildOutreachGenerationBrief({
+    lead,
+    research,
+    companyKnowledgeContext
+  });
   const prompt = buildOutreachWorkflowPrompt({
     lead,
     research,
+    generationBrief,
     companyKnowledgeContext,
     language: input.body.language,
     tone: input.body.tone
@@ -3958,27 +4645,44 @@ async function generateOutreachWorkflow(input: {
     provider
   });
   const generated = parseGeneratedOutreachWorkflow(replyText, lead, input.body.language, input.body.tone);
-  const initialQualityReview = reviewOutreachEmail({
-    subject: generated.initialEmail.subject,
-    body: generated.initialEmail.body,
+  const polishedInitial = await polishOutreachDraft({
+    candidate: {
+      subject: generated.initialEmail.subject,
+      body: generated.initialEmail.body
+    },
     lead,
-    research
+    research,
+    brief: generationBrief,
+    language: input.body.language,
+    tone: input.body.tone,
+    companyKnowledgeContext,
+    runtime: input.runtime,
+    provider,
+    model: input.body.model ?? providerRecord?.defaultModel
+  });
+  const initialQualityReview = polishedInitial.qualityReview;
+  const polishedFollowUps = polishWorkflowFollowUps({
+    followUps: generated.followUps,
+    lead,
+    brief: generationBrief,
+    language: input.body.language,
+    tone: input.body.tone
   });
   const initialDraft = await input.drafts.create({
     profileId: input.profileId,
     leadId: lead.id,
-    subject: generated.initialEmail.subject,
-    body: generated.initialEmail.body,
+    subject: polishedInitial.subject,
+    body: polishedInitial.body,
     language: input.body.language,
     tone: input.body.tone,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
     model: input.body.model ?? providerRecord?.defaultModel,
-    usage: estimateMessageUsage(prompt, `${generated.initialEmail.subject}\n${generated.initialEmail.body}`),
+    usage: estimateMessageUsage(prompt, `${polishedInitial.subject}\n${polishedInitial.body}`),
     qualityReview: initialQualityReview
   });
   const followUps = [];
-  for (const email of generated.followUps.slice(0, 9)) {
+  for (const email of polishedFollowUps.slice(0, 9)) {
     const draft = await input.drafts.create({
       profileId: input.profileId,
       leadId: lead.id,
@@ -3989,7 +4693,8 @@ async function generateOutreachWorkflow(input: {
       promptSnapshot: truncateForContext(prompt, 30_000),
       providerId: providerRecord?.id,
       model: input.body.model ?? providerRecord?.defaultModel,
-      usage: estimateMessageUsage(prompt, `${email.subject}\n${email.body}`)
+      usage: estimateMessageUsage(prompt, `${email.subject}\n${email.body}`),
+      qualityReview: email.qualityReview
     });
     followUps.push({ ...email, draftId: draft.id });
   }
@@ -4005,7 +4710,7 @@ async function generateOutreachWorkflow(input: {
     research: CustomerResearchSnapshotSchema.parse({ ...research, createdAt: now }),
     icps: generated.icps,
     usps: generated.usps,
-    initialEmail: { ...generated.initialEmail, draftId: initialDraft.id, qualityReview: initialQualityReview },
+    initialEmail: { ...generated.initialEmail, subject: polishedInitial.subject, body: polishedInitial.body, draftId: initialDraft.id, qualityReview: initialQualityReview },
     followUps,
     promptSnapshot: truncateForContext(`${prompt}\n\n--- Customer context ---\n${customerResearchContext}`, 30_000),
     providerId: providerRecord?.id,
@@ -4024,6 +4729,7 @@ async function generateOutreachCampaignWorkflows(input: {
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
   campaigns: OutreachCampaignRepository;
+  deepResearch?: DeepResearchClient;
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
   if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot generate new drafts.");
@@ -4036,7 +4742,11 @@ async function generateOutreachCampaignWorkflows(input: {
     const key = `${campaign.researchDepth}:${normalized}`;
     const cached = researchCache.get(key);
     if (cached) return cached;
-    const next = researchCustomerWebsite(normalized, campaign.researchDepth);
+    const recipientEmail = detail.recipients.find((recipient) => normalizeWebsiteUrl(recipient.website) === normalized)?.email;
+    const next = researchCustomerWebsite(normalized, campaign.researchDepth, {
+      email: recipientEmail,
+      deepResearch: input.deepResearch
+    });
     researchCache.set(key, next);
     return next;
   };
@@ -4052,6 +4762,7 @@ async function generateOutreachCampaignWorkflows(input: {
           email: recipient.email,
           language: campaign.language,
           tone: campaign.tone,
+          researchDepth: campaign.researchDepth,
           providerId: campaign.providerId,
           model: campaign.model
         },
@@ -4064,6 +4775,7 @@ async function generateOutreachCampaignWorkflows(input: {
         leads: input.leads,
         drafts: input.drafts,
         workflows: input.workflows,
+        deepResearch: input.deepResearch,
         research,
         researchDepth: campaign.researchDepth
       });
@@ -4341,6 +5053,212 @@ function buildOutreachRewritePrompt(input: {
     "--- Our company knowledge ---",
     input.companyKnowledgeContext || "No company knowledge has been added yet; stay conservative and offer a low-friction next step."
   ].join("\n");
+}
+
+async function polishOutreachDraft(input: {
+  candidate: { subject: string; body: string };
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  brief: OutreachGenerationBrief;
+  language: string;
+  tone: string;
+  companyKnowledgeContext: string;
+  runtime: RuntimeAdapter;
+  provider?: HermesReplyRequest["provider"];
+  model?: string;
+  maxRepairAttempts?: number;
+}): Promise<PolishedOutreachDraft> {
+  const maxRepairAttempts = input.maxRepairAttempts ?? 2;
+  let best = {
+    subject: input.candidate.subject,
+    body: input.candidate.body,
+    qualityReview: reviewOutreachEmail({ subject: input.candidate.subject, body: input.candidate.body, lead: input.lead, research: input.research }),
+    repairAttempts: 0
+  };
+  if (best.qualityReview.passed) return best;
+
+  for (let attempt = 1; attempt <= maxRepairAttempts; attempt += 1) {
+    const repairPrompt = buildOutreachRepairPrompt({
+      subject: best.subject,
+      body: best.body,
+      review: best.qualityReview,
+      lead: input.lead,
+      research: input.research,
+      brief: input.brief,
+      language: input.language,
+      tone: input.tone,
+      companyKnowledgeContext: input.companyKnowledgeContext
+    });
+    const replyText = await input.runtime.createHermesReply({
+      messages: [{ id: randomUUID(), role: "user", content: repairPrompt, createdAt: new Date().toISOString() }],
+      model: input.model,
+      instructions: outreachInstructions(),
+      provider: input.provider
+    });
+    const parsed = parseGeneratedOutreachDraft(replyText);
+    const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead, research: input.research });
+    const repaired = { subject: parsed.subject, body: parsed.body, qualityReview, repairAttempts: attempt };
+    if (qualityReview.score > best.qualityReview.score) best = repaired;
+    if (qualityReview.passed) return repaired;
+  }
+
+  const fallback = fallbackOutreachDraftFromBrief(input.lead, input.brief);
+  const fallbackReview = reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead, research: input.research });
+  if (fallbackReview.score >= best.qualityReview.score) {
+    return {
+      subject: fallback.subject,
+      body: fallback.body,
+      qualityReview: fallbackReview,
+      repairAttempts: maxRepairAttempts
+    };
+  }
+  return best;
+}
+
+function buildOutreachRepairPrompt(input: {
+  subject: string;
+  body: string;
+  review: OutreachEmailQualityReview;
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  brief: OutreachGenerationBrief;
+  language: string;
+  tone: string;
+  companyKnowledgeContext: string;
+}): string {
+  return [
+    "Rewrite this B2B cold email so it passes the buyer 2-second quality gate.",
+    "This is an internal repair step after automated QA failed. Do not explain the repair.",
+    `Target language: ${input.language}.`,
+    `Tone: ${input.tone}.`,
+    "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
+    "",
+    "Repair rules:",
+    "- Keep the body around 3 short lines and under 130 words.",
+    "- First business line must say why this specific buyer should care.",
+    "- Use exactly one buyer-relevant USP from the private brief.",
+    "- End with one low-friction next step.",
+    "- Remove generic supplier phrases, translated English, and company-first bragging.",
+    "- Do not invent proof, pricing, certifications, cases, delivery promises, or fake familiarity.",
+    "",
+    "--- Failed draft ---",
+    `Subject: ${input.subject}`,
+    input.body,
+    "",
+    "--- QA failures ---",
+    input.review.issues.length ? input.review.issues.join("\n") : input.review.summary,
+    input.review.rewriteHints.length ? input.review.rewriteHints.join("\n") : "",
+    "",
+    formatOutreachGenerationBrief(input.brief),
+    "",
+    "--- Lead ---",
+    [
+      `Company: ${input.lead.companyName}`,
+      input.lead.website ? `Website: ${input.lead.website}` : "",
+      input.lead.email ? `Email: ${input.lead.email}` : "",
+      input.lead.industry ? `Industry: ${input.lead.industry}` : "",
+      input.lead.need ? `Need: ${input.lead.need}` : "",
+      input.lead.notes ? `Notes: ${input.lead.notes}` : ""
+    ].filter(Boolean).join("\n"),
+    "",
+    input.research ? formatCustomerResearchContext(input.research) : "--- Customer website research ---\nNo website research was available.",
+    "",
+    "--- Company knowledge ---",
+    input.companyKnowledgeContext || "No company knowledge has been added yet; stay conservative."
+  ].filter(Boolean).join("\n");
+}
+
+function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGenerationBrief): { subject: string; body: string } {
+  const company = lead.companyName || "your team";
+  const subjectBase = brief.selectedUsp.headline.replace(/\bproof pack\b/i, "proof");
+  const reason = stripLeadingCompanyName(brief.buyerReason, company);
+  return {
+    subject: truncatePlain(subjectBase || `${company} fit check`, 58),
+    body: [
+      `Hi, I saw ${company} ${lowercaseFirstBusinessPhrase(reason)}.`,
+      `${brief.selectedUsp.headline} may help because ${lowercaseFirstBusinessPhrase(brief.selectedUsp.buyerAngle)}.`,
+      `Would it help if I sent ${brief.microOffer}?`
+    ].join("\n")
+  };
+}
+
+function stripLeadingCompanyName(value: string, companyName: string): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  const company = companyName.replace(/\s+/g, " ").trim();
+  if (!company) return clean;
+  const lower = clean.toLowerCase();
+  const companyLower = company.toLowerCase();
+  if (!lower.startsWith(companyLower)) return clean;
+  return clean.slice(company.length).replace(/^\s*[-:|–—,，]\s*/, "").trim() || clean;
+}
+
+function lowercaseFirstBusinessPhrase(value: string): string {
+  const clean = value.replace(/\s+/g, " ").trim().replace(/[.。]+$/, "");
+  if (!clean) return "may be reviewing this category";
+  return `${clean[0]?.toLowerCase() ?? ""}${clean.slice(1)}`;
+}
+
+function polishWorkflowFollowUps(input: {
+  followUps: OutreachWorkflow["followUps"];
+  lead: OutreachLead;
+  brief: OutreachGenerationBrief;
+  language: string;
+  tone: string;
+}): OutreachWorkflow["followUps"] {
+  void input.language;
+  void input.tone;
+  return defaultFollowUpStrategies.map((strategy, index) => {
+    const candidate = input.followUps[index];
+    const normalized = candidate ? {
+      ...candidate,
+      id: candidate.id || `follow-up-${index + 1}`,
+      step: index + 1,
+      delayDays: numberField(candidate.delayDays, strategy.delayDays),
+      strategy: candidate.strategy || strategy.strategy,
+      subject: truncatePlain(candidate.subject || `${strategy.strategy} for ${input.lead.companyName}`, 240),
+      body: truncateForContext(candidate.body || "", 20_000),
+      status: "draft" as const
+    } : fallbackFollowUpFromBrief(input.lead, input.brief, index, strategy);
+    const review = reviewOutreachEmail({ subject: normalized.subject, body: normalized.body, lead: input.lead });
+    const hasTemplatePhrase = outreachTemplatePhrases.some((phrase) => normalizeQualityText(`${normalized.subject}\n${normalized.body}`).includes(phrase));
+    if (review.level === "blocked" || hasTemplatePhrase || countWords(normalized.body) > 150) {
+      const fallback = fallbackFollowUpFromBrief(input.lead, input.brief, index, strategy);
+      return {
+        ...fallback,
+        qualityReview: reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead })
+      };
+    }
+    return { ...normalized, qualityReview: review };
+  });
+}
+
+function fallbackFollowUpFromBrief(
+  lead: OutreachLead,
+  brief: OutreachGenerationBrief,
+  index: number,
+  strategy: { delayDays: number; strategy: string }
+): OutreachWorkflow["followUps"][number] {
+  const company = lead.companyName || "your team";
+  const subject = index === 7 ? `Close the loop on ${truncatePlain(company, 28)}` : truncatePlain(`${strategy.strategy}: ${brief.selectedUsp.headline}`, 58);
+  const lines = [
+    `Hi, quick note on ${company} and ${lowercaseFirstBusinessPhrase(brief.procurementTrigger)}.`,
+    `${brief.selectedUsp.headline} may be worth a quick look because ${lowercaseFirstBusinessPhrase(brief.likelyPain)}.`,
+    index === 2
+      ? `Should I send ${brief.microOffer}, or is someone else better for this?`
+      : `Would it help if I sent ${brief.microOffer}?`
+  ];
+  if (index === 7) {
+    lines[2] = "If this is not relevant, I can close the loop here.";
+  }
+  return {
+    id: `follow-up-${index + 1}`,
+    step: index + 1,
+    delayDays: strategy.delayDays,
+    strategy: strategy.strategy,
+    subject,
+    body: lines.join("\n"),
+    status: "draft"
+  };
 }
 
 async function skipOutreachCampaignRecipient(
@@ -4867,7 +5785,14 @@ function outreachWorkflowInstructions(): string {
   ].join("\n");
 }
 
-function buildOutreachPrompt(lead: OutreachLead, language: string, tone: string, companyKnowledgeContext: string, customerResearchContext = ""): string {
+function buildOutreachPrompt(
+  lead: OutreachLead,
+  language: string,
+  tone: string,
+  companyKnowledgeContext: string,
+  generationBrief: OutreachGenerationBrief,
+  customerResearchContext = ""
+): string {
   const leadLines = [
     `Company: ${lead.companyName}`,
     lead.website ? `Website: ${lead.website}` : "",
@@ -4888,12 +5813,16 @@ function buildOutreachPrompt(lead: OutreachLead, language: string, tone: string,
     "- Use a short subject line.",
     "- Keep the body around 3 short lines and under 130 words.",
     "- Use this exact thinking structure: line 1 = the specific buyer reason why you are contacting them; line 2 = what we do and why it is relevant to that buyer; line 3 = one low-friction ask.",
+    "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
+    "- Use only one USP in the email. Do not list all company strengths.",
     "- The first business line must not introduce our company credentials first. It must tell the buyer why this email is about them.",
     "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, or certification/spec pack.",
     "- Sound like a human business note, not translated English or a mass template.",
     "- Never use Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
     "- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.",
     "- Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
+    "",
+    formatOutreachGenerationBrief(generationBrief),
     "",
     "--- Lead ---",
     leadLines,
@@ -4908,6 +5837,7 @@ function buildOutreachPrompt(lead: OutreachLead, language: string, tone: string,
 function buildOutreachWorkflowPrompt(input: {
   lead: OutreachLead;
   research: CustomerResearchResult;
+  generationBrief: OutreachGenerationBrief;
   companyKnowledgeContext: string;
   language: string;
   tone: string;
@@ -4926,6 +5856,12 @@ function buildOutreachWorkflowPrompt(input: {
     "  \"followUps\": [{\"step\":1,\"delayDays\":2,\"strategy\":\"Friendly reminder\",\"subject\":\"...\",\"body\":\"...\"}]",
     "}",
     "Do not add, remove, rename, or nest fields outside this schema.",
+    "",
+    "Private operating mode:",
+    "- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.",
+    "- Treat the private outreach brief below as the locked angle for the first email.",
+    "- Do not expose research steps, agent names, or internal reasoning in any email.",
+    "- If evidence is thin, write a low-risk micro-offer instead of a broad supplier pitch.",
     "",
     "ICP rules:",
     "- Generate 2-3 ICPs likely to buy in the next 3-6 months.",
@@ -4966,6 +5902,8 @@ function buildOutreachWorkflowPrompt(input: {
     "- Use these strategies in order with matching intent: Friendly reminder (delayDays 2, restate the micro-offer), Additional value (delayDays 4, add a checklist/comparison/market note), Quick yes/no (delayDays 7, route to the right person or confirm fit), Social proof (delayDays 7, use only provided proof or a non-fabricated process example), Limited incentive (delayDays 10, small sample/review slot without fake scarcity), Feedback request (delayDays 10, ask what blocked fit), Prior interaction (delayDays 14, reference only this email thread), Breakup email (delayDays 21, ask permission to close the loop), New angle (delayDays 28, try a different ICP/use case/category angle).",
     "- Keep every follow-up concise, useful, and permission-based. Do not pressure the buyer.",
     "- Any positive reply, unsubscribe, refusal, bounce, or out-of-office handoff should stop automation; reflect this by avoiding language that assumes continued automated sending.",
+    "",
+    formatOutreachGenerationBrief(input.generationBrief),
     "",
     "--- Lead ---",
     `Company: ${input.lead.companyName}`,

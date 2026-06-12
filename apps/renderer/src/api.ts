@@ -553,6 +553,13 @@ export type CustomerResearchSummary = {
   checkedPages: number;
 };
 
+export type CustomerResearchEvidence = {
+  label: string;
+  value: string;
+  sourceUrl: string;
+  snippet: string;
+};
+
 export type CustomerResearchSnapshot = {
   website: string;
   companyName: string;
@@ -568,6 +575,7 @@ export type CustomerResearchSnapshot = {
   title: string;
   description: string;
   fetchedUrls: string[];
+  evidence: CustomerResearchEvidence[];
   textPreview: string;
   error?: string;
   createdAt: string;
@@ -1299,6 +1307,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachDraft> {
     return request<OutreachDraft>("/api/outreach/drafts/auto", { method: "POST", body: JSON.stringify(input) });
   },
@@ -1309,6 +1318,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachWorkflow> {
     return request<OutreachWorkflow>("/api/outreach/workflows/auto", { method: "POST", body: JSON.stringify(input) });
   },

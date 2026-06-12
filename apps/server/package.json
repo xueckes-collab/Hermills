@@ -1,15 +1,15 @@
 {
   "name": "@hermills/server",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "dependencies": {
     "@fastify/cors": "^10.0.1",
-    "@hermills/agent-builder": "0.1.4",
-    "@hermills/core": "0.1.4",
-    "@hermills/runtime": "0.1.4",
+    "@hermills/agent-builder": "0.1.5",
+    "@hermills/core": "0.1.5",
+    "@hermills/runtime": "0.1.5",
     "fastify": "^5.2.1",
     "zod": "^3.24.1"
   }

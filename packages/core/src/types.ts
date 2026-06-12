@@ -14,6 +14,8 @@ import type {
   LogEntrySchema,
   MaterialRecordSchema,
   MaterialScopeSchema,
+  DeepResearchSidecarConfigSchema,
+  CustomerResearchEvidenceSchema,
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
   EmailSequenceDraftSchema,
@@ -53,6 +55,8 @@ export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
 export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
+export type DeepResearchSidecarConfig = z.infer<typeof DeepResearchSidecarConfigSchema>;
+export type CustomerResearchEvidence = z.infer<typeof CustomerResearchEvidenceSchema>;
 export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;
 export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
 export type GeneratedIcp = z.infer<typeof GeneratedIcpSchema>;

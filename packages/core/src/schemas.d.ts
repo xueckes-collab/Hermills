@@ -885,16 +885,28 @@ export declare const OutreachLeadSchema: z.ZodObject<{
     need: z.ZodDefault<z.ZodString>;
     notes: z.ZodDefault<z.ZodString>;
     tags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    source: z.ZodDefault<z.ZodString>;
+    status: z.ZodDefault<z.ZodEnum<["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]>>;
+    currentState: z.ZodDefault<z.ZodEnum<["input_ready", "waiting_user_send", "waiting_user_send_followup", "waiting_response_status", "drafting_reply_email"]>>;
+    replyStatus: z.ZodDefault<z.ZodEnum<["not_checked", "checking", "no_reply", "reply_received", "bounced", "unsubscribed"]>>;
+    statusColor: z.ZodDefault<z.ZodEnum<["slate", "blue", "amber", "green", "rose", "violet"]>>;
+    currentRound: z.ZodDefault<z.ZodNumber>;
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
+    status: "new" | "email_drafted" | "followup_drafted" | "email_sent" | "contacted" | "reply_received" | "followup_due";
     id: string;
+    source: string;
     tags: string[];
     createdAt: string;
     updatedAt: string;
     notes: string;
     companyName: string;
     need: string;
+    currentState: "input_ready" | "waiting_user_send" | "waiting_user_send_followup" | "waiting_response_status" | "drafting_reply_email";
+    replyStatus: "checking" | "reply_received" | "not_checked" | "no_reply" | "bounced" | "unsubscribed";
+    statusColor: "slate" | "blue" | "amber" | "green" | "rose" | "violet";
+    currentRound: number;
     website?: string | undefined;
     profileId?: string | undefined;
     country?: string | undefined;
@@ -907,6 +919,8 @@ export declare const OutreachLeadSchema: z.ZodObject<{
     createdAt: string;
     updatedAt: string;
     companyName: string;
+    status?: "new" | "email_drafted" | "followup_drafted" | "email_sent" | "contacted" | "reply_received" | "followup_due" | undefined;
+    source?: string | undefined;
     tags?: string[] | undefined;
     website?: unknown;
     notes?: string | undefined;
@@ -917,6 +931,10 @@ export declare const OutreachLeadSchema: z.ZodObject<{
     contactTitle?: unknown;
     email?: unknown;
     need?: string | undefined;
+    currentState?: "input_ready" | "waiting_user_send" | "waiting_user_send_followup" | "waiting_response_status" | "drafting_reply_email" | undefined;
+    replyStatus?: "checking" | "reply_received" | "not_checked" | "no_reply" | "bounced" | "unsubscribed" | undefined;
+    statusColor?: "slate" | "blue" | "amber" | "green" | "rose" | "violet" | undefined;
+    currentRound?: number | undefined;
 }>;
 export declare const OutreachDraftStatusSchema: z.ZodEnum<["draft", "sent", "failed"]>;
 export declare const OutreachEmailQualityCheckSchema: z.ZodObject<{
@@ -1243,6 +1261,25 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     lastError?: string | undefined;
 }>;
 export declare const OutreachResearchDepthSchema: z.ZodEnum<["quick", "standard", "deep"]>;
+export declare const DeepResearchSidecarConfigSchema: z.ZodObject<{
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    url: z.ZodOptional<z.ZodString>;
+    timeoutMs: z.ZodDefault<z.ZodNumber>;
+    maxPages: z.ZodDefault<z.ZodNumber>;
+    apiKey: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    enabled: boolean;
+    timeoutMs: number;
+    maxPages: number;
+    apiKey?: string | undefined;
+    url?: string | undefined;
+}, {
+    apiKey?: string | undefined;
+    enabled?: boolean | undefined;
+    url?: string | undefined;
+    timeoutMs?: number | undefined;
+    maxPages?: number | undefined;
+}>;
 export declare const CustomerResearchSummarySchema: z.ZodObject<{
     depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
     confidenceScore: z.ZodDefault<z.ZodNumber>;
@@ -1268,6 +1305,22 @@ export declare const CustomerResearchSummarySchema: z.ZodObject<{
     riskNotes?: string[] | undefined;
     checkedPages?: number | undefined;
 }>;
+export declare const CustomerResearchEvidenceSchema: z.ZodObject<{
+    label: z.ZodString;
+    value: z.ZodString;
+    sourceUrl: z.ZodString;
+    snippet: z.ZodDefault<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    label: string;
+    value: string;
+    sourceUrl: string;
+    snippet: string;
+}, {
+    label: string;
+    value: string;
+    sourceUrl: string;
+    snippet?: string | undefined;
+}>;
 export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     website: z.ZodString;
     companyName: z.ZodString;
@@ -1283,6 +1336,22 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     title: z.ZodDefault<z.ZodString>;
     description: z.ZodDefault<z.ZodString>;
     fetchedUrls: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    evidence: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        label: z.ZodString;
+        value: z.ZodString;
+        sourceUrl: z.ZodString;
+        snippet: z.ZodDefault<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet: string;
+    }, {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet?: string | undefined;
+    }>, "many">>;
     textPreview: z.ZodDefault<z.ZodString>;
     error: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
@@ -1303,6 +1372,12 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     recommendedAngle: string;
     inferredNeed: string;
     fetchedUrls: string[];
+    evidence: {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet: string;
+    }[];
     error?: string | undefined;
 }, {
     createdAt: string;
@@ -1321,6 +1396,12 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     recommendedAngle?: string | undefined;
     inferredNeed?: string | undefined;
     fetchedUrls?: string[] | undefined;
+    evidence?: {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet?: string | undefined;
+    }[] | undefined;
     error?: string | undefined;
 }>;
 export declare const GeneratedIcpSchema: z.ZodObject<{
@@ -1522,6 +1603,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: z.ZodDefault<z.ZodString>;
         description: z.ZodDefault<z.ZodString>;
         fetchedUrls: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        evidence: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            label: z.ZodString;
+            value: z.ZodString;
+            sourceUrl: z.ZodString;
+            snippet: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet: string;
+        }, {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet?: string | undefined;
+        }>, "many">>;
         textPreview: z.ZodDefault<z.ZodString>;
         error: z.ZodOptional<z.ZodString>;
         createdAt: z.ZodString;
@@ -1542,6 +1639,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
+        evidence: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet: string;
+        }[];
         error?: string | undefined;
     }, {
         createdAt: string;
@@ -1560,6 +1663,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
+        evidence?: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet?: string | undefined;
+        }[] | undefined;
         error?: string | undefined;
     }>;
     icps: z.ZodDefault<z.ZodArray<z.ZodObject<{
@@ -1909,6 +2018,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
+        evidence: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet: string;
+        }[];
         error?: string | undefined;
     };
     icps: {
@@ -2019,6 +2134,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
+        evidence?: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet?: string | undefined;
+        }[] | undefined;
         error?: string | undefined;
     };
     initialEmail: {
@@ -2139,6 +2260,8 @@ export declare const OutreachCampaignStatsSchema: z.ZodObject<{
     generated: number;
     failed: number;
     stopped: number;
+    bounced: number;
+    unsubscribed: number;
     sent: number;
     sending: number;
     pending: number;
@@ -2146,14 +2269,14 @@ export declare const OutreachCampaignStatsSchema: z.ZodObject<{
     approved: number;
     queued: number;
     replied: number;
-    bounced: number;
-    unsubscribed: number;
     skipped: number;
     total: number;
 }, {
     generated?: number | undefined;
     failed?: number | undefined;
     stopped?: number | undefined;
+    bounced?: number | undefined;
+    unsubscribed?: number | undefined;
     sent?: number | undefined;
     sending?: number | undefined;
     pending?: number | undefined;
@@ -2161,8 +2284,6 @@ export declare const OutreachCampaignStatsSchema: z.ZodObject<{
     approved?: number | undefined;
     queued?: number | undefined;
     replied?: number | undefined;
-    bounced?: number | undefined;
-    unsubscribed?: number | undefined;
     skipped?: number | undefined;
     total?: number | undefined;
 }>;
@@ -2208,6 +2329,8 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         generated: number;
         failed: number;
         stopped: number;
+        bounced: number;
+        unsubscribed: number;
         sent: number;
         sending: number;
         pending: number;
@@ -2215,14 +2338,14 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         approved: number;
         queued: number;
         replied: number;
-        bounced: number;
-        unsubscribed: number;
         skipped: number;
         total: number;
     }, {
         generated?: number | undefined;
         failed?: number | undefined;
         stopped?: number | undefined;
+        bounced?: number | undefined;
+        unsubscribed?: number | undefined;
         sent?: number | undefined;
         sending?: number | undefined;
         pending?: number | undefined;
@@ -2230,8 +2353,6 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         approved?: number | undefined;
         queued?: number | undefined;
         replied?: number | undefined;
-        bounced?: number | undefined;
-        unsubscribed?: number | undefined;
         skipped?: number | undefined;
         total?: number | undefined;
     }>>;
@@ -2261,6 +2382,8 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         generated: number;
         failed: number;
         stopped: number;
+        bounced: number;
+        unsubscribed: number;
         sent: number;
         sending: number;
         pending: number;
@@ -2268,8 +2391,6 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         approved: number;
         queued: number;
         replied: number;
-        bounced: number;
-        unsubscribed: number;
         skipped: number;
         total: number;
     };
@@ -2303,6 +2424,8 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         generated?: number | undefined;
         failed?: number | undefined;
         stopped?: number | undefined;
+        bounced?: number | undefined;
+        unsubscribed?: number | undefined;
         sent?: number | undefined;
         sending?: number | undefined;
         pending?: number | undefined;
@@ -2310,8 +2433,6 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
         approved?: number | undefined;
         queued?: number | undefined;
         replied?: number | undefined;
-        bounced?: number | undefined;
-        unsubscribed?: number | undefined;
         skipped?: number | undefined;
         total?: number | undefined;
     } | undefined;
@@ -2372,7 +2493,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    status: "generated" | "failed" | "stopped" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "bounced" | "unsubscribed" | "skipped";
+    status: "generated" | "failed" | "stopped" | "bounced" | "unsubscribed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "skipped";
     id: string;
     createdAt: string;
     updatedAt: string;
@@ -2416,7 +2537,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     email: string;
     leadId: string;
     campaignId: string;
-    status?: "generated" | "failed" | "stopped" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "bounced" | "unsubscribed" | "skipped" | undefined;
+    status?: "generated" | "failed" | "stopped" | "bounced" | "unsubscribed" | "sent" | "sending" | "pending" | "researching" | "approved" | "queued" | "replied" | "skipped" | undefined;
     contactName?: unknown;
     contactTitle?: unknown;
     sentAt?: string | undefined;

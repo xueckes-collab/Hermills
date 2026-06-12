@@ -2711,6 +2711,20 @@ textarea,
   white-space: nowrap;
 }
 
+.letter-depth-picker {
+  margin-top: 12px;
+  border-color: #ddd6fe;
+  background: #faf7ff;
+}
+
+.letter-depth-picker .campaign-depth-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.letter-depth-picker .campaign-depth-options button {
+  min-height: 50px;
+}
+
 .campaign-lead-list,
 .campaign-recipient-list {
   display: grid;

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { createServer, type RuntimeAdapter } from "../../apps/server/src/index.js";
 import { builtinAgentSeeds } from "@hermills/agent-builder";
-import type { InstallEvent, RuntimeStatus } from "@hermills/core";
+import type { DeepResearchSidecarConfig, InstallEvent, RuntimeStatus } from "@hermills/core";
 import type { HermesReplyRequest } from "@hermills/runtime";
 
 describe("Hermills local API", () => {
@@ -17,13 +17,57 @@ describe("Hermills local API", () => {
   beforeEach(async () => {
     baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-server-"));
     runtime = createFakeRuntime();
-    server = await createServer({ baseDir, desktopToken: "test-token", runtimeService: runtime });
+    server = await createServer({ baseDir, desktopToken: "test-token", runtimeService: runtime, deepResearch: { enabled: false } });
   });
 
   afterEach(async () => {
     await server.close();
     vi.restoreAllMocks();
   });
+
+  async function restartServerWithDeepResearch(deepResearch: Partial<DeepResearchSidecarConfig>) {
+    await server.close();
+    server = await createServer({ baseDir, desktopToken: "test-token", runtimeService: runtime, deepResearch });
+  }
+
+  async function seedOutreachCompanyProfile() {
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"]
+    } });
+  }
+
+  function mockWorkflowReply() {
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Contractor lighting options",
+          body: "Hi, I saw this buyer imports work lights for contractor channels.\nWe can share two LED work light options with MOQ and lead time side by side.\nWould a short comparison help?"
+        },
+        followUps: []
+      });
+    };
+  }
+
+  async function generateDeepWorkflow(website: string, email: string) {
+    return server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website,
+        email,
+        language: "English",
+        tone: "warm and concise",
+        researchDepth: "deep"
+      }
+    });
+  }
 
   it("requires desktop token for protected routes", async () => {
     expect((await server.inject({ method: "GET", url: "/api/agents" })).statusCode).toBe(401);
@@ -585,6 +629,191 @@ describe("Hermills local API", () => {
       website: "https://preview-buyer.example/",
       tags: ["auto-researched"]
     });
+  });
+
+  it("uses the deep research sidecar for deep workflows and only sends website and email", async () => {
+    await restartServerWithDeepResearch({ enabled: true, url: "http://sidecar.test", timeoutMs: 1000 });
+    const sidecarBodies: unknown[] = [];
+    const fetchUrls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      fetchUrls.push(String(url));
+      expect(String(url)).toBe("http://sidecar.test/v1/research/company");
+      sidecarBodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        website: "https://deep-buyer.example/",
+        company_name: "Deep Buyer Ltd",
+        confidence_score: 91,
+        buyer_type: "Importer / distributor",
+        industry: "Industrial lighting distribution",
+        inferred_need: "Needs reliable work light supply with proof before sampling.",
+        recommended_angle: "Lead with a small proof-backed option comparison.",
+        title: "Deep Buyer - Contractor Lighting Importer",
+        description: "Deep Buyer imports work lights for contractor channels.",
+        product_signals: ["Bulk or wholesale buying"],
+        buying_signals: ["Supplier comparison likely"],
+        pain_signals: ["Needs proof before samples"],
+        fetched_urls: ["https://deep-buyer.example/", "https://deep-buyer.example/about"],
+        text_preview: "Deep Buyer imports work lights and compares suppliers before sampling.",
+        evidence: [{
+          label: "Buyer channel",
+          value: "Contractor lighting importer",
+          source_url: "https://deep-buyer.example/about",
+          snippet: "imports work lights for contractor channels"
+        }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    mockWorkflowReply();
+    await seedOutreachCompanyProfile();
+
+    const response = await generateDeepWorkflow("deep-buyer.example", "buyer@deep-buyer.example");
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(fetchUrls).toEqual(["http://sidecar.test/v1/research/company"]);
+    expect(sidecarBodies).toEqual([{ website: "https://deep-buyer.example/", email: "buyer@deep-buyer.example" }]);
+    expect(Object.keys(sidecarBodies[0] as Record<string, unknown>).sort()).toEqual(["email", "website"]);
+    expect(response.json().research).toMatchObject({
+      depth: "deep",
+      companyName: "Deep Buyer Ltd",
+      confidenceScore: 91,
+      buyerType: "Importer / distributor",
+      industry: "Industrial lighting distribution",
+      evidence: [{ label: "Buyer channel", sourceUrl: "https://deep-buyer.example/about" }]
+    });
+    expect(response.json().research.error).toBeUndefined();
+    expect(runtime.requests.at(-1)?.messages[0]?.content).toContain("Evidence: Buyer channel");
+  });
+
+  it("falls back to Node website research when the deep sidecar fails", async () => {
+    await restartServerWithDeepResearch({ enabled: true, url: "http://sidecar.test", timeoutMs: 1000 });
+    const fetchUrls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      fetchUrls.push(href);
+      if (href === "http://sidecar.test/v1/research/company") {
+        return new Response(JSON.stringify({ error: "boom" }), { status: 500, headers: { "content-type": "application/json" } });
+      }
+      return new Response(
+        "<html><head><title>Fallback Buyer - Lighting Importer</title><meta name=\"description\" content=\"Fallback Buyer imports work lights for contractors.\"></head><body><p>We distribute work lights to contractors and compare suppliers.</p></body></html>",
+        { status: 200, headers: { "content-type": "text/html" } }
+      );
+    });
+    mockWorkflowReply();
+    await seedOutreachCompanyProfile();
+
+    const response = await generateDeepWorkflow("fallback-buyer.example", "buyer@fallback-buyer.example");
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(fetchUrls[0]).toBe("http://sidecar.test/v1/research/company");
+    expect(fetchUrls).toContain("https://fallback-buyer.example/");
+    expect(response.json().research).toMatchObject({
+      depth: "deep",
+      companyName: "Fallback Buyer",
+      buyerType: "Importer / distributor"
+    });
+    expect(response.json().research.textPreview).toContain("compare suppliers");
+    expect(response.json().research.error).toContain("HTTP 500");
+    expect(response.json().research.error).toContain("Node website research fallback");
+  });
+
+  it("falls back to Node website research when the deep sidecar returns 401", async () => {
+    await restartServerWithDeepResearch({ enabled: true, url: "http://sidecar.test", timeoutMs: 1000 });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      if (href === "http://sidecar.test/v1/research/company") {
+        return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json" } });
+      }
+      return new Response(
+        "<html><head><title>Auth Fallback Buyer - Importer</title></head><body><p>Auth Fallback Buyer imports work lights for contractor channels.</p></body></html>",
+        { status: 200, headers: { "content-type": "text/html" } }
+      );
+    });
+    mockWorkflowReply();
+    await seedOutreachCompanyProfile();
+
+    const response = await generateDeepWorkflow("auth-fallback.example", "buyer@auth-fallback.example");
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().research.textPreview).toContain("contractor channels");
+    expect(response.json().research.error).toContain("HTTP 401");
+  });
+
+  it("falls back to Node website research when the deep sidecar times out", async () => {
+    await restartServerWithDeepResearch({ enabled: true, url: "http://sidecar.test", timeoutMs: 1 });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href === "http://sidecar.test/v1/research/company") {
+        return new Promise<Response>((_resolve, reject) => {
+          (init?.signal as AbortSignal | undefined)?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+        });
+      }
+      return new Response(
+        "<html><head><title>Timeout Fallback Buyer - Importer</title></head><body><p>Timeout Fallback Buyer imports work lights and reviews supplier lead time.</p></body></html>",
+        { status: 200, headers: { "content-type": "text/html" } }
+      );
+    });
+    mockWorkflowReply();
+    await seedOutreachCompanyProfile();
+
+    const response = await generateDeepWorkflow("timeout-fallback.example", "buyer@timeout-fallback.example");
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().research.textPreview).toContain("reviews supplier lead time");
+    expect(response.json().research.error).toContain("timed out");
+  });
+
+  it("repairs a weak auto-generated outreach email before storing it", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      "<html><head><title>Repair Buyer - Lighting Importer</title><meta name=\"description\" content=\"Repair Buyer imports work lights for contractor channels.\"></head><body><p>We distribute work lights to contractors and review reliable suppliers.</p></body></html>",
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Contractor work light options",
+          body: "Hi, I saw Repair Buyer imports work lights for contractor channels.\nOur LED work light options can help compare reliable supply without a full catalog.\nWould it help if I sent 2-3 matched options with MOQ and lead time?"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "High quality and competitive price",
+          body: "Dear Sir/Madam, we are a leading manufacturer with high quality and competitive price. Please kindly send your requirements so we can establish long term cooperation."
+        },
+        followUps: []
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"]
+    } });
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "repair-buyer.example",
+        email: "buyer@repair-buyer.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
+    expect(runtime.requests).toHaveLength(2);
+    expect(runtime.requests[0]?.messages[0]?.content).toContain("Private outreach brief");
+    expect(runtime.requests[1]?.messages[0]?.content).toContain("QA failures");
+    expect(workflowResponse.json().initialEmail).toMatchObject({
+      subject: "Contractor work light options",
+      qualityReview: { passed: true }
+    });
+    expect(workflowResponse.json().initialEmail.body).not.toContain("Dear Sir/Madam");
+    expect(workflowResponse.json().initialEmail.body).not.toContain("high quality and competitive price");
   });
 
   it("builds a full outreach workflow with ICPs, USPs, and nine follow-ups", async () => {

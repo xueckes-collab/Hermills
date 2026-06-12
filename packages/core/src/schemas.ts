@@ -323,6 +323,14 @@ export const OutreachSenderAccountSchema = z.object({
 
 export const OutreachResearchDepthSchema = z.enum(["quick", "standard", "deep"]);
 
+export const DeepResearchSidecarConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  url: z.string().trim().url().optional(),
+  timeoutMs: z.number().int().min(1).max(120_000).default(30_000),
+  maxPages: z.number().int().min(1).max(20).default(8),
+  apiKey: z.string().trim().min(1).max(4000).optional()
+}).strict();
+
 export const CustomerResearchSummarySchema = z.object({
   depth: OutreachResearchDepthSchema.default("standard"),
   confidenceScore: z.number().int().min(0).max(100).default(0),
@@ -331,6 +339,13 @@ export const CustomerResearchSummarySchema = z.object({
   primaryAngle: z.string().trim().max(800).default(""),
   riskNotes: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
   checkedPages: z.number().int().nonnegative().max(20).default(0)
+}).strict();
+
+export const CustomerResearchEvidenceSchema = z.object({
+  label: z.string().trim().min(1).max(160),
+  value: z.string().trim().min(1).max(600),
+  sourceUrl: z.string().trim().min(1).max(1000),
+  snippet: z.string().trim().max(800).default("")
 }).strict();
 
 export const CustomerResearchSnapshotSchema = z.object({
@@ -348,6 +363,7 @@ export const CustomerResearchSnapshotSchema = z.object({
   title: z.string().trim().max(240).default(""),
   description: z.string().trim().max(1000).default(""),
   fetchedUrls: z.array(z.string().min(1).max(1000)).max(12).default([]),
+  evidence: z.array(CustomerResearchEvidenceSchema).max(40).default([]),
   textPreview: z.string().trim().max(12000).default(""),
   error: z.string().max(1000).optional(),
   createdAt: z.string().datetime()
