@@ -1,10 +1,14 @@
-import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentRepository, builtinAgentSeeds, LocalCredentialVault, ProviderRepository, slugifyAgentName } from "@hermills/agent-builder";
 
 function secretFilePath(baseDir: string, ref: string): string {
+  return path.join(baseDir, "secure", `secret-${Buffer.from(ref, "utf8").toString("base64url")}.json`);
+}
+
+function legacySecretFilePath(baseDir: string, ref: string): string {
   return path.join(baseDir, "secure", `${ref.replace(/[^a-zA-Z0-9:_-]/g, "_")}.json`);
 }
 
@@ -112,6 +116,8 @@ describe("Agent Builder stores", () => {
     const keyPath = path.join(secureDir, "vault.key");
     const secretPath = secretFilePath(baseDir, ref);
 
+    expect(path.basename(secretPath)).not.toContain(":");
+    expect(await readFile(secretPath, "utf8")).not.toContain("sk-repair-secret");
     if (supportsPosixModes) {
       expect(await fileMode(secureDir)).toBe(0o700);
       expect(await fileMode(keyPath)).toBe(0o600);
@@ -130,6 +136,21 @@ describe("Agent Builder stores", () => {
       expect(await fileMode(keyPath)).toBe(0o600);
       expect(await fileMode(secretPath)).toBe(0o600);
     }
+  });
+
+  it.runIf(supportsPosixModes)("migrates legacy vault secret filenames to portable names on read", async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-vault-legacy-"));
+    const vault = new LocalCredentialVault(baseDir);
+    const ref = await vault.saveSecret("outreach-sender-legacy", "old-smtp-secret");
+    const secretPath = secretFilePath(baseDir, ref);
+    const legacyPath = legacySecretFilePath(baseDir, ref);
+
+    await writeFile(legacyPath, await readFile(secretPath, "utf8"), { encoding: "utf8", mode: 0o600 });
+    await unlink(secretPath);
+
+    expect(await vault.readSecret(ref)).toBe("old-smtp-secret");
+    expect(await readFile(secretPath, "utf8")).not.toContain("old-smtp-secret");
+    await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("deletes provider secret files when providers are removed", async () => {

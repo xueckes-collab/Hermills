@@ -199,6 +199,7 @@ const providerPresets = [
 type ProviderKind = 'openai-compatible' | 'openai' | 'anthropic' | 'local'
 type ProviderPresetId = (typeof providerPresets)[number]['id']
 type SenderProviderId = 'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom'
+type SenderChannelId = 'gmailApi' | 'microsoftGraph' | 'zohoApi' | 'smtp' | 'enterpriseApi' | 'customHttpApi'
 const researchDepthOptions: OutreachResearchDepth[] = ['quick', 'standard', 'deep']
 
 type ProviderForm = {
@@ -216,6 +217,15 @@ const senderProviderPresets: Array<{ id: SenderProviderId; label: string; host: 
   { id: 'aliyun', label: 'Aliyun', host: 'smtp.mxhichina.com', port: '465', secure: true, imapHost: 'imap.mxhichina.com', imapPort: '993', imapSecure: true },
   { id: 'zoho', label: 'Zoho', host: 'smtp.zoho.com', port: '465', secure: true, imapHost: 'imap.zoho.com', imapPort: '993', imapSecure: true },
   { id: 'custom', label: 'Custom', host: '', port: '587', secure: false, imapHost: '', imapPort: '993', imapSecure: true },
+]
+
+const senderChannelOptions: Array<{ id: SenderChannelId; label: string; status: string; detail: string; icon: LucideIcon; smtpPresetId?: SenderProviderId }> = [
+  { id: 'gmailApi', label: 'Gmail API', status: '推荐 Gmail', detail: 'OAuth / API 通道，适合 SMTP 授权码失败时切换。', icon: KeyRound, smtpPresetId: 'gmail' },
+  { id: 'microsoftGraph', label: 'Microsoft Graph', status: '推荐 Microsoft 365', detail: 'Graph API 通道，适合 Outlook 和企业租户。', icon: Building2, smtpPresetId: 'outlook' },
+  { id: 'zohoApi', label: 'Zoho API', status: '推荐 Zoho Mail', detail: 'Zoho API 通道，适合 Zoho SMTP 登录被拦截时切换。', icon: Globe2, smtpPresetId: 'zoho' },
+  { id: 'smtp', label: 'SMTP', status: '当前可保存测试', detail: '使用 SMTP / IMAP 主机、端口和授权码。', icon: Mail },
+  { id: 'enterpriseApi', label: '企业/云邮件 API', status: '适合企业邮箱', detail: '用于腾讯、阿里、SES、SendGrid 等云邮件 API。', icon: Building2, smtpPresetId: 'custom' },
+  { id: 'customHttpApi', label: '自定义 HTTP API', status: '适合自建网关', detail: '用于自有 HTTP 发送接口或邮件网关。', icon: Globe2, smtpPresetId: 'custom' },
 ]
 
 const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: string }> = {
@@ -1818,6 +1828,9 @@ type SenderFormDraft = {
   imapUsername: string
   username: string
   password: string
+  apiCredential: string
+  apiAccountId: string
+  apiBaseUrl: string
 }
 
 type OutreachMode = 'single' | 'campaign'
@@ -2046,7 +2059,9 @@ function DevelopmentLetterPage({
   const [tone, setTone] = useState(copy.devLetter.defaults.tone)
   const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile, copy))
   const [senderProviderId, setSenderProviderId] = useState<SenderProviderId>('gmail')
+  const [senderChannelId, setSenderChannelId] = useState<SenderChannelId>('smtp')
   const [selectedSenderId, setSelectedSenderId] = useState('')
+  const [senderTestRecipient, setSenderTestRecipient] = useState('')
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2084,6 +2099,9 @@ function DevelopmentLetterPage({
   const senderDeliveryReady = Boolean(selectedSender?.deliveryConfirmedAt)
   const senderProvider = senderProviderPresets.find((provider) => provider.id === senderProviderId) ?? senderProviderPresets[0]
   const senderAuthGuide = senderAuthGuides[senderProviderId]
+  const senderChannel = senderChannelOptions.find((channel) => channel.id === senderChannelId) ?? senderChannelOptions[3]
+  const senderApiChannelSelected = senderChannel.id !== 'smtp'
+  const senderRecommendedApiChannel = senderChannelOptions.find((channel) => channel.id === recommendedSenderApiChannel(senderProviderId)) ?? senderChannelOptions[4]
   const quickLeadReady = Boolean(quickWebsite.trim() && quickEmail.trim())
   const companyReady = isCompanyProfileReady(companyProfile)
   const campaignSelectedCount = selectedCampaignLeadIds.length || selectedCampaign?.recipients.length || 0
@@ -2202,7 +2220,8 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!selectedSender) return
     setSenderDraft(senderFormFromAccount(selectedSender))
-    setSenderProviderId(senderProviderFromHost(selectedSender.host))
+    setSenderProviderId((selectedSender.provider as SenderProviderId | undefined) ?? senderProviderFromHost(selectedSender.host))
+    setSenderChannelId(senderChannelFromAccount(selectedSender))
   }, [selectedSender?.id])
 
   useEffect(() => {
@@ -2289,7 +2308,25 @@ function DevelopmentLetterPage({
 
   function chooseSenderProvider(id: SenderProviderId) {
     setSenderProviderId(id)
+    setSenderChannelId('smtp')
     setSenderDraft((current) => applySenderProviderToDraft(current, id))
+  }
+
+  function chooseSenderChannel(id: SenderChannelId) {
+    const channel = senderChannelOptions.find((item) => item.id === id)
+    const presetId = channel?.smtpPresetId
+    setSenderChannelId(id)
+    if (presetId) {
+      setSenderProviderId(presetId)
+      setSenderDraft((current) => applySenderProviderToDraft(current, presetId))
+    }
+  }
+
+  function formatSenderDeliveryError(message: string): string {
+    const trimmed = message.trim()
+    if (!trimmed || trimmed.includes('建议改选')) return trimmed
+    if (!/(smtp|imap|mailbox|email|sendmail|connection|socket|greeting|invalid login|eauth|esocket|econnreset|etimedout|5(?:3[45]|50|53|54)|授权|密码|登录|连接|邮件|邮箱)/i.test(trimmed)) return trimmed
+    return `${trimmed} 建议改选“${senderRecommendedApiChannel.label}”通道，避开 SMTP 授权或连接限制。`
   }
 
   function updateSenderEmail(email: string) {
@@ -2312,7 +2349,8 @@ function DevelopmentLetterPage({
       : [sender, ...senderAccounts])
     setSelectedSenderId(sender.id)
     setSenderDraft(senderFormFromAccount(sender))
-    setSenderProviderId(senderProviderFromHost(sender.host))
+    setSenderProviderId((sender.provider as SenderProviderId | undefined) ?? senderProviderFromHost(sender.host))
+    setSenderChannelId(senderChannelFromAccount(sender))
   }
 
   function replaceCampaign(campaign: OutreachCampaign) {
@@ -2931,10 +2969,15 @@ function DevelopmentLetterPage({
   }
 
   async function saveSender() {
-    if (!senderDraft.label.trim() || !senderDraft.email.trim() || !senderDraft.host.trim()) {
+    if (!senderDraft.label.trim() || !senderDraft.email.trim() || (!senderApiChannelSelected && !senderDraft.host.trim())) {
       setError(copy.devLetter.warnings.senderRequired)
       return undefined
     }
+    const sendChannel = sendChannelFromSenderChannel(senderChannelId)
+    const provider = providerFromSenderChannel(senderChannelId, senderProviderId)
+    const apiCredential = senderDraft.apiCredential.trim()
+    const apiAccountId = senderDraft.apiAccountId.trim()
+    const apiBaseUrl = senderDraft.apiBaseUrl.trim()
     setBusy('sender')
     setError('')
     setNotice('')
@@ -2942,6 +2985,8 @@ function DevelopmentLetterPage({
       const saved = await api.saveOutreachSenderAccount({
         id: senderDraft.id,
         label: senderDraft.label.trim(),
+        provider,
+        sendChannel,
         fromName: senderDraft.fromName.trim() || undefined,
         email: senderDraft.email.trim(),
         host: senderDraft.host.trim(),
@@ -2953,13 +2998,19 @@ function DevelopmentLetterPage({
         imapUsername: senderDraft.imapUsername.trim() || senderDraft.username.trim() || senderDraft.email.trim(),
         username: senderDraft.username.trim() || undefined,
         password: senderDraft.password.trim() || undefined,
+        oauthApi: sendChannel === 'oauth-api'
+          ? { credential: apiCredential || undefined, accountId: apiAccountId || undefined, apiBaseUrl: apiBaseUrl || undefined, scopes: defaultSenderApiScopes(provider) }
+          : undefined,
+        serviceApi: sendChannel === 'service-api'
+          ? { credential: apiCredential || undefined, accountId: apiAccountId || undefined, apiBaseUrl: apiBaseUrl || undefined, scopes: [] }
+          : undefined,
         enabled: true
       })
       replaceSenderAccount(saved)
       setNotice(copy.devLetter.status.senderSaved)
       return saved
     } catch (err) {
-      setError(humanizeErrorMessage(err, copy, 'message'))
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
       return undefined
     } finally {
       setBusy('')
@@ -2976,9 +3027,9 @@ function DevelopmentLetterPage({
       const result = await api.testOutreachSenderAccount(sender.id)
       replaceSenderAccount(result.sender)
       if (result.ok) setNotice(copy.devLetter.status.senderReady)
-      else setError(result.message)
+      else setError(formatSenderDeliveryError(result.message))
     } catch (err) {
-      setError(humanizeErrorMessage(err, copy, 'message'))
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
     } finally {
       setBusy('')
     }
@@ -2994,9 +3045,29 @@ function DevelopmentLetterPage({
       const result = await api.sendOutreachSenderTestEmail(sender.id)
       replaceSenderAccount(result.sender)
       if (result.ok) setNotice(copy.devLetter.status.testEmailSent)
-      else setError(result.message)
+      else setError(formatSenderDeliveryError(result.message))
     } catch (err) {
-      setError(humanizeErrorMessage(err, copy, 'message'))
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function sendSenderExternalTestEmail() {
+    const target = senderTestRecipient.trim()
+    if (!target) return
+    const sender = selectedSender ?? await saveSender()
+    if (!sender) return
+    setBusy('externalTestEmail')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.sendOutreachSenderTestEmail(sender.id, target)
+      replaceSenderAccount(result.sender)
+      if (result.ok) setNotice(result.message)
+      else setError(formatSenderDeliveryError(result.message))
+    } catch (err) {
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
     } finally {
       setBusy('')
     }
@@ -3120,7 +3191,15 @@ function DevelopmentLetterPage({
           ) : null}
         </header>
 
-        {error ? <div className="letter-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
+        {error ? (
+          <div className="letter-alert error">
+            <AlertCircle size={16} />
+            <span>{error}</span>
+            <button className="letter-alert-copy" type="button" onClick={() => void navigator.clipboard?.writeText(error)} aria-label={copy.errors.copyDetails}>
+              <Copy size={14} /> {copy.errors.copyDetails}
+            </button>
+          </div>
+        ) : null}
         {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
 
         {letterView === 'dashboard' ? (
@@ -3282,7 +3361,7 @@ function DevelopmentLetterPage({
                 </div>
                 <label className="letter-field">客户需求<textarea value={leadDraft.need} onChange={(event) => updateLead('need', event.target.value)} placeholder="客户可能在找什么？" /></label>
                 <label className="letter-field">备注<textarea value={leadDraft.notes} onChange={(event) => updateLead('notes', event.target.value)} /></label>
-                <div className="letter-action-row">
+                <div className="letter-action-row letter-sticky-actions">
                   <button className="letter-secondary" type="button" onClick={() => { setSelectedLeadId(''); setLeadDraft(emptyLeadDraft()) }}>新建</button>
                   <button className="letter-primary" type="button" disabled={busy === 'lead'} onClick={saveLead}>保存客户</button>
                   <button className="letter-secondary" type="button" disabled={!selectedLead || busy === 'generate'} onClick={generateDraft}>生成草稿</button>
@@ -3317,7 +3396,7 @@ function DevelopmentLetterPage({
                         <label className="letter-field">邮件主题<input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></label>
                         <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></label>
                         <LetterQualitySummary review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
-                        <div className="letter-action-row wrap">
+                        <div className="letter-action-row wrap letter-sticky-actions">
                           <button className="letter-primary" type="button" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</button>
                           <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
                           <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
@@ -3488,34 +3567,75 @@ function DevelopmentLetterPage({
 
         {letterView === 'mail' ? (
           <div className="letter-view">
-            <section className="letter-panel">
+            <section className="letter-panel mail-settings-panel">
               <div className="letter-panel-heading">
                 <div>
                   <h2><Settings size={18} /> 邮箱设置</h2>
-                  <p>保存 SMTP / IMAP 后先测试，再确认收到测试邮件。</p>
+                  <p>先选择发送通道；当前 SMTP 通道可直接保存和测试。</p>
                 </div>
                 {senderDeliveryReady ? <span className="letter-badge success">已确认</span> : <span className="letter-badge">待确认</span>}
+              </div>
+              <div className="sender-channel-section">
+                <div className="sender-subsection-heading">
+                  <span>发送通道</span>
+                  <small>当前：{senderChannel.label}</small>
+                </div>
+                <div className="sender-channel-grid" aria-label="选择发送通道">
+                  {senderChannelOptions.map((channel) => {
+                    const ChannelIcon = channel.icon
+                    const active = senderChannel.id === channel.id
+                    return (
+                      <button key={channel.id} className={active ? 'sender-channel-card active' : 'sender-channel-card'} type="button" aria-pressed={active} onClick={() => chooseSenderChannel(channel.id)}>
+                        <span className="sender-channel-top">
+                          <span><ChannelIcon size={16} /> {channel.label}</span>
+                          <small>{active ? '已选择' : channel.status}</small>
+                        </span>
+                        <em>{channel.detail}</em>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className={senderApiChannelSelected ? 'sender-channel-status warning' : 'sender-channel-status ready'}>
+                  <div>
+                    <strong>{senderApiChannelSelected ? `${senderChannel.label} 已选` : `${senderProvider.label} SMTP 可配置`}</strong>
+                    <span>{senderApiChannelSelected ? '此通道会通过 HTTPS API 发信；请填写 API/OAuth 凭据，测试成功后再确认收件。' : `正在使用 ${senderAuthGuide.smtpLabel}。如果 SMTP 被邮箱服务商拦截，可改选 ${senderRecommendedApiChannel.label}。`}</span>
+                  </div>
+                  <small>{senderApiChannelSelected ? 'HTTPS API' : 'SMTP'}</small>
+                </div>
+              </div>
+              <div className="sender-subsection-heading smtp-heading">
+                <span>SMTP 邮箱预设</span>
+                <small>{senderAuthGuide.smtpLabel}</small>
               </div>
               <div className="letter-provider-grid">
                 {senderProviderPresets.map((preset) => (
                   <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
-                    <Mail size={15} /> {preset.label}
+                    <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
                   </button>
                 ))}
               </div>
               <div className="letter-form-grid">
                 <label>发件邮箱<input value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" /></label>
-                <label>SMTP 密码<input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || '邮箱授权码或 SMTP 密码' : '邮箱授权码或 SMTP 密码'} /></label>
+                <label>{senderApiChannelSelected ? 'SMTP 备用密码' : 'SMTP 密码'}<input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || '邮箱授权码或 SMTP 密码' : '邮箱授权码或 SMTP 密码'} /></label>
                 <label>显示名称<input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></label>
                 <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
                 <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
                 <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
+                <label>外部测试收件箱<input value={senderTestRecipient} onChange={(event) => setSenderTestRecipient(event.target.value)} placeholder="建议填你自己的另一个邮箱，验证真正外发" /></label>
+                {senderApiChannelSelected ? (
+                  <>
+                    <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
+                    <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
+                    <label className="letter-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
+                  </>
+                ) : null}
               </div>
-              <div className="letter-action-row wrap">
-                <button className="letter-primary" type="button" disabled={busy === 'sender'} onClick={saveSender}>保存邮箱</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>测试连接</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>发送测试邮件</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>我收到了</button>
+              <div className="letter-action-row wrap sender-action-row">
+                <button className="letter-primary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
+                <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>确认已收到</button>
               </div>
             </section>
           </div>
@@ -3574,6 +3694,9 @@ function emptySenderDraft(companyProfile: CompanyProfile, copy: UiCopy): SenderF
     imapUsername: '',
     username: '',
     password: '',
+    apiCredential: '',
+    apiAccountId: '',
+    apiBaseUrl: '',
   }
 }
 
@@ -3603,7 +3726,7 @@ function senderFormFromAccount(account: OutreachSenderAccount): SenderFormDraft 
     label: account.label,
     fromName: account.fromName ?? '',
     email: account.email,
-    host: account.host,
+    host: account.host ?? '',
     port: String(account.port),
     secure: account.secure,
     imapHost: account.imapHost ?? '',
@@ -3612,12 +3735,56 @@ function senderFormFromAccount(account: OutreachSenderAccount): SenderFormDraft 
     imapUsername: account.imapUsername ?? '',
     username: account.username ?? '',
     password: '',
+    apiCredential: '',
+    apiAccountId: account.oauthApi?.accountId ?? account.serviceApi?.accountId ?? '',
+    apiBaseUrl: account.oauthApi?.apiBaseUrl ?? account.serviceApi?.apiBaseUrl ?? '',
   }
 }
 
 function senderProviderFromHost(host: string | undefined): SenderProviderId {
   const normalized = host?.trim().toLowerCase() ?? ''
   return senderProviderPresets.find((provider) => provider.id !== 'custom' && provider.host === normalized)?.id ?? 'custom'
+}
+
+function senderChannelFromAccount(account: OutreachSenderAccount): SenderChannelId {
+  if (account.sendChannel === 'oauth-api') {
+    if (account.provider === 'gmail') return 'gmailApi'
+    if (account.provider === 'outlook') return 'microsoftGraph'
+    if (account.provider === 'zoho') return 'zohoApi'
+  }
+  if (account.sendChannel === 'service-api') {
+    return account.provider === 'custom' ? 'customHttpApi' : 'enterpriseApi'
+  }
+  return 'smtp'
+}
+
+function sendChannelFromSenderChannel(id: SenderChannelId): 'smtp' | 'oauth-api' | 'service-api' {
+  if (id === 'gmailApi' || id === 'microsoftGraph' || id === 'zohoApi') return 'oauth-api'
+  if (id === 'enterpriseApi' || id === 'customHttpApi') return 'service-api'
+  return 'smtp'
+}
+
+function providerFromSenderChannel(id: SenderChannelId, fallback: SenderProviderId): string {
+  if (id === 'gmailApi') return 'gmail'
+  if (id === 'microsoftGraph') return 'outlook'
+  if (id === 'zohoApi') return 'zoho'
+  if (id === 'customHttpApi') return 'custom'
+  return fallback
+}
+
+function recommendedSenderApiChannel(provider: SenderProviderId): SenderChannelId {
+  if (provider === 'gmail') return 'gmailApi'
+  if (provider === 'outlook') return 'microsoftGraph'
+  if (provider === 'zoho') return 'zohoApi'
+  if (provider === 'tencent' || provider === 'aliyun') return 'enterpriseApi'
+  return 'customHttpApi'
+}
+
+function defaultSenderApiScopes(provider: string): string[] {
+  if (provider === 'gmail') return ['https://www.googleapis.com/auth/gmail.send']
+  if (provider === 'outlook') return ['offline_access', 'Mail.Send']
+  if (provider === 'zoho') return ['ZohoMail.messages.CREATE']
+  return []
 }
 
 function senderProviderFromEmail(email: string): SenderProviderId | undefined {
@@ -6370,6 +6537,9 @@ function rawErrorMessage(error: unknown): string {
 function humanizeErrorMessage(error: unknown, copy: UiCopy, context: ErrorContext = 'message'): string {
   const raw = rawErrorMessage(error)
   const friendly = copy.errors.friendly
+  const visibleDetail = visibleDiagnosticError(raw)
+
+  if (visibleDetail) return `${friendly.messageFailed.title} ${copy.errors.withDetail(visibleDetail)}`
 
   if (/413|too large|file size|payload/i.test(raw)) return `${friendly.fileTooLarge.message} ${friendly.fileTooLarge.recovery}`
   if (/api key|unauthorized|forbidden|401|403|invalid key|authentication/i.test(raw)) return `${friendly.apiKeyInvalid.message} ${friendly.apiKeyInvalid.recovery}`
@@ -6381,6 +6551,16 @@ function humanizeErrorMessage(error: unknown, copy: UiCopy, context: ErrorContex
   if (context === 'provider') return `${friendly.providerMissing.message} ${friendly.providerMissing.recovery}`
   if (context === 'runtime') return `${friendly.runtimeUnavailable.message} ${friendly.runtimeUnavailable.recovery}`
   return `${friendly.messageFailed.message} ${friendly.messageFailed.recovery}`
+}
+
+function visibleDiagnosticError(raw: string): string {
+  const cleaned = raw
+    .replace(/^Error:\s*/i, '')
+    .replace(/^Request failed:\s*/i, '')
+    .replace(/^\d{3}\s+[^:]+:\s*/i, '')
+    .trim()
+  if (!/(email could not be sent|smtp|mailbox|sender account|sendmail|connection closed|unexpected socket close|greeting never received|invalid login|eauth|esocket|econnreset|etimedout|\b5(?:3[45]|50|53|54)\b)/i.test(cleaned)) return ''
+  return cleaned.length > 320 ? `${cleaned.slice(0, 319).trimEnd()}...` : cleaned
 }
 
 function localizeRuntimeMessage(message: string | undefined, copy: UiCopy): string {

@@ -1,9 +1,9 @@
 const SECRET_PATTERNS = [
     /\bsk-[A-Za-z0-9_-]{12,}\b/g,
     /\bsk-proj-[A-Za-z0-9_-]{12,}\b/g,
-    /\b(license[_-]?key|api[_-]?key|authorization|bearer|token|secret|password)\s*[:=]\s*["']?[^"'\s]+/gi
+    /\b([A-Za-z0-9_.-]*(?:token|secret|password|credential)|license[_-]?key|api[_-]?key|authorization|bearer|oauth[_-]?state|state)\s*[:=]\s*["']?[^"'\s]+/gi
 ];
-const SECRET_FIELD_PATTERN = /(api[_-]?key|authorization|bearer|token|secret|password|credential)/i;
+const SECRET_FIELD_PATTERN = /(api[_-]?key|authorization|bearer|token|secret|password|credential|oauth[_-]?state)/i;
 export function redactSecrets(input) {
     return SECRET_PATTERNS.reduce((value, pattern) => {
         return value.replace(pattern, (match) => {

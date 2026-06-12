@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import nodemailer from "nodemailer";
+import type { SendMailOptions } from "nodemailer";
 import { z } from "zod";
 import { AgentRepository, LocalCredentialVault, ProviderRepository } from "@hermills/agent-builder";
 import {
@@ -36,6 +36,7 @@ import {
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
   OutreachResearchDepthSchema,
+  OutreachSendChannelSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
@@ -86,6 +87,14 @@ import {
   type ComputerControlStatus,
   type HermesReplyRequest
 } from "@hermills/runtime";
+import {
+  MailTransportError,
+  createSmtpTransporter,
+  parseApiMailCredential,
+  sendApiMail,
+  verifyApiMailTransport,
+  type ApiMailCredential
+} from "./mail-transports.js";
 
 export interface ServerOptions {
   host?: string;
@@ -119,6 +128,21 @@ export interface RuntimeAdapter {
   runComputerControlPrompt(prompt: string): Promise<ComputerControlRunResult>;
   createHermesReply(request: HermesReplyRequest): Promise<string>;
   dispose?(): Promise<void>;
+}
+
+export interface OutreachSenderTransport {
+  provider: string;
+  sendChannel: OutreachSenderAccount["sendChannel"];
+  verify(): Promise<void>;
+  sendMail(message: SendMailOptions): Promise<void>;
+}
+
+export interface OutreachSenderTransportSelection {
+  provider: string;
+  sendChannel: OutreachSenderAccount["sendChannel"];
+  senderId: string;
+  senderEmail: string;
+  transport: OutreachSenderTransport;
 }
 
 const MAX_MATERIAL_FILE_BYTES = 10 * 1024 * 1024;
@@ -424,28 +448,42 @@ const RewriteOutreachDraftBody = z.object({
   model: z.string().min(1).max(100).optional()
 }).strict();
 
+const OutreachSenderApiCredentialBody = z.object({
+  credential: OptionalOnboardingString(4000),
+  accountId: OptionalOnboardingString(240),
+  apiBaseUrl: OptionalOnboardingString(500),
+  scopes: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  expiresAt: z.string().datetime().optional()
+}).strict();
+
 const CreateOutreachSenderBody = z.object({
   profileId: z.string().min(1).optional(),
   label: z.string().trim().min(1).max(120),
+  provider: OptionalOnboardingString(80),
+  sendChannel: OutreachSendChannelSchema.default("smtp"),
   fromName: OptionalOnboardingString(160),
   email: z.string().trim().min(3).max(320),
-  host: z.string().trim().min(1).max(240),
-  port: z.coerce.number().int().min(1).max(65535).default(587),
-  secure: z.boolean().default(false),
+  host: OptionalOnboardingString(240),
+  port: z.coerce.number().int().min(1).max(65535).optional(),
+  secure: z.boolean().optional(),
   imapHost: OptionalOnboardingString(240),
   imapPort: z.coerce.number().int().min(1).max(65535).optional(),
   imapSecure: z.boolean().optional(),
   imapUsername: OptionalOnboardingString(320),
   username: OptionalOnboardingString(320),
   password: OptionalOnboardingString(4000),
+  oauthApi: OutreachSenderApiCredentialBody.optional(),
+  serviceApi: OutreachSenderApiCredentialBody.optional(),
   enabled: z.boolean().default(true)
 }).strict();
 
 const UpdateOutreachSenderBody = z.object({
   label: z.string().trim().min(1).max(120).optional(),
+  provider: OptionalOnboardingString(80).nullable().optional(),
+  sendChannel: OutreachSendChannelSchema.optional(),
   fromName: OptionalOnboardingString(160).nullable().optional(),
   email: z.string().trim().min(3).max(320).optional(),
-  host: z.string().trim().min(1).max(240).optional(),
+  host: OptionalOnboardingString(240).nullable().optional(),
   port: z.coerce.number().int().min(1).max(65535).optional(),
   secure: z.boolean().optional(),
   imapHost: OptionalOnboardingString(240).nullable().optional(),
@@ -455,6 +493,10 @@ const UpdateOutreachSenderBody = z.object({
   username: OptionalOnboardingString(320).nullable().optional(),
   password: OptionalOnboardingString(4000),
   clearPassword: z.boolean().optional(),
+  oauthApi: OutreachSenderApiCredentialBody.nullable().optional(),
+  serviceApi: OutreachSenderApiCredentialBody.nullable().optional(),
+  clearOAuthApiCredential: z.boolean().optional(),
+  clearServiceApiCredential: z.boolean().optional(),
   enabled: z.boolean().optional()
 }).strict();
 
@@ -551,6 +593,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     });
   }
 
+  const fetchImpl = options.fetchImpl ?? fetch;
   const agents = new AgentRepository(options.baseDir, { seedBuiltinAgents: true });
   const providers = new ProviderRepository(options.baseDir);
   const runtime: RuntimeAdapter = options.runtimeService ?? new RuntimeService({ baseDir: options.baseDir });
@@ -561,7 +604,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const companyProfile = new CompanyProfileRepository(options.baseDir);
   const outreachLeads = new OutreachLeadRepository(options.baseDir);
   const outreachDrafts = new OutreachDraftRepository(options.baseDir);
-  const outreachSenders = new OutreachSenderRepository(options.baseDir);
+  const outreachSenders = new OutreachSenderRepository(options.baseDir, fetchImpl);
   const outreachWorkflows = new OutreachWorkflowRepository(options.baseDir);
   const outreachCampaigns = new OutreachCampaignRepository(options.baseDir);
   const outreachFollowUps = new OutreachFollowUpRepository(options.baseDir);
@@ -570,7 +613,6 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
   const logs = new LogRepository(options.baseDir);
-  const fetchImpl = options.fetchImpl ?? fetch;
   const researchFetchImpl: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const deepResearch = new DeepResearchClient({ baseDir: options.baseDir, config: options.deepResearch, fetchImpl: researchFetchImpl, logs });
   const resolveProfileId = async (profileId?: string) => {
@@ -2838,14 +2880,18 @@ class OutreachCampaignRepository {
 class OutreachSenderRepository {
   private readonly filePath: string;
   private readonly vault: LocalCredentialVault;
+  private readonly baseDir?: string;
+  private readonly fetchImpl: typeof fetch;
 
-  constructor(private readonly baseDir?: string) {
+  constructor(baseDir?: string, fetchImpl: typeof fetch = fetch) {
+    this.baseDir = baseDir;
+    this.fetchImpl = fetchImpl;
     this.filePath = path.join(getDataHome(baseDir), "outreach-senders.json");
     this.vault = new LocalCredentialVault(baseDir);
   }
 
   async list(options: Pick<OutreachListOptions, "profileId"> = {}): Promise<OutreachSenderAccount[]> {
-    return (await this.read()).senders.filter((sender) => !options.profileId || sender.profileId === options.profileId);
+    return (await this.read()).senders.filter((sender) => !options.profileId || !sender.profileId || sender.profileId === options.profileId);
   }
 
   async get(id: string): Promise<OutreachSenderAccount | undefined> {
@@ -2861,25 +2907,42 @@ class OutreachSenderRepository {
   async create(input: z.infer<typeof CreateOutreachSenderBody> & { profileId: string }): Promise<OutreachSenderAccount> {
     const now = new Date().toISOString();
     const id = randomUUID();
-    const passwordRef = input.password ? await this.vault.saveSecret(`outreach-sender-${id}`, input.password) : undefined;
-    const imap = inferImapSettings(input);
+    const normalized = normalizeOutreachSenderCreateInput(input);
+    const { provider, sendChannel } = normalized;
+    assertSenderTransportBasics({ provider, sendChannel, host: normalized.host });
+    const passwordRef = normalized.password ? await this.vault.saveSecret(`outreach-sender-${id}`, normalized.password) : undefined;
+    const oauthApi = await this.updateApiCredential({
+      senderId: id,
+      kind: "oauth-api",
+      input: normalized.oauthApi
+    });
+    const serviceApi = await this.updateApiCredential({
+      senderId: id,
+      kind: "service-api",
+      input: normalized.serviceApi
+    });
+    const imap = inferImapSettings(normalized);
     const sender = OutreachSenderAccountSchema.parse({
       id,
-      profileId: input.profileId,
-      label: input.label,
-      fromName: input.fromName,
-      email: input.email,
-      host: input.host,
-      port: input.port,
-      secure: input.secure,
-      imapHost: input.imapHost ?? imap.host,
-      imapPort: input.imapPort ?? imap.port,
-      imapSecure: input.imapSecure ?? imap.secure,
-      imapUsername: input.imapUsername ?? input.username ?? input.email,
-      username: input.username,
+      profileId: normalized.profileId,
+      label: normalized.label,
+      provider,
+      sendChannel,
+      fromName: normalized.fromName,
+      email: normalized.email,
+      host: normalized.host,
+      port: normalized.port,
+      secure: normalized.secure,
+      imapHost: normalized.imapHost ?? imap.host,
+      imapPort: normalized.imapPort ?? imap.port,
+      imapSecure: normalized.imapSecure ?? imap.secure,
+      imapUsername: normalized.imapUsername ?? normalized.username ?? normalized.email,
+      username: normalized.username,
       passwordRef,
-      passwordPreview: input.password ? previewSecret(input.password) : undefined,
-      enabled: input.enabled,
+      passwordPreview: normalized.password ? previewSecret(normalized.password) : undefined,
+      oauthApi,
+      serviceApi,
+      enabled: normalized.enabled,
       createdAt: now,
       updatedAt: now
     });
@@ -2906,21 +2969,42 @@ class OutreachSenderRepository {
       passwordRef = await this.vault.saveSecret(`outreach-sender-${id}`, input.password);
       passwordPreview = previewSecret(input.password);
     }
+    const normalized = normalizeOutreachSenderUpdateInput(current, input);
+    const { provider, sendChannel, host } = normalized;
+    assertSenderTransportBasics({ provider, sendChannel, host });
+    const oauthApi = await this.updateApiCredential({
+      senderId: id,
+      kind: "oauth-api",
+      current: current.oauthApi,
+      input: normalized.oauthApi,
+      clear: input.clearOAuthApiCredential
+    });
+    const serviceApi = await this.updateApiCredential({
+      senderId: id,
+      kind: "service-api",
+      current: current.serviceApi,
+      input: normalized.serviceApi,
+      clear: input.clearServiceApiCredential
+    });
     const next = OutreachSenderAccountSchema.parse({
       ...current,
-      label: input.label ?? current.label,
-      fromName: input.fromName === null ? undefined : input.fromName ?? current.fromName,
-      email: input.email ?? current.email,
-      host: input.host ?? current.host,
-      port: input.port ?? current.port,
-      secure: input.secure ?? current.secure,
-      imapHost: input.imapHost === null ? undefined : input.imapHost ?? current.imapHost ?? inferImapSettings({ ...current, ...input }).host,
-      imapPort: input.imapPort === null ? undefined : input.imapPort ?? current.imapPort ?? inferImapSettings({ ...current, ...input }).port,
-      imapSecure: input.imapSecure === null ? undefined : input.imapSecure ?? current.imapSecure ?? inferImapSettings({ ...current, ...input }).secure,
-      imapUsername: input.imapUsername === null ? undefined : input.imapUsername ?? current.imapUsername ?? input.username ?? current.username ?? input.email ?? current.email,
-      username: input.username === null ? undefined : input.username ?? current.username,
+      label: normalized.label,
+      provider,
+      sendChannel,
+      fromName: normalized.fromName,
+      email: normalized.email,
+      host,
+      port: normalized.port,
+      secure: normalized.secure,
+      imapHost: normalized.imapHost,
+      imapPort: normalized.imapPort,
+      imapSecure: normalized.imapSecure,
+      imapUsername: normalized.imapUsername,
+      username: normalized.username,
       passwordRef,
       passwordPreview,
+      oauthApi,
+      serviceApi,
       enabled: input.enabled ?? current.enabled,
       lastError: undefined,
       lastInboxCheckStatus: undefined,
@@ -2932,40 +3016,46 @@ class OutreachSenderRepository {
     return next;
   }
 
-  async test(id: string): Promise<{ ok: boolean; message: string; sender: Omit<OutreachSenderAccount, "passwordRef"> }> {
+  async test(id: string): Promise<{ ok: boolean; message: string; sender: PublicOutreachSenderAccount }> {
     const sender = await this.require(id);
     try {
-      await (await this.createTransporter(sender)).verify();
+      const selection = await this.selectTransport(sender);
+      await selection.transport.verify();
       const next = await this.updateTestState(id, { lastError: undefined, markLoginTested: true });
-      return { ok: true, message: "SMTP connection is ready.", sender: publicOutreachSender(next) };
+      return { ok: true, message: transportReadyMessage(selection), sender: publicOutreachSender(next) };
     } catch (error) {
-      const message = redactSecrets(error instanceof Error ? error.message : String(error));
+      const message = formatMailError(error, sender);
       const next = await this.updateTestState(id, { lastError: message, markLoginTested: true });
       return { ok: false, message, sender: publicOutreachSender(next) };
     }
   }
 
-  async sendTestEmail(id: string, to?: string): Promise<{ ok: boolean; message: string; sender: Omit<OutreachSenderAccount, "passwordRef"> }> {
+  async sendTestEmail(id: string, to?: string): Promise<{ ok: boolean; message: string; sender: PublicOutreachSenderAccount }> {
     const sender = await this.require(id);
     const target = to?.trim() || sender.email;
     if (!target) throw new ClientInputError("Test email recipient is missing.");
     try {
-      const transporter = await this.createTransporter(sender);
-      await transporter.verify();
-      await transporter.sendMail({
+      const selection = await this.selectTransport(sender);
+      await selection.transport.verify();
+      const selfTest = target.trim().toLowerCase() === sender.email.trim().toLowerCase();
+      await selection.transport.sendMail({
         from: formatEmailAddress(sender.fromName, sender.email),
         to: target,
         subject: "Hermills mailbox test",
-        text: [
+        text: selfTest ? [
           "Hermills sent this test email to confirm your mailbox can send real outreach messages.",
           "",
           "If you received it, go back to Hermills and click \"I received it\"."
+        ].join("\n") : [
+          "Hermills sent this external delivery test from your configured mailbox.",
+          "",
+          "No action is needed."
         ].join("\n")
       });
       const next = await this.updateTestState(id, { lastError: undefined, markLoginTested: true, markTestEmailSent: true });
       return { ok: true, message: `Test email sent to ${target}.`, sender: publicOutreachSender(next) };
     } catch (error) {
-      const message = redactSecrets(error instanceof Error ? error.message : String(error));
+      const message = formatMailError(error, sender);
       const next = await this.updateTestState(id, { lastError: message, markLoginTested: true });
       return { ok: false, message, sender: publicOutreachSender(next) };
     }
@@ -2975,15 +3065,52 @@ class OutreachSenderRepository {
     return this.updateTestState(id, { lastError: undefined, markDeliveryConfirmed: true });
   }
 
-  async createTransporter(sender: OutreachSenderAccount) {
+  async sendMail(sender: OutreachSenderAccount, message: SendMailOptions): Promise<void> {
+    const selection = await this.selectTransport(sender);
+    await selection.transport.sendMail(message);
+  }
+
+  async selectTransport(sender: OutreachSenderAccount): Promise<OutreachSenderTransportSelection> {
+    const provider = sender.provider ?? inferOutreachSenderProvider(sender, sender.sendChannel ?? "smtp");
+    const sendChannel = sender.sendChannel ?? "smtp";
+    assertSenderTransportBasics({ provider, sendChannel, host: sender.host });
+    const transport = sendChannel === "smtp"
+      ? await this.createSmtpTransport(sender, provider)
+      : await this.createApiTransport(sender, provider, sendChannel);
+    return {
+      provider,
+      sendChannel,
+      senderId: sender.id,
+      senderEmail: sender.email,
+      transport
+    };
+  }
+
+  private async createSmtpTransport(sender: OutreachSenderAccount, provider: string): Promise<OutreachSenderTransport> {
     const password = sender.passwordRef ? await this.vault.readSecret(sender.passwordRef) : undefined;
-    const user = sender.username ?? sender.email;
-    return nodemailer.createTransport({
-      host: sender.host,
-      port: sender.port,
-      secure: sender.secure,
-      auth: password ? { user, pass: password } : undefined
-    });
+    const transporter = await createSmtpTransporter({ sender, password });
+    return {
+      provider,
+      sendChannel: "smtp",
+      verify: () => transporter.verify().then(() => undefined),
+      sendMail: (message) => transporter.sendMail(message).then(() => undefined)
+    };
+  }
+
+  private async createApiTransport(sender: OutreachSenderAccount, provider: string, sendChannel: "oauth-api" | "service-api"): Promise<OutreachSenderTransport> {
+    const credential = sendChannel === "oauth-api" ? sender.oauthApi : sender.serviceApi;
+    const secret = credential?.credentialRef ? await this.vault.readSecret(credential.credentialRef) : undefined;
+    const apiCredential: ApiMailCredential | undefined = parseApiMailCredential(secret);
+    return {
+      provider,
+      sendChannel,
+      verify: async () => {
+        await verifyApiMailTransport({ sender, credential: apiCredential });
+      },
+      sendMail: async (message) => {
+        await sendApiMail({ sender, message, credential: apiCredential, fetchImpl: this.fetchImpl });
+      }
+    };
   }
 
   async readPassword(sender: OutreachSenderAccount): Promise<string | undefined> {
@@ -2996,6 +3123,8 @@ class OutreachSenderRepository {
     if (!sender) throw new ClientInputError(`Sender account not found: ${id}`);
     await this.write({ senders: document.senders.filter((item) => item.id !== id) });
     if (sender.passwordRef) await this.vault.deleteSecret(sender.passwordRef);
+    if (sender.oauthApi?.credentialRef) await this.vault.deleteSecret(sender.oauthApi.credentialRef);
+    if (sender.serviceApi?.credentialRef) await this.vault.deleteSecret(sender.serviceApi.credentialRef);
   }
 
   async updateInboxState(id: string, input: { status: "ready" | "unsupported" | "failed"; message: string }): Promise<OutreachSenderAccount> {
@@ -3046,6 +3175,40 @@ class OutreachSenderRepository {
 
   private async write(document: OutreachSenderStoreDocument): Promise<void> {
     await writePrivateJson(this.filePath, { senders: document.senders.map((sender) => OutreachSenderAccountSchema.parse(sender)) });
+  }
+
+  private async updateApiCredential(input: {
+    senderId: string;
+    kind: "oauth-api" | "service-api";
+    current?: NonNullable<OutreachSenderAccount["oauthApi"]>;
+    input?: z.infer<typeof OutreachSenderApiCredentialBody> | null;
+    clear?: boolean;
+  }): Promise<NonNullable<OutreachSenderAccount["oauthApi"]> | undefined> {
+    if (input.clear || input.input === null) {
+      if (input.current?.credentialRef) await this.vault.deleteSecret(input.current.credentialRef);
+      return undefined;
+    }
+    if (input.input === undefined) return input.current;
+    let credentialRef = input.current?.credentialRef;
+    let credentialPreview = input.current?.credentialPreview;
+    if (input.input.credential) {
+      if (credentialRef) await this.vault.deleteSecret(credentialRef);
+      credentialRef = await this.vault.saveSecret(`outreach-sender-${input.senderId}-${input.kind}`, input.input.credential);
+      credentialPreview = previewSecret(input.input.credential);
+    }
+    const accountId = input.input.accountId ?? input.current?.accountId;
+    const apiBaseUrl = input.input.apiBaseUrl ?? input.current?.apiBaseUrl;
+    const scopes = input.input.scopes ?? input.current?.scopes ?? [];
+    const expiresAt = input.input.expiresAt ?? input.current?.expiresAt;
+    if (!credentialRef && !accountId && !apiBaseUrl && !scopes.length && !expiresAt) return undefined;
+    return {
+      credentialRef,
+      credentialPreview,
+      accountId,
+      apiBaseUrl,
+      scopes,
+      expiresAt
+    };
   }
 }
 
@@ -3190,7 +3353,11 @@ class OutreachFeedbackRepository {
 type PublicProviderCredential = Omit<ProviderCredential, "credentialRef">;
 type PublicMaterialRecord = Omit<MaterialRecord, "path">;
 type PublicChannelRecord = Omit<ChannelRecord, "secretRef">;
-type PublicOutreachSenderAccount = Omit<OutreachSenderAccount, "passwordRef">;
+type PublicOutreachSenderApiCredential = Omit<NonNullable<OutreachSenderAccount["oauthApi"]>, "credentialRef">;
+type PublicOutreachSenderAccount = Omit<OutreachSenderAccount, "passwordRef" | "oauthApi" | "serviceApi"> & {
+  oauthApi?: PublicOutreachSenderApiCredential;
+  serviceApi?: PublicOutreachSenderApiCredential;
+};
 type OnboardingProviderUpsert = Omit<OnboardingProviderInput, "apiKey"> & { apiKey?: string };
 
 interface MaterialUpload {
@@ -3236,8 +3403,20 @@ function publicChannel(channel: ChannelRecord): PublicChannelRecord {
 }
 
 function publicOutreachSender(sender: OutreachSenderAccount): PublicOutreachSenderAccount {
-  const { passwordRef: _passwordRef, ...safeSender } = sender;
-  return safeSender;
+  const { passwordRef: _passwordRef, oauthApi, serviceApi, ...safeSender } = sender;
+  return {
+    ...safeSender,
+    lastError: safeSender.lastError ? redactSecrets(safeSender.lastError) : undefined,
+    lastInboxCheckMessage: safeSender.lastInboxCheckMessage ? redactSecrets(safeSender.lastInboxCheckMessage) : undefined,
+    oauthApi: publicOutreachSenderApiCredential(oauthApi),
+    serviceApi: publicOutreachSenderApiCredential(serviceApi)
+  };
+}
+
+function publicOutreachSenderApiCredential(credential: OutreachSenderAccount["oauthApi"]): PublicOutreachSenderApiCredential | undefined {
+  if (!credential) return undefined;
+  const { credentialRef: _credentialRef, ...safeCredential } = credential;
+  return safeCredential;
 }
 
 function campaignStats(recipients: OutreachCampaignRecipient[]): OutreachCampaign["stats"] {
@@ -5436,6 +5615,166 @@ type InferredImapSettings = {
   secure?: boolean;
 };
 
+type OutreachSmtpDefaults = {
+  host: string;
+  port: number;
+  secure: boolean;
+  imapHost: string;
+  imapPort: number;
+  imapSecure: boolean;
+};
+
+const OUTREACH_SMTP_DEFAULTS: Record<"tencent" | "aliyun", OutreachSmtpDefaults> = {
+  tencent: {
+    host: "smtp.exmail.qq.com",
+    port: 465,
+    secure: true,
+    imapHost: "imap.exmail.qq.com",
+    imapPort: 993,
+    imapSecure: true
+  },
+  aliyun: {
+    host: "smtp.mxhichina.com",
+    port: 465,
+    secure: true,
+    imapHost: "imap.mxhichina.com",
+    imapPort: 993,
+    imapSecure: true
+  }
+};
+
+const OUTREACH_SERVICE_API_DEFAULTS: Record<string, { apiBaseUrl?: string; label: string }> = {
+  tencent: { label: "Tencent Cloud Email service" },
+  aliyun: { label: "Alibaba Cloud DirectMail" },
+  custom: { label: "Custom HTTP mail API" },
+  "custom-service-api": { label: "Custom HTTP mail API" },
+  "custom-http": { label: "Custom HTTP mail API" }
+};
+
+type CreateOutreachSenderInput = z.infer<typeof CreateOutreachSenderBody> & { profileId: string };
+type UpdateOutreachSenderInput = z.infer<typeof UpdateOutreachSenderBody>;
+type OutreachSenderApiCredentialInput = z.infer<typeof OutreachSenderApiCredentialBody>;
+
+function normalizeOutreachSenderCreateInput(input: CreateOutreachSenderInput): CreateOutreachSenderInput & {
+  provider: string;
+  sendChannel: OutreachSenderAccount["sendChannel"];
+  port: number;
+  secure: boolean;
+} {
+  const sendChannel = input.sendChannel ?? "smtp";
+  const provider = canonicalOutreachSenderProvider(input.provider ?? inferOutreachSenderProvider(input, sendChannel));
+  const smtpDefaults = inferOutreachSmtpDefaults({ provider, email: input.email, host: input.host });
+  const host = input.host ?? (sendChannel === "smtp" ? smtpDefaults?.host : undefined);
+  return {
+    ...input,
+    provider,
+    sendChannel,
+    host,
+    port: input.port ?? (sendChannel === "smtp" ? smtpDefaults?.port ?? 587 : 587),
+    secure: input.secure ?? (sendChannel === "smtp" ? smtpDefaults?.secure ?? false : false),
+    serviceApi: normalizeServiceApiCredentialInput(provider, sendChannel, input.serviceApi)
+  };
+}
+
+function normalizeOutreachSenderUpdateInput(current: OutreachSenderAccount, input: UpdateOutreachSenderInput): Omit<OutreachSenderAccount, "id" | "profileId" | "passwordRef" | "passwordPreview" | "oauthApi" | "serviceApi" | "createdAt" | "updatedAt"> & {
+  oauthApi?: OutreachSenderApiCredentialInput | null;
+  serviceApi?: OutreachSenderApiCredentialInput | null;
+} {
+  const sendChannel = input.sendChannel ?? current.sendChannel ?? "smtp";
+  const provider = canonicalOutreachSenderProvider(input.provider === null ? "custom" : input.provider ?? current.provider ?? inferOutreachSenderProvider({ ...current, ...input }, sendChannel));
+  const requestedHost = input.host === null ? undefined : input.host ?? current.host;
+  const smtpDefaults = inferOutreachSmtpDefaults({ provider, email: input.email ?? current.email, host: requestedHost });
+  const host = requestedHost ?? (sendChannel === "smtp" ? smtpDefaults?.host : undefined);
+  const shouldApplyProviderDefaults = sendChannel === "smtp" && Boolean(smtpDefaults) && (!current.host?.trim() || input.host === null || input.provider !== undefined);
+  const port = input.port ?? (shouldApplyProviderDefaults ? smtpDefaults?.port : current.port) ?? 587;
+  const secure = input.secure ?? (shouldApplyProviderDefaults ? smtpDefaults?.secure : current.secure) ?? false;
+  const imap = inferImapSettings({ ...current, ...input, host, port, secure, email: input.email ?? current.email });
+  return {
+    label: input.label ?? current.label,
+    provider,
+    sendChannel,
+    fromName: input.fromName === null ? undefined : input.fromName ?? current.fromName,
+    email: input.email ?? current.email,
+    host,
+    port,
+    secure,
+    imapHost: input.imapHost === null ? undefined : input.imapHost ?? current.imapHost ?? imap.host,
+    imapPort: input.imapPort === null ? undefined : input.imapPort ?? current.imapPort ?? imap.port,
+    imapSecure: input.imapSecure === null ? undefined : input.imapSecure ?? current.imapSecure ?? imap.secure,
+    imapUsername: input.imapUsername === null ? undefined : input.imapUsername ?? current.imapUsername ?? input.username ?? current.username ?? input.email ?? current.email,
+    username: input.username === null ? undefined : input.username ?? current.username,
+    oauthApi: input.oauthApi,
+    serviceApi: input.serviceApi === null ? null : normalizeServiceApiCredentialInput(provider, sendChannel, input.serviceApi),
+    enabled: input.enabled ?? current.enabled
+  };
+}
+
+function normalizeServiceApiCredentialInput(
+  provider: string,
+  sendChannel: OutreachSenderAccount["sendChannel"],
+  input: OutreachSenderApiCredentialInput | undefined
+): OutreachSenderApiCredentialInput | undefined {
+  if (sendChannel !== "service-api") return input;
+  const defaults = OUTREACH_SERVICE_API_DEFAULTS[canonicalOutreachSenderProvider(provider)];
+  if (!input) return undefined;
+  return {
+    ...input,
+    apiBaseUrl: input.apiBaseUrl ?? defaults?.apiBaseUrl
+  };
+}
+
+function inferOutreachSmtpDefaults(input: { provider?: string | null; email?: string | null; host?: string | null }): OutreachSmtpDefaults | undefined {
+  const provider = canonicalOutreachSenderProvider(input.provider);
+  if (provider === "tencent" || provider === "aliyun") return OUTREACH_SMTP_DEFAULTS[provider];
+  const emailDomain = input.email?.split("@")[1]?.trim().toLowerCase() ?? "";
+  const host = input.host?.trim().toLowerCase() ?? "";
+  const target = `${emailDomain} ${host}`;
+  if (/(^|\.)exmail\.qq\.com\b|smtp\.exmail\.qq\.com/.test(target)) return OUTREACH_SMTP_DEFAULTS.tencent;
+  if (/aliyun|mxhichina/.test(target)) return OUTREACH_SMTP_DEFAULTS.aliyun;
+  return undefined;
+}
+
+function canonicalOutreachSenderProvider(value?: string | null): string {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return "custom";
+  if (["tencent", "tencent-exmail", "qq-exmail", "exmail", "tencent-cloud", "tencent-cloud-ses", "qq"].includes(normalized)) return "tencent";
+  if (["aliyun", "ali", "alibaba", "alibaba-mail", "alimail", "aliyun-mail", "aliyun-directmail", "mxhichina"].includes(normalized)) return "aliyun";
+  if (["custom-http", "http-api", "custom-service-api", "service-api"].includes(normalized)) return "custom";
+  return normalized;
+}
+
+function inferOutreachSenderProvider(input: {
+  provider?: string | null;
+  sendChannel?: OutreachSenderAccount["sendChannel"] | null;
+  email?: string | null;
+  host?: string | null;
+}, sendChannel: OutreachSenderAccount["sendChannel"] = input.sendChannel ?? "smtp"): string {
+  const explicit = input.provider?.trim();
+  if (explicit) return canonicalOutreachSenderProvider(explicit);
+  const emailDomain = input.email?.split("@")[1]?.trim().toLowerCase() ?? "";
+  const host = input.host?.trim().toLowerCase() ?? "";
+  const target = `${emailDomain} ${host}`;
+  if (/(^|\.)gmail\.com\b|smtp\.gmail\.com/.test(target)) return "gmail";
+  if (/(^|\.)outlook\.com\b|(^|\.)hotmail\.com\b|office365|microsoft/.test(target)) return "outlook";
+  if (/(^|\.)qq\.com\b|exmail\.qq\.com/.test(target)) return "tencent";
+  if (/aliyun|mxhichina/.test(target)) return "aliyun";
+  if (/zoho/.test(target)) return "zoho";
+  if (sendChannel === "oauth-api") return "custom-oauth-api";
+  if (sendChannel === "service-api") return "custom";
+  return "custom";
+}
+
+function assertSenderTransportBasics(input: { provider?: string; sendChannel: OutreachSenderAccount["sendChannel"]; host?: string | null }): void {
+  if (!input.provider?.trim()) throw new ClientInputError("Sender provider is required.");
+  if (input.sendChannel === "smtp" && !input.host?.trim()) throw new ClientInputError("SMTP host is required for SMTP sender accounts.");
+}
+
+function transportReadyMessage(selection: OutreachSenderTransportSelection): string {
+  if (selection.sendChannel === "smtp") return "SMTP connection is ready.";
+  if (selection.sendChannel === "oauth-api") return `${selection.provider} OAuth API transport is ready.`;
+  return `${selection.provider} service API transport is ready.`;
+}
+
 type InboxHeader = {
   raw: string;
   from?: string;
@@ -5526,7 +5865,11 @@ async function checkOutreachInbox(input: {
 
 function inferImapSettings(input: {
   email?: string | null;
+  provider?: string | null;
+  sendChannel?: OutreachSenderAccount["sendChannel"] | null;
   host?: string | null;
+  port?: number | null;
+  secure?: boolean | null;
   imapHost?: string | null;
   imapPort?: number | null;
   imapSecure?: boolean | null;
@@ -5538,8 +5881,8 @@ function inferImapSettings(input: {
     { match: /(^|\.)gmail\.com$/, host: "imap.gmail.com" },
     { match: /(^|\.)googlemail\.com$/, host: "imap.gmail.com" },
     { match: /(^|\.)outlook\.com$|(^|\.)hotmail\.com$|(^|\.)office365\.com$|(^|\.)microsoft\.com$/, host: "outlook.office365.com" },
-    { match: /(^|\.)qq\.com$/, host: "imap.qq.com" },
     { match: /(^|\.)exmail\.qq\.com$/, host: "imap.exmail.qq.com" },
+    { match: /(^|\.)qq\.com$/, host: "imap.qq.com" },
     { match: /(^|\.)aliyun\.com$|(^|\.)aliyun-inc\.com$|(^|\.)mxhichina\.com$/, host: "imap.mxhichina.com" },
     { match: /(^|\.)zoho\.com$|(^|\.)zohomail\.com$/, host: "imap.zoho.com" }
   ];
@@ -6158,8 +6501,7 @@ async function sendOutreachDraft(input: {
   if (!input.draft.qualityReview) await input.drafts.update(input.draft.id, { qualityReview });
   assertOutreachQualityPassed(qualityReview);
   try {
-    const transporter = await input.senders.createTransporter(input.sender);
-    await transporter.sendMail({
+    await input.senders.sendMail(input.sender, {
       from: formatEmailAddress(input.sender.fromName, input.sender.email),
       to,
       subject: input.draft.subject,
@@ -6167,10 +6509,55 @@ async function sendOutreachDraft(input: {
     });
     return input.drafts.update(input.draft.id, { status: "sent", sentAt: new Date().toISOString(), sendError: undefined });
   } catch (error) {
-    const message = redactSecrets(error instanceof Error ? error.message : String(error));
+    const message = formatMailError(error, input.sender);
     await input.drafts.update(input.draft.id, { status: "failed", sendError: message });
     throw new ClientInputError(`Email could not be sent: ${message}`);
   }
+}
+
+function formatMailError(error: unknown, sender?: OutreachSenderAccount): string {
+  if (error instanceof MailTransportError) {
+    const details = [
+      error.message,
+      error.detail.provider ? `provider=${error.detail.provider}` : undefined,
+      error.detail.channel ? `channel=${error.detail.channel}` : undefined,
+      error.detail.code ? `code=${error.detail.code}` : undefined,
+      error.detail.statusCode ? `http=${error.detail.statusCode}` : undefined,
+      error.detail.requestId ? `requestId=${error.detail.requestId}` : undefined,
+      error.detail.responseMessage,
+      sender ? senderMailHint(sender, error.message, error.detail.code) : undefined
+    ].filter((part): part is string => Boolean(part));
+    return redactSecrets([...new Set(details)].join(" · "));
+  }
+  const mailError = error as Error & { code?: string; command?: string; response?: string; responseCode?: number };
+  const message = error instanceof Error ? error.message : String(error);
+  const details = [
+    message,
+    mailError.code ? `code=${mailError.code}` : undefined,
+    mailError.command ? `command=${mailError.command}` : undefined,
+    mailError.responseCode ? `smtp=${mailError.responseCode}` : undefined,
+    mailError.response && mailError.response !== message ? mailError.response : undefined,
+    sender ? senderMailHint(sender, `${message} ${mailError.response ?? ""}`, mailError.code) : undefined
+  ].filter((part): part is string => Boolean(part));
+  return redactSecrets([...new Set(details)].join(" · "));
+}
+
+function senderMailHint(sender: OutreachSenderAccount, message: string, code?: string): string | undefined {
+  const provider = canonicalOutreachSenderProvider(sender.provider);
+  const text = `${message} ${code ?? ""}`.toLowerCase();
+  if ((sender.sendChannel ?? "smtp") === "service-api") {
+    if (/missing|credential|token|secret/.test(text)) return `${serviceApiLabel(provider)} requires saved API credentials before Hermills can test or send through serviceApi.`;
+    if (/not implemented|unsupported/.test(text)) return `${serviceApiLabel(provider)} is configured as a serviceApi channel, but this build does not include a provider-specific API sender; keep SMTP as the fallback until credentials and an adapter are configured.`;
+  }
+  if ((sender.sendChannel ?? "smtp") === "smtp" && /(eauth|auth|login|535|534|credential|password)/i.test(text)) {
+    if (provider === "tencent") return "Tencent Exmail SMTP usually requires the mailbox authorization code, not the normal account password.";
+    if (provider === "aliyun") return "Alibaba/Aliyun Mail SMTP usually requires the mailbox authorization code, not the normal account password.";
+  }
+  return undefined;
+}
+
+function serviceApiLabel(provider: string): string {
+  return OUTREACH_SERVICE_API_DEFAULTS[canonicalOutreachSenderProvider(provider)]?.label ?? "Service API";
 }
 
 function formatEmailAddress(name: string | undefined, email: string): string {

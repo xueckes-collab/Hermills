@@ -514,13 +514,25 @@ export type OutreachEmailQualityReview = {
   reviewedAt: string;
 };
 
+export type OutreachSendChannel = "smtp" | "oauth-api" | "service-api";
+
+export type OutreachSenderApiCredential = {
+  credentialPreview?: string;
+  accountId?: string;
+  apiBaseUrl?: string;
+  scopes: string[];
+  expiresAt?: string;
+};
+
 export type OutreachSenderAccount = {
   id: string;
   profileId?: string;
   label: string;
+  provider: string;
+  sendChannel: OutreachSendChannel;
   fromName?: string;
   email: string;
-  host: string;
+  host?: string;
   port: number;
   secure: boolean;
   imapHost?: string;
@@ -529,6 +541,8 @@ export type OutreachSenderAccount = {
   imapUsername?: string;
   username?: string;
   passwordPreview?: string;
+  oauthApi?: OutreachSenderApiCredential;
+  serviceApi?: OutreachSenderApiCredential;
   enabled: boolean;
   lastTestedAt?: string;
   lastTestEmailAt?: string;
@@ -1414,9 +1428,11 @@ export const api = {
   async saveOutreachSenderAccount(input: {
     id?: string;
     label: string;
+    provider?: string;
+    sendChannel?: OutreachSendChannel;
     fromName?: string;
     email: string;
-    host: string;
+    host?: string;
     port: number;
     secure: boolean;
     imapHost?: string;
@@ -1425,6 +1441,10 @@ export const api = {
     imapUsername?: string;
     username?: string;
     password?: string;
+    oauthApi?: { credential?: string; accountId?: string; apiBaseUrl?: string; scopes?: string[]; expiresAt?: string } | null;
+    serviceApi?: { credential?: string; accountId?: string; apiBaseUrl?: string; scopes?: string[]; expiresAt?: string } | null;
+    clearOAuthApiCredential?: boolean;
+    clearServiceApiCredential?: boolean;
     enabled?: boolean;
   }): Promise<OutreachSenderAccount> {
     const { id, ...payload } = input;

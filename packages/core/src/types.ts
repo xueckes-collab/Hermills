@@ -23,6 +23,8 @@ import type {
   GeneratedUspSchema,
   OutreachEmailQualityReviewSchema,
   OutreachResearchDepthSchema,
+  OutreachSendChannelSchema,
+  OutreachSenderApiCredentialSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
@@ -55,6 +57,8 @@ export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
 export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
+export type OutreachSendChannel = z.infer<typeof OutreachSendChannelSchema>;
+export type OutreachSenderApiCredential = z.infer<typeof OutreachSenderApiCredentialSchema>;
 export type DeepResearchSidecarConfig = z.infer<typeof DeepResearchSidecarConfigSchema>;
 export type CustomerResearchEvidence = z.infer<typeof CustomerResearchEvidenceSchema>;
 export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;

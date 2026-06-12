@@ -293,13 +293,26 @@ export const OutreachDraftSchema = z.object({
   updatedAt: z.string().datetime()
 }).strict();
 
+export const OutreachSendChannelSchema = z.enum(["smtp", "oauth-api", "service-api"]);
+
+export const OutreachSenderApiCredentialSchema = z.object({
+  credentialRef: z.string().min(1).optional(),
+  credentialPreview: z.string().optional(),
+  accountId: OptionalTrimmedString(240),
+  apiBaseUrl: OptionalTrimmedString(500),
+  scopes: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  expiresAt: z.string().datetime().optional()
+}).strict();
+
 export const OutreachSenderAccountSchema = z.object({
   id: z.string().min(1),
   profileId: z.string().min(1).optional(),
   label: z.string().trim().min(1).max(120),
+  provider: z.string().trim().min(1).max(80).default("custom"),
+  sendChannel: OutreachSendChannelSchema.default("smtp"),
   fromName: OptionalTrimmedString(160),
   email: z.string().trim().min(3).max(320),
-  host: z.string().trim().min(1).max(240),
+  host: OptionalTrimmedString(240),
   port: z.number().int().min(1).max(65535).default(587),
   secure: z.boolean().default(false),
   imapHost: OptionalTrimmedString(240),
@@ -309,6 +322,8 @@ export const OutreachSenderAccountSchema = z.object({
   username: OptionalTrimmedString(320),
   passwordRef: z.string().min(1).optional(),
   passwordPreview: z.string().optional(),
+  oauthApi: OutreachSenderApiCredentialSchema.optional(),
+  serviceApi: OutreachSenderApiCredentialSchema.optional(),
   enabled: z.boolean().default(true),
   lastTestedAt: z.string().datetime().optional(),
   lastTestEmailAt: z.string().datetime().optional(),

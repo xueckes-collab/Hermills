@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, DeepResearchSidecarConfigSchema, CustomerResearchEvidenceSchema, CustomerResearchSummarySchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachEmailQualityReviewSchema, OutreachResearchDepthSchema, OutreachCampaignRecipientSchema, OutreachCampaignSchema, OutreachDraftSchema, OutreachFeedbackSchema, OutreachFollowUpJobSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
+import type { AgentDefinitionSchema, AppStateSchema, CapabilitySchema, ChatMessageSchema, ChatSessionSchema, ChannelRecordSchema, CompanyMaterialCategorySchema, CompanyProfileSchema, JobRecordSchema, JobRunRecordSchema, KnowledgeFileSchema, LogEntrySchema, MaterialRecordSchema, MaterialScopeSchema, DeepResearchSidecarConfigSchema, CustomerResearchEvidenceSchema, CustomerResearchSummarySchema, CustomerResearchSnapshotSchema, EmailSequenceDraftSchema, GeneratedIcpSchema, GeneratedUspSchema, OutreachEmailQualityReviewSchema, OutreachResearchDepthSchema, OutreachSendChannelSchema, OutreachSenderApiCredentialSchema, OutreachCampaignRecipientSchema, OutreachCampaignSchema, OutreachDraftSchema, OutreachFeedbackSchema, OutreachFollowUpJobSchema, OutreachLeadSchema, OutreachSenderAccountSchema, OutreachWorkflowSchema, ProviderCredentialSchema, RuntimeStatusSchema } from "./schemas.js";
 export type AgentCapabilities = z.infer<typeof CapabilitySchema>;
 export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
@@ -20,6 +20,8 @@ export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
 export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
+export type OutreachSendChannel = z.infer<typeof OutreachSendChannelSchema>;
+export type OutreachSenderApiCredential = z.infer<typeof OutreachSenderApiCredentialSchema>;
 export type DeepResearchSidecarConfig = z.infer<typeof DeepResearchSidecarConfigSchema>;
 export type CustomerResearchEvidence = z.infer<typeof CustomerResearchEvidenceSchema>;
 export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;

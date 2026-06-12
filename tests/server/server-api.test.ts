@@ -499,6 +499,144 @@ describe("Hermills local API", () => {
     expect(deletedStatsResponse.json()).toMatchObject({ total: 0 });
   });
 
+  it("defaults normal Tencent and Alibaba sender accounts to authorization-code SMTP settings", async () => {
+    const tencentResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Tencent enterprise mailbox",
+        provider: "tencent",
+        email: "sales@brand.example",
+        username: "sales@brand.example",
+        password: "smtp-auth-code"
+      }
+    });
+    expect(tencentResponse.statusCode, tencentResponse.body).toBe(200);
+    expect(tencentResponse.json()).toMatchObject({
+      provider: "tencent",
+      sendChannel: "smtp",
+      host: "smtp.exmail.qq.com",
+      port: 465,
+      secure: true,
+      imapHost: "imap.exmail.qq.com",
+      imapPort: 993,
+      imapSecure: true,
+      passwordPreview: expect.any(String)
+    });
+    expect(tencentResponse.json()).not.toHaveProperty("passwordRef");
+    expect(JSON.stringify(tencentResponse.json())).not.toContain("smtp-auth-code");
+
+    const aliyunResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Alibaba mailbox",
+        provider: "aliyun",
+        email: "sales@brand.example",
+        username: "sales@brand.example",
+        password: "alimail-auth-code"
+      }
+    });
+    expect(aliyunResponse.statusCode, aliyunResponse.body).toBe(200);
+    expect(aliyunResponse.json()).toMatchObject({
+      provider: "aliyun",
+      sendChannel: "smtp",
+      host: "smtp.mxhichina.com",
+      port: 465,
+      secure: true,
+      imapHost: "imap.mxhichina.com",
+      imapPort: 993,
+      imapSecure: true
+    });
+    expect(JSON.stringify(aliyunResponse.json())).not.toContain("alimail-auth-code");
+  });
+
+  it("saves service API sender config without pretending missing or unsupported credentials can send", async () => {
+    const missingCredentialResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Tencent Cloud Email",
+        provider: "tencent",
+        sendChannel: "service-api",
+        email: "sales@brand.example"
+      }
+    });
+    expect(missingCredentialResponse.statusCode, missingCredentialResponse.body).toBe(200);
+    expect(missingCredentialResponse.json()).toMatchObject({
+      provider: "tencent",
+      sendChannel: "service-api"
+    });
+    expect(missingCredentialResponse.json().serviceApi).toBeUndefined();
+
+    const missingCredentialTest = await server.inject({
+      method: "POST",
+      url: `/api/outreach/sender-accounts/${missingCredentialResponse.json().id}/test`,
+      headers
+    });
+    expect(missingCredentialTest.statusCode, missingCredentialTest.body).toBe(200);
+    expect(missingCredentialTest.json()).toMatchObject({ ok: false });
+    expect(missingCredentialTest.json().message).toContain("credential");
+    expect(missingCredentialTest.json().message).not.toContain("ready");
+
+    const aliyunApiResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Alibaba DirectMail",
+        provider: "aliyun",
+        sendChannel: "service-api",
+        email: "sales@brand.example",
+        serviceApi: { credential: "aliyun-access-secret" }
+      }
+    });
+    expect(aliyunApiResponse.statusCode, aliyunApiResponse.body).toBe(200);
+    expect(aliyunApiResponse.json()).toMatchObject({
+      provider: "aliyun",
+      sendChannel: "service-api",
+      serviceApi: {
+        credentialPreview: expect.any(String)
+      }
+    });
+    expect(aliyunApiResponse.json().serviceApi).not.toHaveProperty("credentialRef");
+    expect(JSON.stringify(aliyunApiResponse.json())).not.toContain("aliyun-access-secret");
+
+    const aliyunApiTest = await server.inject({
+      method: "POST",
+      url: `/api/outreach/sender-accounts/${aliyunApiResponse.json().id}/test`,
+      headers
+    });
+    expect(aliyunApiTest.statusCode, aliyunApiTest.body).toBe(200);
+    expect(aliyunApiTest.json()).toMatchObject({ ok: false });
+    expect(aliyunApiTest.json().message).toContain("endpoint");
+
+    const customApiResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/sender-accounts",
+      headers,
+      payload: {
+        label: "Custom HTTP API",
+        provider: "custom",
+        sendChannel: "service-api",
+        email: "sales@brand.example",
+        serviceApi: { apiBaseUrl: "https://mail-gateway.example/send" }
+      }
+    });
+    expect(customApiResponse.statusCode, customApiResponse.body).toBe(200);
+    const customApiTest = await server.inject({
+      method: "POST",
+      url: `/api/outreach/sender-accounts/${customApiResponse.json().id}/test`,
+      headers
+    });
+    expect(customApiTest.statusCode, customApiTest.body).toBe(200);
+    expect(customApiTest.json()).toMatchObject({ ok: false });
+    expect(customApiTest.json().message).toContain("credential");
+  });
+
   it("refuses outreach generation until company profile has the required basics", async () => {
     const leadResponse = await server.inject({
       method: "POST",

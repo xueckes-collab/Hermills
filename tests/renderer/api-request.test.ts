@@ -162,6 +162,21 @@ describe("renderer API request wrapper", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual({ senderAccountId: "sender-1", campaignId: "campaign-1" });
   });
 
+  it("sends external sender test emails with only the requested recipient", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ ok: false, message: "Mailbox rejected", sender: { id: "sender-1" } }));
+    stubDesktop(fetchMock);
+
+    await api.sendOutreachSenderTestEmail("sender-1", "qa.external@example.net");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url).replace("http://127.0.0.1:47321", "")).toBe("/api/outreach/sender-accounts/sender-1/test-email");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ to: "qa.external@example.net" });
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty("confirm");
+    expect(JSON.stringify(JSON.parse(String(init?.body)))).not.toMatch(/oauth|state|token|credential/i);
+    expect((init?.headers as Headers).get("x-hermills-token")).toBe("test-token");
+  });
+
   it("uses fixed computer-control API paths", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url) => {
       if (String(url).endsWith("/api/computer-control/status")) return Response.json(fakeComputerControlStatus());

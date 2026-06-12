@@ -6325,6 +6325,7 @@ details[open] .complex-detail {
 .letter-alert {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
   border-radius: 8px;
@@ -6334,8 +6335,35 @@ details[open] .complex-detail {
   line-height: 1.35;
 }
 
+.letter-alert > span {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .letter-alert.error { color: #9f1239; border: 1px solid #fecdd3; background: #fff1f2; }
 .letter-alert.success { color: #047857; border: 1px solid #bbf7d0; background: #ecfdf5; }
+
+.letter-alert-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid #fda4af;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #881337;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.letter-alert-copy:hover {
+  border-color: #fb7185;
+  background: #fff7f8;
+}
 
 .letter-stats-grid {
   display: grid;
@@ -6441,6 +6469,7 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-form-grid input,
+.letter-form-grid textarea,
 .letter-field input,
 .letter-field textarea,
 .letter-search input,
@@ -6455,6 +6484,15 @@ button.letter-stat-card { cursor: pointer; }
   font: inherit;
   font-size: 14px;
   line-height: 1.35;
+}
+
+.letter-form-grid textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.letter-form-span {
+  grid-column: 1 / -1;
 }
 
 .letter-field { margin-top: 12px; }
@@ -6742,6 +6780,10 @@ button.letter-stat-card { cursor: pointer; }
 .letter-detail-panel {
   position: sticky;
   top: 0;
+  display: grid;
+  max-height: calc(100dvh - 128px);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .letter-badge {
@@ -7010,6 +7052,25 @@ button.letter-stat-card { cursor: pointer; }
   flex: 1 1 140px;
 }
 
+.letter-sticky-actions {
+  position: sticky;
+  bottom: -18px;
+  z-index: 2;
+  margin-right: -18px;
+  margin-bottom: -18px;
+  margin-left: -18px;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 8px 8px;
+  padding: 12px 18px 14px;
+  background: rgb(255 255 255 / 0.96);
+  box-shadow: 0 -10px 22px rgb(15 23 42 / 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.letter-draft-card .letter-sticky-actions {
+  bottom: -18px;
+}
+
 .letter-campaign-summary,
 .letter-followup-list {
   display: grid;
@@ -7045,18 +7106,217 @@ button.letter-stat-card { cursor: pointer; }
 .letter-profile-grid span { color: #6b7280; font-size: 12px; }
 .letter-profile-grid strong { overflow-wrap: anywhere; color: #111827; font-size: 14px; }
 
+.mail-settings-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.mail-settings-panel .sender-action-row {
+  position: static;
+  z-index: auto;
+  margin: 2px 0 0;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0;
+  padding: 14px 0 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mail-settings-panel .sender-action-row .letter-primary,
+.mail-settings-panel .sender-action-row .letter-secondary {
+  flex: 1 1 170px;
+  min-width: 150px;
+}
+
+.sender-channel-section {
+  display: grid;
+  gap: 10px;
+}
+
+.sender-subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: #111827;
+}
+
+.sender-subsection-heading span {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.sender-subsection-heading small {
+  min-width: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 11px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.sender-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.sender-channel-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 104px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 12px;
+  color: #0f172a;
+  background: #ffffff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  white-space: normal;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.sender-channel-card:hover {
+  border-color: #38bdf8;
+  background: #f0f9ff;
+  box-shadow: 0 8px 18px rgb(2 132 199 / 0.12);
+}
+
+.sender-channel-card.active {
+  border-color: #0f766e;
+  background: #ecfdf5;
+  box-shadow: 0 10px 22px rgb(15 118 110 / 0.16);
+}
+
+.sender-channel-card:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.sender-channel-top {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sender-channel-top > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.sender-channel-top small {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.sender-channel-card:not(.active) .sender-channel-top small {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.sender-channel-card em {
+  color: #334155;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sender-channel-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sender-channel-status.ready {
+  border: 1px solid #99f6e4;
+  color: #134e4a;
+  background: #f0fdfa;
+}
+
+.sender-channel-status.warning {
+  border: 1px solid #fcd34d;
+  color: #78350f;
+  background: #fffbeb;
+}
+
+.sender-channel-status div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.sender-channel-status strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.sender-channel-status span {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.sender-channel-status small {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #ffffff;
+  background: #0f766e;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.sender-channel-status.warning small {
+  background: #b45309;
+}
+
+.smtp-heading {
+  margin-top: 2px;
+}
+
 .letter-provider-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 14px;
 }
 
 .letter-provider-grid button {
   justify-content: flex-start;
+  min-width: 0;
   color: var(--button-secondary-text);
   border-color: var(--button-secondary-border);
   background: var(--button-secondary-bg);
+  white-space: normal;
 }
 
 .letter-provider-grid button.active {
@@ -7153,8 +7413,19 @@ button.letter-stat-card { cursor: pointer; }
 
   .letter-form-grid,
   .letter-profile-grid,
-  .letter-provider-grid {
+  .letter-provider-grid,
+  .sender-channel-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sender-subsection-heading,
+  .sender-channel-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sender-channel-status small {
+    align-self: flex-start;
   }
 }
 
@@ -7167,6 +7438,33 @@ button.letter-stat-card { cursor: pointer; }
 
   .letter-main {
     padding: 16px;
+  }
+
+  .letter-action-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .letter-action-row .letter-primary,
+  .letter-action-row .letter-secondary {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  .mail-settings-panel .sender-action-row .letter-primary,
+  .mail-settings-panel .sender-action-row .letter-secondary {
+    min-width: 0;
+  }
+
+  .letter-alert-copy {
+    justify-content: center;
+    width: 100%;
+    margin-left: 0;
+    white-space: normal;
+    line-height: 1.2;
   }
 }
 
@@ -7205,8 +7503,15 @@ button.letter-stat-card { cursor: pointer; }
 
   .letter-form-grid,
   .letter-profile-grid,
-  .letter-provider-grid {
+  .letter-provider-grid,
+  .sender-channel-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sender-subsection-heading,
+  .sender-channel-status {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .letter-lead-row {

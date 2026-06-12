@@ -1181,13 +1181,38 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }>;
+export declare const OutreachSendChannelSchema: z.ZodEnum<["smtp", "oauth-api", "service-api"]>;
+export declare const OutreachSenderApiCredentialSchema: z.ZodObject<{
+    credentialRef: z.ZodOptional<z.ZodString>;
+    credentialPreview: z.ZodOptional<z.ZodString>;
+    accountId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    apiBaseUrl: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    scopes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    expiresAt: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    scopes: string[];
+    credentialRef?: string | undefined;
+    apiBaseUrl?: string | undefined;
+    credentialPreview?: string | undefined;
+    accountId?: string | undefined;
+    expiresAt?: string | undefined;
+}, {
+    credentialRef?: string | undefined;
+    apiBaseUrl?: unknown;
+    credentialPreview?: string | undefined;
+    accountId?: unknown;
+    scopes?: string[] | undefined;
+    expiresAt?: string | undefined;
+}>;
 export declare const OutreachSenderAccountSchema: z.ZodObject<{
     id: z.ZodString;
     profileId: z.ZodOptional<z.ZodString>;
     label: z.ZodString;
+    provider: z.ZodDefault<z.ZodString>;
+    sendChannel: z.ZodDefault<z.ZodEnum<["smtp", "oauth-api", "service-api"]>>;
     fromName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     email: z.ZodString;
-    host: z.ZodString;
+    host: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     port: z.ZodDefault<z.ZodNumber>;
     secure: z.ZodDefault<z.ZodBoolean>;
     imapHost: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -1197,6 +1222,50 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     username: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     passwordRef: z.ZodOptional<z.ZodString>;
     passwordPreview: z.ZodOptional<z.ZodString>;
+    oauthApi: z.ZodOptional<z.ZodObject<{
+        credentialRef: z.ZodOptional<z.ZodString>;
+        credentialPreview: z.ZodOptional<z.ZodString>;
+        accountId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+        apiBaseUrl: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+        scopes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        expiresAt: z.ZodOptional<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        scopes: string[];
+        credentialRef?: string | undefined;
+        apiBaseUrl?: string | undefined;
+        credentialPreview?: string | undefined;
+        accountId?: string | undefined;
+        expiresAt?: string | undefined;
+    }, {
+        credentialRef?: string | undefined;
+        apiBaseUrl?: unknown;
+        credentialPreview?: string | undefined;
+        accountId?: unknown;
+        scopes?: string[] | undefined;
+        expiresAt?: string | undefined;
+    }>>;
+    serviceApi: z.ZodOptional<z.ZodObject<{
+        credentialRef: z.ZodOptional<z.ZodString>;
+        credentialPreview: z.ZodOptional<z.ZodString>;
+        accountId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+        apiBaseUrl: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+        scopes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        expiresAt: z.ZodOptional<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        scopes: string[];
+        credentialRef?: string | undefined;
+        apiBaseUrl?: string | undefined;
+        credentialPreview?: string | undefined;
+        accountId?: string | undefined;
+        expiresAt?: string | undefined;
+    }, {
+        credentialRef?: string | undefined;
+        apiBaseUrl?: unknown;
+        credentialPreview?: string | undefined;
+        accountId?: unknown;
+        scopes?: string[] | undefined;
+        expiresAt?: string | undefined;
+    }>>;
     enabled: z.ZodDefault<z.ZodBoolean>;
     lastTestedAt: z.ZodOptional<z.ZodString>;
     lastTestEmailAt: z.ZodOptional<z.ZodString>;
@@ -1208,17 +1277,19 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
-    label: string;
     id: string;
     createdAt: string;
     updatedAt: string;
     enabled: boolean;
+    provider: string;
+    label: string;
     email: string;
-    host: string;
+    sendChannel: "smtp" | "oauth-api" | "service-api";
     port: number;
     secure: boolean;
     profileId?: string | undefined;
     fromName?: string | undefined;
+    host?: string | undefined;
     imapHost?: string | undefined;
     imapPort?: number | undefined;
     imapSecure?: boolean | undefined;
@@ -1226,6 +1297,22 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     username?: string | undefined;
     passwordRef?: string | undefined;
     passwordPreview?: string | undefined;
+    oauthApi?: {
+        scopes: string[];
+        credentialRef?: string | undefined;
+        apiBaseUrl?: string | undefined;
+        credentialPreview?: string | undefined;
+        accountId?: string | undefined;
+        expiresAt?: string | undefined;
+    } | undefined;
+    serviceApi?: {
+        scopes: string[];
+        credentialRef?: string | undefined;
+        apiBaseUrl?: string | undefined;
+        credentialPreview?: string | undefined;
+        accountId?: string | undefined;
+        expiresAt?: string | undefined;
+    } | undefined;
     lastTestedAt?: string | undefined;
     lastTestEmailAt?: string | undefined;
     deliveryConfirmedAt?: string | undefined;
@@ -1234,15 +1321,17 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     lastInboxCheckMessage?: string | undefined;
     lastError?: string | undefined;
 }, {
-    label: string;
     id: string;
     createdAt: string;
     updatedAt: string;
+    label: string;
     email: string;
-    host: string;
     enabled?: boolean | undefined;
+    provider?: string | undefined;
     profileId?: string | undefined;
+    sendChannel?: "smtp" | "oauth-api" | "service-api" | undefined;
     fromName?: unknown;
+    host?: unknown;
     port?: number | undefined;
     secure?: boolean | undefined;
     imapHost?: unknown;
@@ -1252,6 +1341,22 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     username?: unknown;
     passwordRef?: string | undefined;
     passwordPreview?: string | undefined;
+    oauthApi?: {
+        credentialRef?: string | undefined;
+        apiBaseUrl?: unknown;
+        credentialPreview?: string | undefined;
+        accountId?: unknown;
+        scopes?: string[] | undefined;
+        expiresAt?: string | undefined;
+    } | undefined;
+    serviceApi?: {
+        credentialRef?: string | undefined;
+        apiBaseUrl?: unknown;
+        credentialPreview?: string | undefined;
+        accountId?: unknown;
+        scopes?: string[] | undefined;
+        expiresAt?: string | undefined;
+    } | undefined;
     lastTestedAt?: string | undefined;
     lastTestEmailAt?: string | undefined;
     deliveryConfirmedAt?: string | undefined;

@@ -269,6 +269,44 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.hermills-onboarding-shell \.onboarding-actions\s*\{[\s\S]*?flex:\s*0 0 auto/);
   });
 
+  it("keeps outreach SMTP failures diagnosable from the visible error banner", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const serverSource = await readFile(projectFile("apps/server/src/index.ts"), "utf8");
+    const mailTransportSource = await readFile(projectFile("apps/server/src/mail-transports.ts"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain("visibleDiagnosticError(raw)");
+    expect(appSource).toContain("email could not be sent");
+    expect(appSource).toContain("unexpected socket close");
+    expect(appSource).toContain("copy.errors.copyDetails");
+    expect(appSource).toContain("navigator.clipboard?.writeText(error)");
+    expect(appSource).toContain("letter-sticky-actions");
+    expect(appSource).toContain("senderTestRecipient");
+    expect(appSource).toContain("sendSenderExternalTestEmail");
+    expect(appSource).toContain("api.sendOutreachSenderTestEmail(sender.id, target)");
+    expect(appSource).toContain("测试外部收件箱");
+    expect(stylesSource).toMatch(/\.letter-alert-copy\s*\{[\s\S]*?color:\s*#881337/);
+    expect(stylesSource).toMatch(/\.letter-detail-panel\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 128px\)/);
+    expect(stylesSource).toMatch(/\.letter-detail-panel\s*\{[\s\S]*?overflow:\s*auto/);
+    expect(stylesSource).toMatch(/\.letter-sticky-actions\s*\{[\s\S]*?position:\s*sticky/);
+    expect(stylesSource).toMatch(/\.letter-sticky-actions\s*\{[\s\S]*?box-shadow:\s*0 -10px 22px/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*540px\)[\s\S]*?\.letter-action-row\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*540px\)[\s\S]*?\.letter-action-row \.letter-primary,[\s\S]*?\.letter-action-row \.letter-secondary\s*\{[\s\S]*?white-space:\s*normal/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*540px\)[\s\S]*?\.letter-action-row \.letter-primary,[\s\S]*?\.letter-action-row \.letter-secondary\s*\{[\s\S]*?overflow-wrap:\s*anywhere/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*540px\)[\s\S]*?\.letter-alert-copy\s*\{[\s\S]*?white-space:\s*normal/);
+    expect(serverSource).toContain("function formatMailError");
+    expect(serverSource).toContain("code=${mailError.code}");
+    expect(serverSource).toContain("command=${mailError.command}");
+    expect(mailTransportSource).toContain("requireTLS: !secure && port === 587");
+    expect(mailTransportSource).toContain("greetingTimeout: 15_000");
+    expect(mailTransportSource).toContain("tls: { servername: host }");
+    expect(mailTransportSource).toContain('authMethod: input.password ? "PLAIN" : undefined');
+    expect(serverSource).toContain("input.senders.sendMail(input.sender");
+    expect(serverSource).not.toContain("smtp-relay.gmail.com");
+    expect(serverSource).toContain("const selfTest = target.trim().toLowerCase() === sender.email.trim().toLowerCase()");
+    expect(serverSource).toContain("Hermills sent this external delivery test");
+  });
+
   it("keeps outreach defaults and system permission copy localized", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const serverSource = await readFile(projectFile("apps/server/src/index.ts"), "utf8");
