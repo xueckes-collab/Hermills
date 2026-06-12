@@ -302,12 +302,14 @@ def _link_score(url: str) -> int:
     path = urlparse(url).path.lower()
     score = 0
     for value, terms in (
-        (100, ("about", "company", "profile", "who-we-are")),
-        (80, ("team", "leadership", "management")),
-        (70, ("contact", "locations")),
-        (60, ("investor", "press", "news")),
-        (50, ("careers", "jobs")),
-        (30, ("privacy", "terms", "legal")),
+        (130, ("product", "products", "catalog", "category", "collection", "range")),
+        (120, ("solution", "solutions", "industry", "industries", "application", "applications")),
+        (110, ("case", "cases", "project", "projects", "customer", "customers", "client", "clients")),
+        (100, ("certification", "certificate", "quality", "compliance", "testing", "standard")),
+        (90, ("about", "company", "profile", "who-we-are", "factory", "manufacturing")),
+        (75, ("contact", "locations", "distributor", "dealers", "where-to-buy")),
+        (55, ("news", "blog", "press")),
+        (-50, ("careers", "jobs", "privacy", "terms", "legal")),
     ):
         if any(term in path for term in terms):
             score += value
@@ -350,7 +352,20 @@ def _looks_like_text(content_type: str) -> bool:
 
 def _normalize_keywords(values: list[str]) -> list[str]:
     keywords = [_normalize_space(value) for value in values if value and _normalize_space(value)]
-    keywords.extend(["about", "founded", "headquartered", "leadership", "contact", "privacy"])
+    keywords.extend([
+        "about",
+        "product",
+        "catalog",
+        "solution",
+        "industry",
+        "application",
+        "case",
+        "project",
+        "quality",
+        "certification",
+        "compliance",
+        "contact",
+    ])
     return _dedupe(keywords)
 
 

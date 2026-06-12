@@ -6564,10 +6564,110 @@ button.letter-stat-card { cursor: pointer; }
   cursor: pointer;
 }
 
+.letter-drop-zone-primary {
+  border-color: #8b5cf6;
+  color: #4c1d95;
+  background: #f5f3ff;
+}
+
 .letter-drop-zone input { display: none; }
 .letter-drop-zone span { font-weight: 700; }
 .letter-drop-zone small { color: #6b7280; }
 .letter-import-textarea { margin-top: 12px; }
+
+.letter-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.letter-toggle-row input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.signature-settings-panel {
+  gap: 16px;
+}
+
+.signature-logo-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #ddd6fe;
+  border-radius: 8px;
+  background: #faf7ff;
+}
+
+.signature-logo-box strong,
+.signature-logo-box span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-logo-box span {
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.signature-preview {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.signature-preview span {
+  color: #6d28d9;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.signature-preview p,
+.signature-preview pre {
+  margin: 0;
+}
+
+.signature-preview pre {
+  overflow: auto;
+  white-space: pre-wrap;
+  color: #374151;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 .letter-automation-banner {
   display: flex;

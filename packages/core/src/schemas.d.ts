@@ -1277,12 +1277,12 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     createdAt: z.ZodString;
     updatedAt: z.ZodString;
 }, "strict", z.ZodTypeAny, {
+    label: string;
     id: string;
     createdAt: string;
     updatedAt: string;
     enabled: boolean;
     provider: string;
-    label: string;
     email: string;
     sendChannel: "smtp" | "oauth-api" | "service-api";
     port: number;
@@ -1321,10 +1321,10 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     lastInboxCheckMessage?: string | undefined;
     lastError?: string | undefined;
 }, {
+    label: string;
     id: string;
     createdAt: string;
     updatedAt: string;
-    label: string;
     email: string;
     enabled?: boolean | undefined;
     provider?: string | undefined;
@@ -1364,6 +1364,94 @@ export declare const OutreachSenderAccountSchema: z.ZodObject<{
     lastInboxCheckStatus?: "failed" | "ready" | "unsupported" | undefined;
     lastInboxCheckMessage?: string | undefined;
     lastError?: string | undefined;
+}>;
+export declare const OutreachEmailSignatureLogoSchema: z.ZodObject<{
+    id: z.ZodString;
+    fileName: z.ZodString;
+    mimeType: z.ZodEnum<["image/png", "image/jpeg", "image/webp", "image/gif"]>;
+    size: z.ZodNumber;
+    sha256: z.ZodString;
+    uploadedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    size: number;
+    mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+    sha256: string;
+    fileName: string;
+    uploadedAt: string;
+}, {
+    id: string;
+    size: number;
+    mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+    sha256: string;
+    fileName: string;
+    uploadedAt: string;
+}>;
+export declare const OutreachEmailSignatureSchema: z.ZodObject<{
+    version: z.ZodDefault<z.ZodLiteral<1>>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    text: z.ZodDefault<z.ZodString>;
+    html: z.ZodDefault<z.ZodString>;
+    logoEnabled: z.ZodDefault<z.ZodBoolean>;
+    logoAlt: z.ZodDefault<z.ZodString>;
+    logoWidth: z.ZodDefault<z.ZodNumber>;
+    logo: z.ZodOptional<z.ZodObject<{
+        id: z.ZodString;
+        fileName: z.ZodString;
+        mimeType: z.ZodEnum<["image/png", "image/jpeg", "image/webp", "image/gif"]>;
+        size: z.ZodNumber;
+        sha256: z.ZodString;
+        uploadedAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        id: string;
+        size: number;
+        mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+        sha256: string;
+        fileName: string;
+        uploadedAt: string;
+    }, {
+        id: string;
+        size: number;
+        mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+        sha256: string;
+        fileName: string;
+        uploadedAt: string;
+    }>>;
+    updatedAt: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    version: 1;
+    enabled: boolean;
+    text: string;
+    html: string;
+    logoEnabled: boolean;
+    logoAlt: string;
+    logoWidth: number;
+    updatedAt?: string | undefined;
+    logo?: {
+        id: string;
+        size: number;
+        mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+        sha256: string;
+        fileName: string;
+        uploadedAt: string;
+    } | undefined;
+}, {
+    updatedAt?: string | undefined;
+    version?: 1 | undefined;
+    enabled?: boolean | undefined;
+    text?: string | undefined;
+    html?: string | undefined;
+    logoEnabled?: boolean | undefined;
+    logoAlt?: string | undefined;
+    logoWidth?: number | undefined;
+    logo?: {
+        id: string;
+        size: number;
+        mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+        sha256: string;
+        fileName: string;
+        uploadedAt: string;
+    } | undefined;
 }>;
 export declare const OutreachResearchDepthSchema: z.ZodEnum<["quick", "standard", "deep"]>;
 export declare const DeepResearchSidecarConfigSchema: z.ZodObject<{

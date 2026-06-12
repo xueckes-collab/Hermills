@@ -197,6 +197,30 @@ describe("outreach campaign API", () => {
     expect(approveResponse.json().stats).toMatchObject({ approved: 1, generated: 1 });
     expect(approveResponse.json().recipients.find((recipient: { id: string }) => recipient.id === firstRecipient.id).draft.qualityReview.passed).toBe(true);
 
+    const signatureResponse = await server.inject({
+      method: "PUT",
+      url: "/api/outreach/email-signature",
+      headers,
+      payload: {
+        enabled: true,
+        text: "Best regards\nSales team",
+        html: "<strong>Sales team</strong><br />Eckes Export",
+        logoEnabled: true,
+        logoAlt: "Eckes Export logo",
+        logoWidth: 96
+      }
+    });
+    expect(signatureResponse.statusCode, signatureResponse.body).toBe(200);
+    expect(signatureResponse.json()).toMatchObject({ enabled: true, logoWidth: 96 });
+    const logoResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/email-signature/logo",
+      headers: { ...headers, "content-type": "multipart/form-data; boundary=hermills-logo-test" },
+      payload: multipartPayload("hermills-logo-test", "logo.png", "image/png", "png-bytes")
+    });
+    expect(logoResponse.statusCode, logoResponse.body).toBe(200);
+    expect(logoResponse.json().logo).toMatchObject({ fileName: "logo.png", mimeType: "image/png" });
+
     const sendResponse = await server.inject({
       method: "POST",
       url: `/api/outreach/campaigns/${campaignId}/start`,
@@ -210,8 +234,18 @@ describe("outreach campaign API", () => {
     expect(sentMail).toMatchObject({
       to: firstRecipient.email,
       subject: "Contractor work light options",
-      text: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?"
+      text: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?\n\nBest regards\nSales team"
     });
+    expect(String(sentMail.html)).toContain("<strong>Sales team</strong>");
+    expect(String(sentMail.html)).toContain("cid:hermills-signature-logo");
+    expect(sentMail.attachments).toEqual([
+      expect.objectContaining({
+        cid: "hermills-signature-logo",
+        filename: "logo.png",
+        contentType: "image/png",
+        contentDisposition: "inline"
+      })
+    ]);
 
     const followUpsResponse = await server.inject({
       method: "GET",
@@ -358,4 +392,16 @@ function fakeComputerControlStatus() {
     readiness: "preparing" as const,
     permissions: []
   };
+}
+
+function multipartPayload(boundary: string, fileName: string, contentType: string, body: string): Buffer {
+  return Buffer.from([
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="file"; filename="${fileName}"`,
+    `Content-Type: ${contentType}`,
+    "",
+    body,
+    `--${boundary}--`,
+    ""
+  ].join("\r\n"));
 }

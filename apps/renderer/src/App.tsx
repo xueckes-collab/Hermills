@@ -18,6 +18,7 @@ import {
   FileText,
   FolderOpen,
   Globe2,
+  ImageIcon,
   KeyRound,
   Languages,
   ListChecks,
@@ -54,7 +55,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -1833,8 +1834,17 @@ type SenderFormDraft = {
   apiBaseUrl: string
 }
 
+type SignatureFormDraft = {
+  enabled: boolean
+  text: string
+  html: string
+  logoEnabled: boolean
+  logoAlt: string
+  logoWidth: string
+}
+
 type OutreachMode = 'single' | 'campaign'
-type LetterOutreachView = 'dashboard' | 'leads' | 'automation' | 'profile' | 'mail'
+type LetterOutreachView = 'dashboard' | 'leads' | 'automation' | 'profile' | 'signature' | 'mail'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
 type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
@@ -2028,7 +2038,7 @@ function DevelopmentLetterPage({
   const [leadDraft, setLeadDraft] = useState<LeadFormDraft>(() => emptyLeadDraft())
   const [quickWebsite, setQuickWebsite] = useState('')
   const [quickEmail, setQuickEmail] = useState('')
-  const [quickResearchDepth, setQuickResearchDepth] = useState<OutreachResearchDepth>('standard')
+  const [quickResearchDepth, setQuickResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
@@ -2038,7 +2048,7 @@ function DevelopmentLetterPage({
   const [selectedLetterLeadIds, setSelectedLetterLeadIds] = useState<string[]>([])
   const [bulkImportText, setBulkImportText] = useState('')
   const [campaignName, setCampaignName] = useState(copy.devLetter.batch.defaultName)
-  const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('standard')
+  const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
   const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
@@ -2062,6 +2072,8 @@ function DevelopmentLetterPage({
   const [senderChannelId, setSenderChannelId] = useState<SenderChannelId>('smtp')
   const [selectedSenderId, setSelectedSenderId] = useState('')
   const [senderTestRecipient, setSenderTestRecipient] = useState('')
+  const [emailSignature, setEmailSignature] = useState<OutreachEmailSignature>()
+  const [signatureDraft, setSignatureDraft] = useState<SignatureFormDraft>(() => emptySignatureDraft(companyProfile))
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2225,6 +2237,22 @@ function DevelopmentLetterPage({
   }, [selectedSender?.id])
 
   useEffect(() => {
+    let cancelled = false
+    api.outreachEmailSignature()
+      .then((settings) => {
+        if (cancelled) return
+        setEmailSignature(settings)
+        setSignatureDraft(signatureFormFromSettings(settings, companyProfile))
+      })
+      .catch((err) => {
+        if (!cancelled) setError(humanizeErrorMessage(err, copy, 'message'))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [companyProfile.name, companyProfile.website])
+
+  useEffect(() => {
     if (!selectedSenderId && senderAccounts[0]) setSelectedSenderId(senderAccounts[0].id)
   }, [selectedSenderId, senderAccounts])
 
@@ -2287,6 +2315,10 @@ function DevelopmentLetterPage({
 
   function updateSender(field: keyof SenderFormDraft, value: string | boolean) {
     setSenderDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function updateSignature(field: keyof SignatureFormDraft, value: string | boolean) {
+    setSignatureDraft((current) => ({ ...current, [field]: value }))
   }
 
   function applySenderProviderToDraft(current: SenderFormDraft, id: SenderProviderId): SenderFormDraft {
@@ -2669,7 +2701,7 @@ function DevelopmentLetterPage({
     const csv = letterRowsToCsv(text)
     if (!csv.trim()) {
       setError('请先粘贴客户数据或选择 Excel / CSV 文件。')
-      return
+      return []
     }
     setBusy('letterImport')
     setError('')
@@ -2684,6 +2716,57 @@ function DevelopmentLetterPage({
       }
       setBulkImportText('')
       setNotice(`已导入 ${result.imported.length} 个客户${result.skipped.length ? `，跳过 ${result.skipped.length} 行` : ''}。`)
+      return result.imported
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+      return []
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function importAndGenerateLetterLeads(text = bulkImportText) {
+    if (!requireCompanyKnowledge()) return
+    const csv = letterRowsToCsv(text)
+    if (!csv.trim()) {
+      setError('请先粘贴客户数据或选择 Excel / CSV 文件。')
+      return
+    }
+    setGenerationMode('campaign')
+    setGenerationOpen(true)
+    setGenerationCompletedAt('')
+    setBusy('letterImportGenerate')
+    setError('')
+    setNotice('')
+    try {
+      const result = await api.importOutreachLeads(csv)
+      const ready = result.imported.filter((lead) => lead.website && lead.email)
+      const nextLeads = await api.outreachLeads()
+      setLeads(nextLeads)
+      if (!ready.length) {
+        setLetterView('leads')
+        setNotice(`已导入 ${result.imported.length} 个客户，但没有同时包含官网和邮箱的客户可生成开发信。`)
+        return
+      }
+      const created = await api.createOutreachCampaign({
+        name: campaignName.trim() || `批量开发信 ${new Date().toLocaleString()}`,
+        leadIds: ready.map((lead) => lead.id),
+        senderAccountId: selectedSender?.id,
+        language,
+        tone,
+        providerId: defaultProvider?.id,
+        model: defaultProvider?.defaultModel,
+        researchDepth: 'deep',
+        rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
+      })
+      replaceCampaign(created)
+      setSelectedCampaignLeadIds([])
+      setBulkImportText('')
+      setLetterView('automation')
+      const generated = await api.generateOutreachCampaign(created.id)
+      replaceCampaign(generated)
+      setGenerationCompletedAt(new Date().toISOString())
+      setNotice(`已导入 ${result.imported.length} 个客户，并为 ${ready.length} 个客户逐个生成开发信。`)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'fileUpload'))
     } finally {
@@ -2716,6 +2799,33 @@ function DevelopmentLetterPage({
     } finally {
       setBusy('')
     }
+  }
+
+  async function importLetterFileAndGenerate(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setBusy('letterFileGenerate')
+    setError('')
+    setNotice('')
+    try {
+      const text = await readLetterImportFile(file)
+      setBulkImportText(text)
+      await importAndGenerateLetterLeads(text)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+      setBusy('')
+    }
+  }
+
+  async function readLetterImportFile(file: File): Promise<string> {
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    if (extension === 'xlsx' || extension === 'xls') {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+      return XLSX.utils.sheet_to_csv(firstSheet)
+    }
+    return file.text()
   }
 
   function toggleLetterLeadSelection(id: string) {
@@ -3017,6 +3127,66 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function saveSignature() {
+    setBusy('signature')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachEmailSignature({
+        enabled: signatureDraft.enabled,
+        text: signatureDraft.text.trim(),
+        html: signatureDraft.html.trim(),
+        logoEnabled: signatureDraft.logoEnabled,
+        logoAlt: signatureDraft.logoAlt.trim() || 'Company logo',
+        logoWidth: Number(signatureDraft.logoWidth || 120),
+      })
+      setEmailSignature(saved)
+      setSignatureDraft(signatureFormFromSettings(saved, companyProfile))
+      setNotice('邮件签名和 Logo 设置已保存。')
+      return saved
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+      return undefined
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function uploadSignatureLogo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setBusy('signatureLogo')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.uploadOutreachEmailSignatureLogo(file)
+      setEmailSignature(saved)
+      setSignatureDraft(signatureFormFromSettings(saved, companyProfile))
+      setNotice('邮件 Logo 已上传，之后发送的开发信会自动使用。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function deleteSignatureLogo() {
+    setBusy('signatureLogoDelete')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.deleteOutreachEmailSignatureLogo()
+      setEmailSignature(saved)
+      setSignatureDraft(signatureFormFromSettings(saved, companyProfile))
+      setNotice('邮件 Logo 已删除。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function testSender() {
     const sender = selectedSender ?? await saveSender()
     if (!sender) return
@@ -3136,8 +3306,9 @@ function DevelopmentLetterPage({
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
     { id: 'dashboard', label: '工作台', icon: Mail },
     { id: 'leads', label: '客户管理', icon: Users },
-    { id: 'automation', label: '自动化', icon: Zap },
+    { id: 'automation', label: '批量队列', icon: Zap },
     { id: 'profile', label: '发件人资料', icon: UserRound },
+    { id: 'signature', label: '签名Logo', icon: ImageIcon },
     { id: 'mail', label: '邮箱设置', icon: Settings },
   ]
   const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '工作台'
@@ -3145,11 +3316,13 @@ function DevelopmentLetterPage({
     ? '管理你的销售外联流程'
     : letterView === 'leads'
       ? '查看、筛选和维护所有潜在客户'
-      : letterView === 'automation'
-        ? '批量生成开发信、发送和跟进客户'
-        : letterView === 'profile'
-          ? '维护 AI 写信时使用的公司资料'
-          : '配置 SMTP / IMAP 发件邮箱'
+        : letterView === 'automation'
+          ? '批量生成开发信、逐封审核和跟进客户'
+          : letterView === 'profile'
+            ? '维护 AI 写信时使用的公司资料'
+            : letterView === 'signature'
+              ? '保存邮件签名和 Logo，之后所有开发信自动使用'
+              : '配置 SMTP / IMAP 发件邮箱'
 
   return (
     <div className="letter-app-shell">
@@ -3186,7 +3359,7 @@ function DevelopmentLetterPage({
           </div>
           {letterView === 'dashboard' ? (
             <button className="letter-primary compact" type="button" onClick={() => setLetterView('automation')}>
-              前往自动化 <ChevronRight size={16} />
+              前往批量队列 <ChevronRight size={16} />
             </button>
           ) : null}
         </header>
@@ -3255,7 +3428,7 @@ function DevelopmentLetterPage({
                   </div>
                 </div>
                 <button className="letter-primary full" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
-                  {busy === 'auto' ? '正在分析并生成...' : '开始分析并生成邮件'} <ChevronRight size={16} />
+                  {busy === 'auto' ? '正在深度分析并生成开发信...' : '深度分析并生成开发信'} <ChevronRight size={16} />
                 </button>
               </div>
 
@@ -3272,9 +3445,18 @@ function DevelopmentLetterPage({
                   <small>支持 .xlsx、.xls、.csv、.txt</small>
                   <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
                 </label>
+                <label className="letter-drop-zone letter-drop-zone-primary">
+                  <Zap size={24} />
+                  <span>选择文件并生成开发信</span>
+                  <small>一个邮箱一个客户，每个客户单独背调和写信</small>
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
+                </label>
                 <textarea className="letter-import-textarea" value={bulkImportText} onChange={(event) => setBulkImportText(event.target.value)} placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com" />
+                <button className="letter-primary full" type="button" disabled={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} onClick={() => importAndGenerateLetterLeads()}>
+                  批量导入并生成开发信
+                </button>
                 <button className="letter-secondary full" type="button" disabled={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
-                  批量导入客户
+                  仅导入客户
                 </button>
               </div>
             </section>
@@ -3288,7 +3470,7 @@ function DevelopmentLetterPage({
                     <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往自动化 <ChevronRight size={16} /></button>
+                <button type="button" onClick={() => setLetterView('automation')}>前往批量队列 <ChevronRight size={16} /></button>
               </section>
             ) : null}
           </div>
@@ -3433,8 +3615,8 @@ function DevelopmentLetterPage({
               <div className="letter-panel">
                 <div className="letter-panel-heading">
                   <div>
-                    <h2><Zap size={18} /> 批量生成</h2>
-                    <p>选择客户后创建 campaign，再让 AI 批量研究和生成邮件。</p>
+                    <h2><Zap size={18} /> 批量智能体队列</h2>
+                    <p>选择客户后创建批量任务；每个客户都会单独背调并生成一封开发信。</p>
                   </div>
                 </div>
                 <div className="letter-action-row wrap">
@@ -3444,7 +3626,7 @@ function DevelopmentLetterPage({
                 <label className="letter-field">Campaign 名称<input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} /></label>
                 <div className="letter-action-row">
                   <button className="letter-primary" type="button" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} onClick={createCampaign}>创建批量任务 ({selectedCampaignLeadIds.length})</button>
-                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'campaignGenerate'} onClick={generateCampaign}>AI 批量生成</button>
+                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'campaignGenerate'} onClick={generateCampaign}>逐客户智能体生成</button>
                 </div>
               </div>
 
@@ -3560,6 +3742,53 @@ function DevelopmentLetterPage({
                 <div><span>认证资质</span><strong>{companyProfile.certifications?.join(', ') || '还没填写'}</strong></div>
                 <div><span>公司资料</span><strong>{companyMaterials.length} 个文件</strong></div>
                 <div><span>状态</span><strong>{companyReady ? '已准备好' : '需要补充资料'}</strong></div>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {letterView === 'signature' ? (
+          <div className="letter-view">
+            <section className="letter-panel signature-settings-panel">
+              <div className="letter-panel-heading">
+                <div>
+                  <h2><ImageIcon size={18} /> 签名与 Logo</h2>
+                  <p>保存一次，之后单封、批量和跟进开发信发送时都会自动带上。</p>
+                </div>
+                {emailSignature?.enabled ? <span className="letter-badge success">已启用</span> : <span className="letter-badge">未启用</span>}
+              </div>
+              <label className="letter-toggle-row">
+                <input type="checkbox" checked={signatureDraft.enabled} onChange={(event) => updateSignature('enabled', event.target.checked)} />
+                <span>发送开发信时自动追加邮件签名</span>
+              </label>
+              <div className="letter-form-grid">
+                <label className="letter-form-span">文字签名<textarea value={signatureDraft.text} onChange={(event) => updateSignature('text', event.target.value)} placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website" /></label>
+                <label className="letter-form-span">HTML 签名（可选）<textarea value={signatureDraft.html} onChange={(event) => updateSignature('html', event.target.value)} placeholder="<strong>Your Name</strong><br />Company<br />Website" /></label>
+                <label>Logo 替代文字<input value={signatureDraft.logoAlt} onChange={(event) => updateSignature('logoAlt', event.target.value)} /></label>
+                <label>Logo 宽度<input value={signatureDraft.logoWidth} onChange={(event) => updateSignature('logoWidth', event.target.value)} /></label>
+              </div>
+              <label className="letter-toggle-row">
+                <input type="checkbox" checked={signatureDraft.logoEnabled} onChange={(event) => updateSignature('logoEnabled', event.target.checked)} />
+                <span>如果已上传 Logo，则在 HTML 邮件签名中显示 Logo</span>
+              </label>
+              <div className="signature-logo-box">
+                <div>
+                  <strong>{emailSignature?.logo ? emailSignature.logo.fileName : '还没有上传 Logo'}</strong>
+                  <span>{emailSignature?.logo ? `${Math.round(emailSignature.logo.size / 1024)} KB · ${emailSignature.logo.mimeType}` : '支持 PNG / JPG / WebP / GIF，最大 2 MB。'}</span>
+                </div>
+                <label className="letter-secondary file-button">
+                  上传 Logo
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadSignatureLogo} />
+                </label>
+                <button className="letter-secondary" type="button" disabled={!emailSignature?.logo || busy === 'signatureLogoDelete'} onClick={deleteSignatureLogo}>删除 Logo</button>
+              </div>
+              <div className="signature-preview">
+                <span>发送预览</span>
+                <p>Hi buyer, this is where the generated outreach email appears.</p>
+                {signatureDraft.enabled && signatureDraft.text.trim() ? <pre>{signatureDraft.text}</pre> : <em>未启用签名</em>}
+              </div>
+              <div className="letter-action-row wrap">
+                <button className="letter-primary" type="button" disabled={busy === 'signature'} onClick={saveSignature}>保存签名和 Logo 设置</button>
               </div>
             </section>
           </div>
@@ -3697,6 +3926,34 @@ function emptySenderDraft(companyProfile: CompanyProfile, copy: UiCopy): SenderF
     apiCredential: '',
     apiAccountId: '',
     apiBaseUrl: '',
+  }
+}
+
+function emptySignatureDraft(companyProfile: CompanyProfile): SignatureFormDraft {
+  const company = companyProfile.name || 'Company'
+  const website = companyProfile.website || ''
+  return {
+    enabled: false,
+    text: [
+      company,
+      website,
+    ].filter(Boolean).join('\n'),
+    html: '',
+    logoEnabled: true,
+    logoAlt: `${company} logo`,
+    logoWidth: '120',
+  }
+}
+
+function signatureFormFromSettings(settings: OutreachEmailSignature, companyProfile: CompanyProfile): SignatureFormDraft {
+  const fallback = emptySignatureDraft(companyProfile)
+  return {
+    enabled: settings.enabled,
+    text: settings.text || fallback.text,
+    html: settings.html || '',
+    logoEnabled: settings.logoEnabled,
+    logoAlt: settings.logoAlt || fallback.logoAlt,
+    logoWidth: String(settings.logoWidth || 120),
   }
 }
 

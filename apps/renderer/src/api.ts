@@ -555,6 +555,27 @@ export type OutreachSenderAccount = {
   updatedAt: string;
 };
 
+export type OutreachEmailSignatureLogo = {
+  id: string;
+  fileName: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  size: number;
+  sha256: string;
+  uploadedAt: string;
+};
+
+export type OutreachEmailSignature = {
+  version: 1;
+  enabled: boolean;
+  text: string;
+  html: string;
+  logoEnabled: boolean;
+  logoAlt: string;
+  logoWidth: number;
+  logo?: OutreachEmailSignatureLogo;
+  updatedAt?: string;
+};
+
 export type OutreachResearchDepth = "quick" | "standard" | "deep";
 
 export type CustomerResearchSummary = {
@@ -1300,6 +1321,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids })
     });
+  },
+  async outreachEmailSignature(): Promise<OutreachEmailSignature> {
+    return request<OutreachEmailSignature>("/api/outreach/email-signature");
+  },
+  async saveOutreachEmailSignature(input: Partial<Pick<OutreachEmailSignature, "enabled" | "text" | "html" | "logoEnabled" | "logoAlt" | "logoWidth">>): Promise<OutreachEmailSignature> {
+    return request<OutreachEmailSignature>("/api/outreach/email-signature", { method: "PUT", body: JSON.stringify(input) });
+  },
+  async uploadOutreachEmailSignatureLogo(file: File): Promise<OutreachEmailSignature> {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<OutreachEmailSignature>("/api/outreach/email-signature/logo", { method: "POST", body });
+  },
+  async deleteOutreachEmailSignatureLogo(): Promise<OutreachEmailSignature> {
+    return request<OutreachEmailSignature>("/api/outreach/email-signature/logo", { method: "DELETE" });
   },
   async outreachDrafts(q?: string): Promise<OutreachDraft[]> {
     return request<OutreachDraft[]>(`/api/outreach/drafts${q ? `?q=${encodeURIComponent(q)}` : ""}`);

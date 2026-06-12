@@ -807,8 +807,8 @@ describe("Hermills local API", () => {
 
     expect(response.statusCode, response.body).toBe(200);
     expect(fetchUrls).toEqual(["http://sidecar.test/v1/research/company"]);
-    expect(sidecarBodies).toEqual([{ website: "https://deep-buyer.example/", email: "buyer@deep-buyer.example" }]);
-    expect(Object.keys(sidecarBodies[0] as Record<string, unknown>).sort()).toEqual(["email", "website"]);
+    expect(sidecarBodies).toEqual([{ website: "https://deep-buyer.example/", email: "buyer@deep-buyer.example", maxPages: 8, mode: "outreach" }]);
+    expect(Object.keys(sidecarBodies[0] as Record<string, unknown>).sort()).toEqual(["email", "maxPages", "mode", "website"]);
     expect(response.json().research).toMatchObject({
       depth: "deep",
       companyName: "Deep Buyer Ltd",

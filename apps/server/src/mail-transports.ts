@@ -167,6 +167,15 @@ type NormalizedMailMessage = {
   subject: string;
   text: string;
   html?: string;
+  attachments: NormalizedMailAttachment[];
+};
+
+type NormalizedMailAttachment = {
+  filename: string;
+  contentType: string;
+  content: Buffer;
+  cid?: string;
+  disposition: "inline" | "attachment";
 };
 
 async function sendGmail(input: {
@@ -220,7 +229,8 @@ async function sendMicrosoftGraph(input: {
         },
         toRecipients: graphRecipients(input.message.to),
         ccRecipients: graphRecipients(input.message.cc),
-        bccRecipients: graphRecipients(input.message.bcc)
+        bccRecipients: graphRecipients(input.message.bcc),
+        attachments: input.message.attachments.length ? graphAttachments(input.message.attachments) : undefined
       },
       saveToSentItems: true
     },
@@ -446,7 +456,14 @@ async function sendServiceApi(input: {
       bcc: input.message.bcc,
       subject: input.message.subject,
       text: input.message.text,
-      html: input.message.html
+      html: input.message.html,
+      attachments: input.message.attachments.map((attachment) => ({
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        contentBase64: attachment.content.toString("base64"),
+        cid: attachment.cid,
+        disposition: attachment.disposition
+      }))
     }))
   });
   const text = await response.text();
@@ -546,12 +563,24 @@ function normalizeMessage(sender: OutreachSenderAccount, message: SendMailOption
     bcc: normalizeAddresses(message.bcc),
     subject: sanitizeHeader(contentToString(message.subject) || "(no subject)"),
     text,
-    html
+    html,
+    attachments: normalizeAttachments(message.attachments)
   };
 }
 
 function graphRecipients(addresses: string[]) {
   return addresses.map((address) => ({ emailAddress: { address } }));
+}
+
+function graphAttachments(attachments: NormalizedMailAttachment[]) {
+  return attachments.map((attachment) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: attachment.filename,
+    contentType: attachment.contentType,
+    contentBytes: attachment.content.toString("base64"),
+    isInline: attachment.disposition === "inline",
+    contentId: attachment.cid
+  }));
 }
 
 function buildMimeMessage(message: NormalizedMailMessage): string {
@@ -562,6 +591,29 @@ function buildMimeMessage(message: NormalizedMailMessage): string {
     `Subject: ${encodeMimeHeader(message.subject)}`,
     "MIME-Version: 1.0"
   ].filter((line): line is string => Boolean(line));
+
+  if (message.html && message.attachments.length) {
+    const mixedBoundary = mimeBoundary("mixed");
+    const relatedBoundary = mimeBoundary("related");
+    const alternativeBoundary = mimeBoundary("alternative");
+    return [
+      ...headers,
+      `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+      "",
+      `--${mixedBoundary}`,
+      `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+      "",
+      `--${relatedBoundary}`,
+      ...alternativeMimePart(message, alternativeBoundary),
+      ...message.attachments.map((attachment) => [
+        `--${relatedBoundary}`,
+        attachmentMimePart(attachment)
+      ].join("\r\n")),
+      `--${relatedBoundary}--`,
+      `--${mixedBoundary}--`,
+      ""
+    ].join("\r\n");
+  }
 
   if (message.html) {
     const boundary = `hermills-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -584,6 +636,26 @@ function buildMimeMessage(message: NormalizedMailMessage): string {
     ].join("\r\n");
   }
 
+  if (message.attachments.length) {
+    const boundary = mimeBoundary("mixed");
+    return [
+      ...headers,
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      message.text,
+      ...message.attachments.map((attachment) => [
+        `--${boundary}`,
+        attachmentMimePart(attachment)
+      ].join("\r\n")),
+      `--${boundary}--`,
+      ""
+    ].join("\r\n");
+  }
+
   return [
     ...headers,
     "Content-Type: text/plain; charset=UTF-8",
@@ -591,6 +663,39 @@ function buildMimeMessage(message: NormalizedMailMessage): string {
     "",
     message.text
   ].join("\r\n");
+}
+
+function alternativeMimePart(message: NormalizedMailMessage, boundary: string): string[] {
+  return [
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    message.text,
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    message.html ?? "",
+    `--${boundary}--`
+  ];
+}
+
+function attachmentMimePart(attachment: NormalizedMailAttachment): string {
+  return [
+    `Content-Type: ${sanitizeHeader(attachment.contentType)}; name="${encodeMimeHeader(attachment.filename)}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-Disposition: ${attachment.disposition}; filename="${encodeMimeHeader(attachment.filename)}"`,
+    attachment.cid ? `Content-ID: <${sanitizeHeader(attachment.cid)}>` : undefined,
+    "",
+    wrapBase64(attachment.content.toString("base64"))
+  ].filter((line): line is string => line !== undefined).join("\r\n");
+}
+
+function mimeBoundary(label: string): string {
+  return `hermills-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 type JsonPostResponse = {
@@ -659,6 +764,24 @@ function normalizeAddresses(value: SendMailOptions["to"]): string[] {
   });
 }
 
+function normalizeAttachments(value: SendMailOptions["attachments"]): NormalizedMailAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const attachment = item as Record<string, unknown>;
+    const rawContent = attachment.content;
+    if (!Buffer.isBuffer(rawContent) && typeof rawContent !== "string") return [];
+    const content = Buffer.isBuffer(rawContent) ? rawContent : Buffer.from(rawContent);
+    if (!content.byteLength) return [];
+    const filename = sanitizeHeader(contentToString(attachment.filename) || "attachment");
+    const contentType = sanitizeHeader(contentToString(attachment.contentType) || "application/octet-stream");
+    const cid = contentToString(attachment.cid).trim() || undefined;
+    const dispositionValue = contentToString(attachment.disposition || attachment.contentDisposition).trim().toLowerCase();
+    const disposition = dispositionValue === "inline" || cid ? "inline" : "attachment";
+    return [{ filename, contentType, content, cid, disposition }];
+  });
+}
+
 function splitAddressList(value: string): string[] {
   return value.split(",").map((part) => part.trim()).filter(Boolean);
 }
@@ -699,6 +822,10 @@ function stripHtml(value: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function wrapBase64(value: string): string {
+  return value.match(/.{1,76}/g)?.join("\r\n") ?? "";
 }
 
 function dropUndefined(value: unknown): unknown {

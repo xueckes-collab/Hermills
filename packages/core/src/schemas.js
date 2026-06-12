@@ -302,6 +302,25 @@ export const OutreachSenderAccountSchema = z.object({
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
 }).strict();
+export const OutreachEmailSignatureLogoSchema = z.object({
+    id: z.string().min(1),
+    fileName: z.string().trim().min(1).max(180),
+    mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+    size: z.number().int().nonnegative().max(2 * 1024 * 1024),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    uploadedAt: z.string().datetime()
+}).strict();
+export const OutreachEmailSignatureSchema = z.object({
+    version: z.literal(1).default(1),
+    enabled: z.boolean().default(false),
+    text: z.string().trim().max(4000).default(""),
+    html: z.string().trim().max(12000).default(""),
+    logoEnabled: z.boolean().default(true),
+    logoAlt: z.string().trim().max(120).default("Company logo"),
+    logoWidth: z.number().int().min(24).max(240).default(120),
+    logo: OutreachEmailSignatureLogoSchema.optional(),
+    updatedAt: z.string().datetime().optional()
+}).strict();
 export const OutreachResearchDepthSchema = z.enum(["quick", "standard", "deep"]);
 export const DeepResearchSidecarConfigSchema = z.object({
     enabled: z.boolean().default(false),

@@ -12,7 +12,7 @@ const viewports = [
   { name: "desktop", width: 1366, height: 768 },
   { name: "narrow", width: 760, height: 820 }
 ];
-const views = ["工作台", "客户管理", "自动化", "发件人资料", "邮箱设置"];
+const views = ["工作台", "客户管理", "批量队列", "发件人资料", "签名Logo", "邮箱设置"];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -124,10 +124,10 @@ async function runViewport({ name, width, height }) {
         const visible = (el) => {
           const rect = el.getBoundingClientRect();
           const style = getComputedStyle(el);
-          return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+          return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
         };
         const main = shell.querySelector('.letter-main');
-        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row, .letter-draft-card, .letter-thinking-panel, .letter-campaign-review-grid, .letter-recipient-row, .letter-campaign-draft-view')]
+        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row, .letter-draft-card, .letter-thinking-panel, .letter-campaign-review-grid, .letter-recipient-row, .letter-campaign-draft-view, .letter-drop-zone-primary, .signature-settings-panel, .signature-logo-box, .signature-preview')]
           .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 3 && getComputedStyle(el).overflowX !== 'auto')
           .slice(0, 8)
           .map((el) => ({

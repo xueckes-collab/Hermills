@@ -40,6 +40,8 @@ import {
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
+  OutreachEmailSignatureLogoSchema,
+  OutreachEmailSignatureSchema,
   OutreachEmailQualityReviewSchema,
   OutreachFeedbackSchema,
   OutreachFollowUpJobSchema,
@@ -69,6 +71,7 @@ import {
   type OutreachCampaignRecipient,
   type OutreachDraft,
   type OutreachEmailQualityReview,
+  type OutreachEmailSignature,
   type OutreachFeedback,
   type OutreachFollowUpJob,
   type OutreachLead,
@@ -149,6 +152,9 @@ const MAX_MATERIAL_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_MATERIAL_TEXT_BYTES = 1_000_000;
 const MAX_MATERIAL_COUNT = 200;
 const MAX_TOTAL_MATERIAL_BYTES = 250 * 1024 * 1024;
+const MAX_SIGNATURE_LOGO_BYTES = 2 * 1024 * 1024;
+const SIGNATURE_LOGO_CID = "hermills-signature-logo";
+const SIGNATURE_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 const UpsertAgentBody = z.object({
   displayName: z.string().min(2).max(80),
@@ -500,6 +506,15 @@ const UpdateOutreachSenderBody = z.object({
   enabled: z.boolean().optional()
 }).strict();
 
+const UpdateOutreachEmailSignatureBody = z.object({
+  enabled: z.boolean().optional(),
+  text: z.string().trim().max(4000).optional(),
+  html: z.string().trim().max(12000).optional(),
+  logoEnabled: z.boolean().optional(),
+  logoAlt: z.string().trim().max(120).optional(),
+  logoWidth: z.coerce.number().int().min(24).max(240).optional()
+}).strict();
+
 const SendOutreachDraftBody = z.object({
   senderAccountId: z.string().min(1),
   confirm: z.literal(true),
@@ -605,6 +620,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const outreachLeads = new OutreachLeadRepository(options.baseDir);
   const outreachDrafts = new OutreachDraftRepository(options.baseDir);
   const outreachSenders = new OutreachSenderRepository(options.baseDir, fetchImpl);
+  const outreachEmailSignature = new OutreachEmailSignatureRepository(options.baseDir);
   const outreachWorkflows = new OutreachWorkflowRepository(options.baseDir);
   const outreachCampaigns = new OutreachCampaignRepository(options.baseDir);
   const outreachFollowUps = new OutreachFollowUpRepository(options.baseDir);
@@ -1146,7 +1162,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       leads: outreachLeads,
       drafts: outreachDrafts,
       senders: outreachSenders,
-      campaigns: outreachCampaigns
+      campaigns: outreachCampaigns,
+      emailSignature: outreachEmailSignature
     });
     await scheduleOutreachFollowUps({
       campaignId: id,
@@ -1218,7 +1235,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       leads: outreachLeads,
       campaigns: outreachCampaigns,
-      followUps: outreachFollowUps
+      followUps: outreachFollowUps,
+      emailSignature: outreachEmailSignature
     });
   });
   server.get("/api/outreach/followups/stats", async (request) => {
@@ -1257,6 +1275,22 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts
     });
   });
+  server.get("/api/outreach/email-signature", async () => outreachEmailSignature.get());
+  server.put("/api/outreach/email-signature", async (request) => (
+    outreachEmailSignature.update(UpdateOutreachEmailSignatureBody.parse(request.body ?? {}))
+  ));
+  server.post("/api/outreach/email-signature/logo", async (request) => {
+    if (!isMultipartRequest(request)) throw new ClientInputError("Upload the logo as multipart/form-data with one file field named file.");
+    return outreachEmailSignature.uploadLogo(await readSignatureLogoUpload(request));
+  });
+  server.get("/api/outreach/email-signature/logo", async (_request, reply) => {
+    const logo = await outreachEmailSignature.readLogo();
+    if (!logo) return reply.code(404).send({ error: "Signature logo not found." });
+    reply.header("Content-Type", logo.mimeType);
+    reply.header("Content-Disposition", `inline; filename="${safeDownloadName(logo.fileName)}"`);
+    return reply.send(logo.buffer);
+  });
+  server.delete("/api/outreach/email-signature/logo", async () => outreachEmailSignature.deleteLogo());
   server.get("/api/outreach/sender-accounts", async (request) => {
     const query = OutreachLeadListQuery.parse(request.query ?? {});
     return (await outreachSenders.list({ profileId: await resolveProfileId(query.profileId) })).map(publicOutreachSender);
@@ -1322,7 +1356,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const sender = await outreachSenders.require(body.senderAccountId);
     await assertActiveProfile(sender.profileId);
     const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
-    const sent = await sendOutreachDraft({ draft, sender, lead, to: body.to, senders: outreachSenders, drafts: outreachDrafts });
+    const sent = await sendOutreachDraft({ draft, sender, lead, to: body.to, senders: outreachSenders, drafts: outreachDrafts, emailSignature: outreachEmailSignature });
     if (lead) await outreachLeads.update(lead.id, { status: "email_sent", currentState: "waiting_response_status", statusColor: "blue", currentRound: Math.max(lead.currentRound ?? 0, 1) });
     return sent;
   });
@@ -2345,6 +2379,9 @@ interface OutreachSenderStoreDocument {
   senders: OutreachSenderAccount[];
 }
 
+interface OutreachEmailSignatureStoreDocument extends OutreachEmailSignature {
+}
+
 interface OutreachWorkflowStoreDocument {
   workflows: OutreachWorkflow[];
 }
@@ -2874,6 +2911,120 @@ class OutreachCampaignRepository {
     const recipients = document.recipients.map((recipient) => OutreachCampaignRecipientSchema.parse(recipient));
     await writePrivateJson(this.filePath, { campaigns, recipients });
     return { campaigns, recipients };
+  }
+}
+
+class OutreachEmailSignatureRepository {
+  private readonly filePath: string;
+  private readonly logoDir: string;
+  private readonly withWriteLock = createWriteLock();
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "outreach-email-signature.json");
+    this.logoDir = path.join(getDataHome(baseDir), "outreach-email-signature");
+  }
+
+  async get(): Promise<OutreachEmailSignature> {
+    return this.read();
+  }
+
+  async update(input: z.infer<typeof UpdateOutreachEmailSignatureBody>): Promise<OutreachEmailSignature> {
+    return this.withWriteLock(async () => {
+      const current = await this.read();
+      const next = OutreachEmailSignatureSchema.parse({
+        ...current,
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      await this.write(next);
+      return next;
+    });
+  }
+
+  async uploadLogo(file: MaterialUpload): Promise<OutreachEmailSignature> {
+    assertAllowedSignatureLogo(file);
+    return this.withWriteLock(async () => {
+      const current = await this.read();
+      if (current.logo) await this.deleteLogoFile(current.logo.id).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      const now = new Date().toISOString();
+      const id = randomUUID();
+    const logo = OutreachEmailSignatureLogoSchema.parse({
+        id,
+        fileName: safeFileName(file.name) || "signature-logo",
+        mimeType: file.mimeType,
+        size: file.buffer.byteLength,
+        sha256: createHash("sha256").update(file.buffer).digest("hex"),
+        uploadedAt: now
+      });
+      await writePrivateFile(this.logoPath(id), file.buffer);
+      const next = OutreachEmailSignatureSchema.parse({
+        ...current,
+        logo,
+        logoEnabled: true,
+        updatedAt: now
+      });
+      await this.write(next);
+      return next;
+    });
+  }
+
+  async deleteLogo(): Promise<OutreachEmailSignature> {
+    return this.withWriteLock(async () => {
+      const current = await this.read();
+      if (current.logo) await this.deleteLogoFile(current.logo.id).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      const next = OutreachEmailSignatureSchema.parse({
+        ...current,
+        logo: undefined,
+        updatedAt: new Date().toISOString()
+      });
+      await this.write(next);
+      return next;
+    });
+  }
+
+  async readLogo(): Promise<{ signature: OutreachEmailSignature; buffer: Buffer; fileName: string; mimeType: string } | undefined> {
+    const signature = await this.read();
+    if (!signature.logo) return undefined;
+    try {
+      return {
+        signature,
+        buffer: await readFile(this.logoPath(signature.logo.id)),
+        fileName: signature.logo.fileName,
+        mimeType: signature.logo.mimeType
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+
+  private logoPath(id: string): string {
+    return path.join(this.logoDir, `${safeFileName(id) || "logo"}.bin`);
+  }
+
+  private async deleteLogoFile(id: string): Promise<void> {
+    await unlink(this.logoPath(id));
+  }
+
+  private defaultSignature(): OutreachEmailSignature {
+    return OutreachEmailSignatureSchema.parse({ version: 1, enabled: false });
+  }
+
+  private async read(): Promise<OutreachEmailSignatureStoreDocument> {
+    try {
+      return OutreachEmailSignatureSchema.parse(JSON.parse(await readFile(this.filePath, "utf8")));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return this.defaultSignature();
+      throw error;
+    }
+  }
+
+  private async write(document: OutreachEmailSignatureStoreDocument): Promise<void> {
+    await writePrivateJson(this.filePath, OutreachEmailSignatureSchema.parse(document));
   }
 }
 
@@ -3655,7 +3806,9 @@ class DeepResearchClient {
         },
         body: JSON.stringify({
           website: input.website,
-          email: input.email
+          email: input.email,
+          maxPages: input.maxPages,
+          mode: "outreach"
         })
       });
       if (!response.ok) {
@@ -4427,12 +4580,12 @@ function splitCompanyKnowledgeList(value: string): string[] {
 function strongestResearchSignal(research?: CustomerResearchResult): string {
   if (!research) return "";
   return [
-    research.description,
     research.productSignals[0],
     research.buyingSignals[0],
     research.painSignals[0],
     research.inferredNeed,
-    research.recommendedAngle
+    research.recommendedAngle,
+    research.description
   ].find((item) => item && item.trim()) ?? "";
 }
 
@@ -4510,6 +4663,7 @@ function formatOutreachGenerationBrief(brief: OutreachGenerationBrief): string {
   return [
     "--- Private outreach brief ---",
     "Use this brief internally to write the email. Do not expose this section or mention that a workflow exists.",
+    "Required evidence chain: use Buyer reason as the visible line-1 clue -> connect Likely pain/risk or Procurement trigger -> use Single USP -> ask for Low-friction next step.",
     `Buyer reason: ${brief.buyerReason}`,
     `Buyer segment: ${brief.buyerSegment}`,
     `Likely pain/risk: ${brief.likelyPain}`,
@@ -4583,14 +4737,19 @@ function reviewOutreachEmail(input: {
   const normalized = normalizeQualityText(`${subject}\n${body}`);
   const opening = normalizeOpeningLine(firstBusinessLine(body));
   const tokens = buyerContextTokens(input.lead, input.research);
+  const evidenceTokens = buyerEvidenceTokens(input.lead, input.research);
+  const activePersonalizationTokens = evidenceTokens.length ? evidenceTokens : tokens;
   const templateHits = outreachTemplatePhrases.filter((phrase) => normalized.includes(phrase));
   const startsWithSupplierIntro = /^(we|our company|i am|this is)\b/.test(opening) && !/\b(saw|noticed|looking at|checked|read|your)\b/.test(opening);
+  const openingHasSpecificEvidence = containsAny(opening, activePersonalizationTokens);
+  const openingHasBuyerObservation = /\b(saw|noticed|looking at|checked|read|your website|your product|your category|your range|your store|your catalog|your channel|your market|your project|your customers)\b/.test(opening);
+  const genericWebsiteOpening = /\b(saw|noticed|checked|read|looked at)\s+(your|the)\s+(website|site|company|business)\b/.test(opening) && !openingHasSpecificEvidence;
   const buyerReasonPassed = Boolean(opening) && !startsWithSupplierIntro && (
-    containsAny(opening, tokens) ||
-    /\b(saw|noticed|looking at|checked|read|your website|your product|your category|your range|your store|your catalog)\b/.test(opening)
+    openingHasSpecificEvidence ||
+    (!evidenceTokens.length && openingHasBuyerObservation && containsAny(opening, tokens))
   );
   const humanTonePassed = templateHits.length === 0 && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
-  const personalizedPassed = containsAny(normalized, tokens) && !looksLikeMassTemplate(normalized);
+  const personalizedPassed = containsAny(normalized, activePersonalizationTokens) && !looksLikeMassTemplate(normalized) && !genericWebsiteOpening;
   const nextStepPassed = normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase));
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
@@ -4599,7 +4758,7 @@ function reviewOutreachEmail(input: {
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
     qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? "translated sales wording"}.`),
-    qualityCheck("personalized", "Personalized context", personalizedPassed, personalizedPassed ? 20 : 6, personalizedPassed ? "The message uses customer-specific context." : "The message could still be sent unchanged to many buyers."),
+    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 6, personalizedPassed ? "The message uses a concrete buyer signal instead of only naming the company." : "The message could still be sent unchanged to many buyers."),
     qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer with a simple next step." : "The message does not make the next action clear."),
     qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 130) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "The email is too long or the opening is too slow.")
   ];
@@ -4608,9 +4767,9 @@ function reviewOutreachEmail(input: {
   const passed = score >= 80 && !hardFailed;
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
-    buyerReasonPassed ? "" : "Start with one specific reason from the buyer website, not your company credentials.",
+    buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not write only that you saw their website.",
     humanTonePassed ? "" : "Remove translated-template phrases and write like a short human business note.",
-    personalizedPassed ? "" : "Add one customer-specific product/category/channel detail.",
+    personalizedPassed ? "" : "Add one customer-specific product, category, channel, project, certification, or procurement detail and connect it to the offer.",
     nextStepPassed ? "" : "End with one low-friction ask, such as sending 2-3 matched options.",
     twoSecondPassed ? "" : "Shorten to about 3 short lines: why this buyer, why relevant, what next."
   ].filter(Boolean);
@@ -4661,7 +4820,23 @@ function buyerContextTokens(lead?: OutreachLead, research?: OutreachQualityResea
   return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 24);
 }
 
-const commonQualityTokens = new Set(["http", "https", "www", "com", "company", "email", "buyer", "sales", "supply", "product", "products", "service", "services", "import", "export"]);
+function buyerEvidenceTokens(lead?: OutreachLead, research?: OutreachQualityResearchContext): string[] {
+  const raw = [
+    lead?.industry,
+    lead?.need,
+    lead?.notes,
+    research?.industry,
+    research?.buyerType,
+    research?.inferredNeed,
+    research?.recommendedAngle,
+    ...(research?.productSignals ?? []),
+    ...(research?.buyingSignals ?? []),
+    ...(research?.painSignals ?? [])
+  ].filter(Boolean).flatMap((value) => String(value).split(/[^a-zA-Z0-9]+/));
+  return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 20);
+}
+
+const commonQualityTokens = new Set(["http", "https", "www", "com", "company", "email", "buyer", "buyers", "sales", "supply", "product", "products", "service", "services", "import", "imports", "export", "exports", "business", "website", "quality", "price", "prices", "team", "need", "needs", "work", "works"]);
 
 function containsAny(value: string, tokens: string[]): boolean {
   return tokens.some((token) => value.includes(token));
@@ -5196,6 +5371,8 @@ function buildOutreachRewritePrompt(input: {
     "Hard rules:",
     "- Use around 3 short lines and under 130 words.",
     "- Line 1 must tell this buyer the specific reason they are being contacted.",
+    "- Line 1 must include a concrete buyer evidence clue from the website, lead notes, or research summary; company name alone does not count.",
+    "- Translate the evidence into a buyer implication before saying what we sell.",
     "- Line 2 must say what we do and why it is relevant to this buyer.",
     "- Line 3 must ask one low-friction next step, such as sending 2-3 matched options, a small comparison, or an MOQ/lead-time table.",
     "- Do not start with our company credentials.",
@@ -5315,6 +5492,8 @@ function buildOutreachRepairPrompt(input: {
     "Repair rules:",
     "- Keep the body around 3 short lines and under 130 words.",
     "- First business line must say why this specific buyer should care.",
+    "- First business line must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
+    "- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.",
     "- Use exactly one buyer-relevant USP from the private brief.",
     "- End with one low-friction next step.",
     "- Remove generic supplier phrases, translated English, and company-first bragging.",
@@ -5463,6 +5642,7 @@ async function sendOutreachCampaignBatch(input: {
   drafts: OutreachDraftRepository;
   senders: OutreachSenderRepository;
   campaigns: OutreachCampaignRepository;
+  emailSignature: OutreachEmailSignatureRepository;
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
   if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot be sent.");
@@ -5497,7 +5677,8 @@ async function sendOutreachCampaignBatch(input: {
         lead,
         to: recipient.email,
         senders: input.senders,
-        drafts: input.drafts
+        drafts: input.drafts,
+        emailSignature: input.emailSignature
       });
       await input.campaigns.updateRecipient(recipient.id, {
         status: "sent",
@@ -5575,6 +5756,7 @@ async function tickOutreachFollowUps(input: {
   leads: OutreachLeadRepository;
   campaigns: OutreachCampaignRepository;
   followUps: OutreachFollowUpRepository;
+  emailSignature: OutreachEmailSignatureRepository;
 }): Promise<{ processed: number; sent: number; ready: number; failed: number; stopped: number }> {
   const due = await input.followUps.due(input.now, input.limit);
   const result = { processed: 0, sent: 0, ready: 0, failed: 0, stopped: 0 };
@@ -5597,7 +5779,7 @@ async function tickOutreachFollowUps(input: {
       const sender = await input.senders.require(job.senderAccountId);
       const draft = await input.drafts.require(job.draftId);
       const lead = await input.leads.get(job.leadId);
-      const sent = await sendOutreachDraft({ draft, sender, lead, to: job.email, senders: input.senders, drafts: input.drafts });
+      const sent = await sendOutreachDraft({ draft, sender, lead, to: job.email, senders: input.senders, drafts: input.drafts, emailSignature: input.emailSignature });
       await input.followUps.update(job.id, { status: "sent", sentAt: sent.sentAt ?? new Date().toISOString(), sendError: undefined });
       result.sent += 1;
     } catch (error) {
@@ -6110,6 +6292,9 @@ function outreachInstructions(): string {
   return [
     "You are Hermills Outreach, a practical B2B foreign-trade cold email writer.",
     "Write concise, specific, reply-worthy emails for international sales.",
+    "Privately follow this chain before writing: buyer website evidence -> buyer risk or opportunity -> one matching supplier USP -> one low-friction next step.",
+    "The first business line must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger.",
+    "Never treat the buyer company name or the fact that a website exists as enough personalization.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
     "If evidence is missing, write conservatively and focus on a low-friction next step.",
     "Return only valid JSON with keys subject and body."
@@ -6122,6 +6307,7 @@ function outreachWorkflowInstructions(): string {
     "Internally act as a coordinated agent queue: Website Reader -> Buyer Psychology Analyst -> ICP/USP Matcher -> Email Writer -> QA Reviewer.",
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
     "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
+    "For every initial email, privately follow this chain: buyer website evidence -> buyer risk or opportunity -> one matching supplier USP -> one low-friction next step.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
     "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, or vague claims without buyer logic and proof.",
     "Return only valid JSON that matches the requested schema. Do not add fields, markdown, or commentary."
@@ -6156,9 +6342,12 @@ function buildOutreachPrompt(
     "- Use a short subject line.",
     "- Keep the body around 3 short lines and under 130 words.",
     "- Use this exact thinking structure: line 1 = the specific buyer reason why you are contacting them; line 2 = what we do and why it is relevant to that buyer; line 3 = one low-friction ask.",
+    "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in line 1.",
+    "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
     "- Use only one USP in the email. Do not list all company strengths.",
     "- The first business line must not introduce our company credentials first. It must tell the buyer why this email is about them.",
+    "- Do not write only 'I saw your website' or only mention the company name. Use a product/category/channel/market/project/certification/procurement clue.",
     "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, or certification/spec pack.",
     "- Sound like a human business note, not translated English or a mass template.",
     "- Never use Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
@@ -6203,6 +6392,8 @@ function buildOutreachWorkflowPrompt(input: {
     "Private operating mode:",
     "- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.",
     "- Treat the private outreach brief below as the locked angle for the first email.",
+    "- For the initial email, choose exactly one concrete website evidence item and turn it into a buyer implication before mentioning our USP.",
+    "- Do not treat the buyer company name or 'I saw your website' as personalization.",
     "- Do not expose research steps, agent names, or internal reasoning in any email.",
     "- If evidence is thin, write a low-risk micro-offer instead of a broad supplier pitch.",
     "",
@@ -6227,6 +6418,8 @@ function buildOutreachWorkflowPrompt(input: {
     "- Peer-to-peer, helpful, warm, concise.",
     "- Use this three-line formula: one line with the specific buyer reason for contacting them -> one line on what we do and why it is relevant -> one line with a low-friction ask.",
     "- The first business line must be about the buyer, not our credentials.",
+    "- The first business line must include a concrete evidence clue: product category, channel, market, project, certification/compliance signal, sourcing/procurement signal, or pain/risk signal.",
+    "- Translate the evidence into a buyer implication instead of simply naming the evidence.",
     "- Mention one buyer pain point and one matching USP. Do not include a catalog dump.",
     "- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.",
     "- Sound like a warm human business note, not translated English or a mass blast. Do not fake prior familiarity.",
@@ -6491,6 +6684,7 @@ async function sendOutreachDraft(input: {
   to?: string;
   senders: OutreachSenderRepository;
   drafts: OutreachDraftRepository;
+  emailSignature: OutreachEmailSignatureRepository;
 }): Promise<OutreachDraft> {
   if (!input.sender.enabled) throw new ClientInputError("Sender account is disabled.");
   if (!input.sender.deliveryConfirmedAt) throw new ClientInputError("Confirm the sender mailbox before sending outreach.");
@@ -6501,11 +6695,17 @@ async function sendOutreachDraft(input: {
   if (!input.draft.qualityReview) await input.drafts.update(input.draft.id, { qualityReview });
   assertOutreachQualityPassed(qualityReview);
   try {
+    const signedMessage = await buildSignedOutreachMailMessage({
+      draft: input.draft,
+      signature: await input.emailSignature.get(),
+      logo: await input.emailSignature.readLogo(),
+      sender: input.sender
+    });
     await input.senders.sendMail(input.sender, {
       from: formatEmailAddress(input.sender.fromName, input.sender.email),
       to,
       subject: input.draft.subject,
-      text: input.draft.body
+      ...signedMessage
     });
     return input.drafts.update(input.draft.id, { status: "sent", sentAt: new Date().toISOString(), sendError: undefined });
   } catch (error) {
@@ -6513,6 +6713,92 @@ async function sendOutreachDraft(input: {
     await input.drafts.update(input.draft.id, { status: "failed", sendError: message });
     throw new ClientInputError(`Email could not be sent: ${message}`);
   }
+}
+
+async function buildSignedOutreachMailMessage(input: {
+  draft: OutreachDraft;
+  signature: OutreachEmailSignature;
+  logo?: { buffer: Buffer; fileName: string; mimeType: string };
+  sender: OutreachSenderAccount;
+}): Promise<Pick<SendMailOptions, "text" | "html" | "attachments">> {
+  const bodyText = input.draft.body.trim();
+  const signature = input.signature.enabled ? normalizeEmailSignature(input.signature) : undefined;
+  const text = [bodyText, signature?.text].filter(Boolean).join("\n\n");
+  const bodyHtml = plainTextToEmailHtml(bodyText);
+  const includeLogo = Boolean(signature?.logoHtml && input.logo && signatureProviderSupportsInlineLogo(input.sender));
+  const html = signature
+    ? [
+        bodyHtml,
+        `<div class="hermills-signature" style="margin-top:18px;padding-top:12px;border-top:1px solid #e5e7eb;color:#374151;font-family:Arial,sans-serif;font-size:13px;line-height:1.45;">`,
+        includeLogo ? signature.logoHtml : "",
+        signature.html,
+        `</div>`
+      ].join("")
+    : bodyHtml;
+  const attachments = includeLogo && input.logo
+    ? [{
+        filename: input.logo.fileName,
+        content: input.logo.buffer,
+        contentType: input.logo.mimeType,
+        cid: SIGNATURE_LOGO_CID,
+        contentDisposition: "inline" as const
+      }]
+    : undefined;
+  return { text, html, attachments };
+}
+
+function normalizeEmailSignature(signature: OutreachEmailSignature): { text: string; html: string; logoHtml: string } {
+  const text = signature.text.trim() || htmlToPlainText(signature.html || "");
+  const htmlSource = signature.html.trim() || plainTextToEmailHtml(text);
+  const html = sanitizeSignatureHtml(htmlSource);
+  const logoHtml = signature.logoEnabled && signature.logo
+    ? `<div style="margin-bottom:8px;"><img src="cid:${SIGNATURE_LOGO_CID}" alt="${escapeHtml(signature.logoAlt || "Company logo")}" width="${signature.logoWidth}" style="display:block;max-width:${signature.logoWidth}px;height:auto;border:0;" /></div>`
+    : "";
+  return { text, html, logoHtml };
+}
+
+function signatureProviderSupportsInlineLogo(sender: OutreachSenderAccount): boolean {
+  return (sender.sendChannel ?? "smtp") !== "oauth-api" || !/zoho/i.test(sender.provider);
+}
+
+function plainTextToEmailHtml(value: string): string {
+  return escapeHtml(value)
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p style="margin:0 0 12px;">${paragraph.replace(/\n/g, "<br />")}</p>`)
+    .join("");
+}
+
+function sanitizeSignatureHtml(value: string): string {
+  return value
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|button|meta|link)[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|button|meta|link)[^>]*\/?>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, "")
+    .replace(/\s+style\s*=\s*(["'])([\s\S]*?)\1/gi, (_match, quote: string, style: string) => {
+      const cleaned = String(style)
+        .replace(/expression\s*\([^)]*\)/gi, "")
+        .replace(/url\s*\(\s*javascript:[^)]*\)/gi, "");
+      return ` style=${quote}${cleaned}${quote}`;
+    });
+}
+
+function htmlToPlainText(value: string): string {
+  return decodeHtmlEntities(value
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+/g, " ")
+    .trim());
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function formatMailError(error: unknown, sender?: OutreachSenderAccount): string {
@@ -6604,6 +6890,15 @@ async function readMaterialUpload(request: FastifyRequest): Promise<MaterialUplo
   return file;
 }
 
+async function readSignatureLogoUpload(request: FastifyRequest): Promise<MaterialUpload> {
+  const body = Buffer.isBuffer(request.body) ? request.body : undefined;
+  if (!body) throw new ClientInputError("No logo file was uploaded.");
+  const boundary = multipartBoundary(request.headers["content-type"]);
+  const file = parseSingleMultipartFile(body, boundary);
+  assertAllowedSignatureLogo(file);
+  return file;
+}
+
 function isMultipartRequest(request: FastifyRequest): boolean {
   return String(request.headers["content-type"] ?? "").toLowerCase().includes("multipart/form-data");
 }
@@ -6658,6 +6953,16 @@ function assertAllowedMaterial(file: MultipartCandidate): void {
     mimeType.startsWith("image/");
   if (!allowedExtensions.has(extension) && !allowedMime) {
     throw new ClientInputError(`Unsupported material type: ${mimeType || extension || "unknown"}.`);
+  }
+}
+
+function assertAllowedSignatureLogo(file: MaterialUpload): void {
+  const mimeType = file.mimeType || "application/octet-stream";
+  if (!SIGNATURE_LOGO_MIME_TYPES.has(mimeType)) {
+    throw new ClientInputError("Logo must be a PNG, JPG, WebP, or GIF image.");
+  }
+  if (file.buffer.byteLength > MAX_SIGNATURE_LOGO_BYTES) {
+    throw new ClientInputError(`Logo file exceeds ${formatLimit(MAX_SIGNATURE_LOGO_BYTES)}.`);
   }
 }
 
