@@ -47,7 +47,7 @@ describe("Hermills local API", () => {
         usps: [],
         initialEmail: {
           subject: "Contractor lighting options",
-          body: "Hi, I saw this buyer imports work lights for contractor channels.\nWe can share two LED work light options with MOQ and lead time side by side.\nWould a short comparison help?"
+          body: "Hi, I saw this buyer imports work lights for contractor channels, so supplier reliability likely affects project availability.\nWe can share two LED work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
         },
         followUps: []
       });
@@ -401,8 +401,8 @@ describe("Hermills local API", () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
       return JSON.stringify({
-        subject: "LED work light supply",
-        body: "Hello Taylor, I saw your team handles industrial lighting. We make LED work lights with CE certification. Would it make sense to send details?"
+        subject: "LED work light options",
+        body: "Hello Taylor, I noticed Bright LLC handles industrial lighting, so proof and lead time may matter before adding work-light options.\nWe make CE-backed LED work lights and can share a compact MOQ/lead-time comparison.\nIf useful, I can send two options: A for fast sampling, B for repeat supply. Which fits better?"
       });
     };
 
@@ -413,6 +413,45 @@ describe("Hermills local API", () => {
       certifications: ["CE"],
       shippingTerms: ["FOB Ningbo"]
     } });
+
+    const personaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/personas",
+      headers,
+      payload: {
+        name: "Industrial lighting importer",
+        companyType: "Contractor-channel distributors",
+        painPoints: ["Needs proof and lead-time clarity before adding new lighting SKUs"],
+        triggerEvents: ["Seasonal stock planning"],
+        evidenceNotes: ["Certifications", "MOQ", "Repeat supply reliability"]
+      }
+    });
+    expect(personaResponse.statusCode, personaResponse.body).toBe(200);
+    const uspResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/usps",
+      headers,
+      payload: {
+        category: "Operational",
+        headline: "CE-backed work lights with lead-time clarity",
+        buyerAngle: "Helps distributors compare sample-ready work-light options without a long catalog review.",
+        proof: "CE certification and FOB Ningbo shipping terms are in the company profile.",
+        proofLevel: "profile-derived"
+      }
+    });
+    expect(uspResponse.statusCode, uspResponse.body).toBe(200);
+    const ctaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/cta-assets",
+      headers,
+      payload: {
+        name: "MOQ and lead-time comparison",
+        type: "moq_leadtime_sheet",
+        description: "A small side-by-side option sheet for fast sampling or repeat supply.",
+        assetText: "Includes MOQ, lead time, CE status, FOB terms, and two recommended options."
+      }
+    });
+    expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
 
     const importResponse = await server.inject({
       method: "POST",
@@ -447,14 +486,25 @@ describe("Hermills local API", () => {
     expect(draftResponse.statusCode).toBe(200);
     expect(draftResponse.json()).toMatchObject({
       leadId,
-      subject: "LED work light supply",
+      subject: "LED work light options",
       status: "draft",
-      qualityReview: { passed: true }
+      qualityReview: { passed: true },
+      generationMode: "lite",
+      strategyMatch: {
+        personaId: personaResponse.json().id,
+        uspId: uspResponse.json().id,
+        ctaAssetId: ctaResponse.json().id
+      },
+      sendRiskReview: { passed: true, level: "warning" }
     });
+    expect(draftResponse.json().evidenceMap.verifiedFacts.map((item: { label: string }) => item.label)).toContain("Lead company");
+    expect(draftResponse.json().sendRiskReview.issues.map((issue: { id: string }) => issue.id)).toContain("unsubscribe_missing");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("Bright LLC");
     expect(runtimeContent).toContain("Eckes Export");
     expect(runtimeContent).toContain("Return JSON only");
+    expect(runtimeContent).toContain("--- Outreach OS evidence and asset map ---");
+    expect(runtimeContent).toContain("Backed by asset: MOQ and lead-time comparison");
 
     const draftedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
     expect(draftedStatsResponse.statusCode).toBe(200);
@@ -497,6 +547,68 @@ describe("Hermills local API", () => {
     expect(deleteManyResponse.json()).toEqual({ deleted: 1, missing: [] });
     const deletedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
     expect(deletedStatsResponse.json()).toMatchObject({ total: 0 });
+  });
+
+  it("manages local Outreach OS persona, USP, and CTA assets", async () => {
+    const personaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/personas",
+      headers,
+      payload: {
+        name: "Flooring importer",
+        companyType: "SPC/LVT distributors",
+        painPoints: ["Needs stable samples"],
+        triggerEvents: ["New catalog planning"],
+        evidenceNotes: ["Certifications"]
+      }
+    });
+    expect(personaResponse.statusCode, personaResponse.body).toBe(200);
+    expect(personaResponse.json()).toMatchObject({ name: "Flooring importer", enabled: true });
+
+    const updatedPersonaResponse = await server.inject({
+      method: "PUT",
+      url: `/api/outreach/personas/${personaResponse.json().id}`,
+      headers,
+      payload: { painPoints: ["Needs stable samples", "Needs proof before trial order"] }
+    });
+    expect(updatedPersonaResponse.statusCode, updatedPersonaResponse.body).toBe(200);
+    expect(updatedPersonaResponse.json().painPoints).toContain("Needs proof before trial order");
+
+    const uspResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/usps",
+      headers,
+      payload: {
+        category: "Trust-building",
+        headline: "Proof-backed SPC flooring options",
+        buyerAngle: "Lets buyers compare sample-ready SPC options before committing warehouse space.",
+        proof: "Catalog and certification pack available.",
+        proofLevel: "verified"
+      }
+    });
+    expect(uspResponse.statusCode, uspResponse.body).toBe(200);
+
+    const ctaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/cta-assets",
+      headers,
+      payload: {
+        name: "Certification pack",
+        type: "certification_pack",
+        description: "Current certificates and test reports.",
+        assetText: "CE, SGS, and product test report links."
+      }
+    });
+    expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
+
+    const listResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
+    expect(listResponse.statusCode, listResponse.body).toBe(200);
+    expect(listResponse.json()).toEqual([expect.objectContaining({ name: "Certification pack", type: "certification_pack" })]);
+
+    const deleteResponse = await server.inject({ method: "DELETE", url: `/api/outreach/cta-assets/${ctaResponse.json().id}`, headers });
+    expect(deleteResponse.statusCode).toBe(204);
+    const deletedListResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
+    expect(deletedListResponse.json()).toEqual([]);
   });
 
   it("defaults normal Tencent and Alibaba sender accounts to authorization-code SMTP settings", async () => {
@@ -732,6 +844,13 @@ describe("Hermills local API", () => {
     });
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Work light options",
+          body: "Hello, I saw Preview Buyer imports work lights for industrial lighting channels, so a short supplier comparison may save review time.\nWe can share CE-backed LED work light options with MOQ and lead time notes.\nIf useful, I can send A for fast sampling or B for repeat supply. Which fits better?"
+        });
+      }
       return JSON.stringify({
         subject: "Work light supply",
         body: "Hello, I saw Preview Buyer imports industrial lighting. We can support work light supply. Would you like details?"
@@ -756,7 +875,9 @@ describe("Hermills local API", () => {
     });
 
     expect(draftResponse.statusCode).toBe(200);
-    expect(draftResponse.json()).toMatchObject({ subject: "Work light supply", status: "draft", qualityReview: { passed: true } });
+    expect(draftResponse.json()).toMatchObject({ subject: "Work light options", status: "draft", qualityReview: { passed: true } });
+    expect(draftResponse.json().body).toContain("A for fast sampling");
+    expect(runtime.requests.at(-1)?.messages.at(-1)?.content).toContain("Would you like details?");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("--- Customer website research ---");
     expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
@@ -910,7 +1031,7 @@ describe("Hermills local API", () => {
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
           subject: "Contractor work light options",
-          body: "Hi, I saw Repair Buyer imports work lights for contractor channels.\nOur LED work light options can help compare reliable supply without a full catalog.\nWould it help if I sent 2-3 matched options with MOQ and lead time?"
+          body: "Hi, I saw Repair Buyer imports work lights for contractor channels, so supplier reliability likely affects contractor availability.\nOur LED work light options can help compare reliable supply without a full catalog.\nIf useful, I can send 2-3 matched options with MOQ and lead time. Which fits better?"
         });
       }
       return JSON.stringify({
@@ -946,6 +1067,7 @@ describe("Hermills local API", () => {
     expect(runtime.requests).toHaveLength(2);
     expect(runtime.requests[0]?.messages[0]?.content).toContain("Private outreach brief");
     expect(runtime.requests[1]?.messages[0]?.content).toContain("QA failures");
+    expect(runtime.requests[1]?.messages[0]?.content).toContain("A/B choices");
     expect(workflowResponse.json().initialEmail).toMatchObject({
       subject: "Contractor work light options",
       qualityReview: { passed: true }
@@ -987,7 +1109,7 @@ describe("Hermills local API", () => {
         ],
         initialEmail: {
           subject: "Rugged work light options",
-          body: "Hi, I saw Atlas Buyer serves contractor channels. If rugged work lights are still in your sourcing plan, I can send two sample-ready options with MOQ and lead time side by side. Would option A for fast sampling or option B for repeat supply be more useful?"
+          body: "Hi, I saw Atlas Buyer serves contractor channels, so rugged work-light availability likely affects jobsite stock planning.\nIf rugged work lights are still in your sourcing plan, I can send two sample-ready options with MOQ and lead time side by side.\nWould option A for fast sampling or option B for repeat supply be more useful?"
         },
         followUps: Array.from({ length: 9 }, (_, index) => ({
           step: index + 1,

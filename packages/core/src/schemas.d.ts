@@ -937,6 +937,459 @@ export declare const OutreachLeadSchema: z.ZodObject<{
     currentRound?: number | undefined;
 }>;
 export declare const OutreachDraftStatusSchema: z.ZodEnum<["draft", "sent", "failed"]>;
+export declare const OutreachGenerationModeSchema: z.ZodEnum<["lite", "deep"]>;
+export declare const OutreachEvidenceLevelSchema: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+export declare const OutreachEvidenceItemSchema: z.ZodObject<{
+    id: z.ZodString;
+    level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+    label: z.ZodString;
+    value: z.ZodString;
+    source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+    sourceUrl: z.ZodOptional<z.ZodString>;
+    snippet: z.ZodDefault<z.ZodString>;
+    usedInEmail: z.ZodDefault<z.ZodBoolean>;
+}, "strict", z.ZodTypeAny, {
+    label: string;
+    value: string;
+    id: string;
+    source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+    level: "verified" | "inferred" | "generic" | "prohibited";
+    snippet: string;
+    usedInEmail: boolean;
+    sourceUrl?: string | undefined;
+}, {
+    label: string;
+    value: string;
+    id: string;
+    level: "verified" | "inferred" | "generic" | "prohibited";
+    source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+    sourceUrl?: string | undefined;
+    snippet?: string | undefined;
+    usedInEmail?: boolean | undefined;
+}>;
+export declare const OutreachEvidenceMapSchema: z.ZodObject<{
+    status: z.ZodDefault<z.ZodEnum<["success", "need_more_data"]>>;
+    minimumDataAvailable: z.ZodDefault<z.ZodBoolean>;
+    verifiedFacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+        label: z.ZodString;
+        value: z.ZodString;
+        source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+        sourceUrl: z.ZodOptional<z.ZodString>;
+        snippet: z.ZodDefault<z.ZodString>;
+        usedInEmail: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }, {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }>, "many">>;
+    inferredInsights: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+        label: z.ZodString;
+        value: z.ZodString;
+        source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+        sourceUrl: z.ZodOptional<z.ZodString>;
+        snippet: z.ZodDefault<z.ZodString>;
+        usedInEmail: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }, {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }>, "many">>;
+    genericContext: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+        label: z.ZodString;
+        value: z.ZodString;
+        source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+        sourceUrl: z.ZodOptional<z.ZodString>;
+        snippet: z.ZodDefault<z.ZodString>;
+        usedInEmail: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }, {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }>, "many">>;
+    prohibitedClaims: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+        label: z.ZodString;
+        value: z.ZodString;
+        source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+        sourceUrl: z.ZodOptional<z.ZodString>;
+        snippet: z.ZodDefault<z.ZodString>;
+        usedInEmail: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }, {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }>, "many">>;
+    missingFields: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    createdAt: z.ZodOptional<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    status: "success" | "need_more_data";
+    minimumDataAvailable: boolean;
+    verifiedFacts: {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }[];
+    inferredInsights: {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }[];
+    genericContext: {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }[];
+    prohibitedClaims: {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }[];
+    missingFields: string[];
+    createdAt?: string | undefined;
+}, {
+    status?: "success" | "need_more_data" | undefined;
+    createdAt?: string | undefined;
+    minimumDataAvailable?: boolean | undefined;
+    verifiedFacts?: {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }[] | undefined;
+    inferredInsights?: {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }[] | undefined;
+    genericContext?: {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }[] | undefined;
+    prohibitedClaims?: {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }[] | undefined;
+    missingFields?: string[] | undefined;
+}>;
+export declare const OutreachCtaAssetTypeSchema: z.ZodEnum<["catalog", "sample_options", "spec_comparison", "moq_leadtime_sheet", "case_study", "certification_pack", "packaging_options", "quote_range", "custom"]>;
+export declare const OutreachCtaAssetSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodOptional<z.ZodString>;
+    name: z.ZodString;
+    type: z.ZodDefault<z.ZodEnum<["catalog", "sample_options", "spec_comparison", "moq_leadtime_sheet", "case_study", "certification_pack", "packaging_options", "quote_range", "custom"]>>;
+    description: z.ZodDefault<z.ZodString>;
+    assetText: z.ZodDefault<z.ZodString>;
+    materialId: z.ZodOptional<z.ZodString>;
+    url: z.ZodOptional<z.ZodString>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    type: "custom" | "catalog" | "sample_options" | "spec_comparison" | "moq_leadtime_sheet" | "case_study" | "certification_pack" | "packaging_options" | "quote_range";
+    id: string;
+    name: string;
+    description: string;
+    createdAt: string;
+    updatedAt: string;
+    enabled: boolean;
+    assetText: string;
+    profileId?: string | undefined;
+    materialId?: string | undefined;
+    url?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    type?: "custom" | "catalog" | "sample_options" | "spec_comparison" | "moq_leadtime_sheet" | "case_study" | "certification_pack" | "packaging_options" | "quote_range" | undefined;
+    description?: string | undefined;
+    enabled?: boolean | undefined;
+    profileId?: string | undefined;
+    assetText?: string | undefined;
+    materialId?: string | undefined;
+    url?: string | undefined;
+}>;
+export declare const OutreachBuyerPersonaSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodOptional<z.ZodString>;
+    name: z.ZodString;
+    companyType: z.ZodDefault<z.ZodString>;
+    buyerRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    painPoints: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    successMetrics: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    objections: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    triggerEvents: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    evidenceNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    enabled: boolean;
+    companyType: string;
+    buyerRoles: string[];
+    painPoints: string[];
+    successMetrics: string[];
+    objections: string[];
+    triggerEvents: string[];
+    evidenceNotes: string[];
+    profileId?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    enabled?: boolean | undefined;
+    profileId?: string | undefined;
+    companyType?: string | undefined;
+    buyerRoles?: string[] | undefined;
+    painPoints?: string[] | undefined;
+    successMetrics?: string[] | undefined;
+    objections?: string[] | undefined;
+    triggerEvents?: string[] | undefined;
+    evidenceNotes?: string[] | undefined;
+}>;
+export declare const OutreachUspCandidateSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodOptional<z.ZodString>;
+    category: z.ZodDefault<z.ZodString>;
+    headline: z.ZodString;
+    buyerAngle: z.ZodDefault<z.ZodString>;
+    proof: z.ZodDefault<z.ZodString>;
+    proofLevel: z.ZodDefault<z.ZodEnum<["verified", "profile-derived", "needs-proof"]>>;
+    assetIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    category: string;
+    createdAt: string;
+    updatedAt: string;
+    enabled: boolean;
+    headline: string;
+    buyerAngle: string;
+    proof: string;
+    proofLevel: "verified" | "profile-derived" | "needs-proof";
+    assetIds: string[];
+    profileId?: string | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    headline: string;
+    category?: string | undefined;
+    enabled?: boolean | undefined;
+    profileId?: string | undefined;
+    buyerAngle?: string | undefined;
+    proof?: string | undefined;
+    proofLevel?: "verified" | "profile-derived" | "needs-proof" | undefined;
+    assetIds?: string[] | undefined;
+}>;
+export declare const OutreachStrategyMatchSchema: z.ZodObject<{
+    personaId: z.ZodOptional<z.ZodString>;
+    uspId: z.ZodOptional<z.ZodString>;
+    ctaAssetId: z.ZodOptional<z.ZodString>;
+    buyerPain: z.ZodDefault<z.ZodString>;
+    buyerImplication: z.ZodDefault<z.ZodString>;
+    selectedUsp: z.ZodDefault<z.ZodString>;
+    microOffer: z.ZodDefault<z.ZodString>;
+    rationale: z.ZodDefault<z.ZodString>;
+    confidenceScore: z.ZodDefault<z.ZodNumber>;
+    evidenceIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+}, "strict", z.ZodTypeAny, {
+    buyerPain: string;
+    buyerImplication: string;
+    selectedUsp: string;
+    microOffer: string;
+    rationale: string;
+    confidenceScore: number;
+    evidenceIds: string[];
+    warnings: string[];
+    personaId?: string | undefined;
+    uspId?: string | undefined;
+    ctaAssetId?: string | undefined;
+}, {
+    personaId?: string | undefined;
+    uspId?: string | undefined;
+    ctaAssetId?: string | undefined;
+    buyerPain?: string | undefined;
+    buyerImplication?: string | undefined;
+    selectedUsp?: string | undefined;
+    microOffer?: string | undefined;
+    rationale?: string | undefined;
+    confidenceScore?: number | undefined;
+    evidenceIds?: string[] | undefined;
+    warnings?: string[] | undefined;
+}>;
+export declare const OutreachSendRiskIssueSchema: z.ZodObject<{
+    id: z.ZodString;
+    severity: z.ZodEnum<["info", "warning", "block"]>;
+    message: z.ZodString;
+    blocking: z.ZodDefault<z.ZodBoolean>;
+}, "strict", z.ZodTypeAny, {
+    message: string;
+    id: string;
+    severity: "info" | "warning" | "block";
+    blocking: boolean;
+}, {
+    message: string;
+    id: string;
+    severity: "info" | "warning" | "block";
+    blocking?: boolean | undefined;
+}>;
+export declare const OutreachSendRiskReviewSchema: z.ZodObject<{
+    score: z.ZodNumber;
+    passed: z.ZodBoolean;
+    level: z.ZodEnum<["pass", "warning", "blocked"]>;
+    issues: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        severity: z.ZodEnum<["info", "warning", "block"]>;
+        message: z.ZodString;
+        blocking: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        message: string;
+        id: string;
+        severity: "info" | "warning" | "block";
+        blocking: boolean;
+    }, {
+        message: string;
+        id: string;
+        severity: "info" | "warning" | "block";
+        blocking?: boolean | undefined;
+    }>, "many">>;
+    checkedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    issues: {
+        message: string;
+        id: string;
+        severity: "info" | "warning" | "block";
+        blocking: boolean;
+    }[];
+    level: "warning" | "pass" | "blocked";
+    score: number;
+    passed: boolean;
+    checkedAt: string;
+}, {
+    level: "warning" | "pass" | "blocked";
+    score: number;
+    passed: boolean;
+    checkedAt: string;
+    issues?: {
+        message: string;
+        id: string;
+        severity: "info" | "warning" | "block";
+        blocking?: boolean | undefined;
+    }[] | undefined;
+}>;
 export declare const OutreachEmailQualityCheckSchema: z.ZodObject<{
     id: z.ZodEnum<["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]>;
     label: z.ZodString;
@@ -947,13 +1400,13 @@ export declare const OutreachEmailQualityCheckSchema: z.ZodObject<{
     label: string;
     message: string;
     id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-    passed: boolean;
     score: number;
+    passed: boolean;
 }, {
     label: string;
     id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-    passed: boolean;
     score: number;
+    passed: boolean;
     message?: string | undefined;
 }>;
 export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
@@ -971,13 +1424,13 @@ export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
         label: string;
         message: string;
         id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-        passed: boolean;
         score: number;
+        passed: boolean;
     }, {
         label: string;
         id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-        passed: boolean;
         score: number;
+        passed: boolean;
         message?: string | undefined;
     }>, "many">;
     issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -989,12 +1442,12 @@ export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
         label: string;
         message: string;
         id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-        passed: boolean;
         score: number;
+        passed: boolean;
     }[];
-    passed: boolean;
+    level: "pass" | "blocked" | "needs-work";
     score: number;
-    level: "pass" | "needs-work" | "blocked";
+    passed: boolean;
     summary: string;
     rewriteHints: string[];
     reviewedAt: string;
@@ -1002,13 +1455,13 @@ export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
     checks: {
         label: string;
         id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-        passed: boolean;
         score: number;
+        passed: boolean;
         message?: string | undefined;
     }[];
-    passed: boolean;
+    level: "pass" | "blocked" | "needs-work";
     score: number;
-    level: "pass" | "needs-work" | "blocked";
+    passed: boolean;
     reviewedAt: string;
     issues?: string[] | undefined;
     summary?: string | undefined;
@@ -1023,6 +1476,7 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     body: z.ZodString;
     language: z.ZodDefault<z.ZodString>;
     tone: z.ZodDefault<z.ZodString>;
+    generationMode: z.ZodDefault<z.ZodEnum<["lite", "deep"]>>;
     promptSnapshot: z.ZodDefault<z.ZodString>;
     providerId: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
@@ -1057,13 +1511,13 @@ export declare const OutreachDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }, {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }>, "many">;
         issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -1075,12 +1529,12 @@ export declare const OutreachDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         summary: string;
         rewriteHints: string[];
         reviewedAt: string;
@@ -1088,17 +1542,306 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         checks: {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         reviewedAt: string;
         issues?: string[] | undefined;
         summary?: string | undefined;
         rewriteHints?: string[] | undefined;
+    }>>;
+    evidenceMap: z.ZodOptional<z.ZodObject<{
+        status: z.ZodDefault<z.ZodEnum<["success", "need_more_data"]>>;
+        minimumDataAvailable: z.ZodDefault<z.ZodBoolean>;
+        verifiedFacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        inferredInsights: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        genericContext: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        prohibitedClaims: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        missingFields: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        createdAt: z.ZodOptional<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        status: "success" | "need_more_data";
+        minimumDataAvailable: boolean;
+        verifiedFacts: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        inferredInsights: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        genericContext: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        prohibitedClaims: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        missingFields: string[];
+        createdAt?: string | undefined;
+    }, {
+        status?: "success" | "need_more_data" | undefined;
+        createdAt?: string | undefined;
+        minimumDataAvailable?: boolean | undefined;
+        verifiedFacts?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        inferredInsights?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        genericContext?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        prohibitedClaims?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        missingFields?: string[] | undefined;
+    }>>;
+    strategyMatch: z.ZodOptional<z.ZodObject<{
+        personaId: z.ZodOptional<z.ZodString>;
+        uspId: z.ZodOptional<z.ZodString>;
+        ctaAssetId: z.ZodOptional<z.ZodString>;
+        buyerPain: z.ZodDefault<z.ZodString>;
+        buyerImplication: z.ZodDefault<z.ZodString>;
+        selectedUsp: z.ZodDefault<z.ZodString>;
+        microOffer: z.ZodDefault<z.ZodString>;
+        rationale: z.ZodDefault<z.ZodString>;
+        confidenceScore: z.ZodDefault<z.ZodNumber>;
+        evidenceIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        buyerPain: string;
+        buyerImplication: string;
+        selectedUsp: string;
+        microOffer: string;
+        rationale: string;
+        confidenceScore: number;
+        evidenceIds: string[];
+        warnings: string[];
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+    }, {
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+        buyerPain?: string | undefined;
+        buyerImplication?: string | undefined;
+        selectedUsp?: string | undefined;
+        microOffer?: string | undefined;
+        rationale?: string | undefined;
+        confidenceScore?: number | undefined;
+        evidenceIds?: string[] | undefined;
+        warnings?: string[] | undefined;
+    }>>;
+    sendRiskReview: z.ZodOptional<z.ZodObject<{
+        score: z.ZodNumber;
+        passed: z.ZodBoolean;
+        level: z.ZodEnum<["pass", "warning", "blocked"]>;
+        issues: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            severity: z.ZodEnum<["info", "warning", "block"]>;
+            message: z.ZodString;
+            blocking: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }, {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }>, "many">>;
+        checkedAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        issues: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }[];
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+    }, {
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+        issues?: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }[] | undefined;
     }>>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
@@ -1113,6 +1856,7 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     subject: string;
     body: string;
     tone: string;
+    generationMode: "lite" | "deep";
     promptSnapshot: string;
     providerId?: string | undefined;
     model?: string | undefined;
@@ -1130,15 +1874,86 @@ export declare const OutreachDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         summary: string;
         rewriteHints: string[];
         reviewedAt: string;
+    } | undefined;
+    evidenceMap?: {
+        status: "success" | "need_more_data";
+        minimumDataAvailable: boolean;
+        verifiedFacts: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        inferredInsights: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        genericContext: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        prohibitedClaims: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        missingFields: string[];
+        createdAt?: string | undefined;
+    } | undefined;
+    strategyMatch?: {
+        buyerPain: string;
+        buyerImplication: string;
+        selectedUsp: string;
+        microOffer: string;
+        rationale: string;
+        confidenceScore: number;
+        evidenceIds: string[];
+        warnings: string[];
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+    } | undefined;
+    sendRiskReview?: {
+        issues: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }[];
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
     } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -1161,22 +1976,94 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     profileId?: string | undefined;
     leadId?: string | undefined;
     tone?: string | undefined;
+    generationMode?: "lite" | "deep" | undefined;
     promptSnapshot?: string | undefined;
     qualityReview?: {
         checks: {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         reviewedAt: string;
         issues?: string[] | undefined;
         summary?: string | undefined;
         rewriteHints?: string[] | undefined;
+    } | undefined;
+    evidenceMap?: {
+        status?: "success" | "need_more_data" | undefined;
+        createdAt?: string | undefined;
+        minimumDataAvailable?: boolean | undefined;
+        verifiedFacts?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        inferredInsights?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        genericContext?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        prohibitedClaims?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        missingFields?: string[] | undefined;
+    } | undefined;
+    strategyMatch?: {
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+        buyerPain?: string | undefined;
+        buyerImplication?: string | undefined;
+        selectedUsp?: string | undefined;
+        microOffer?: string | undefined;
+        rationale?: string | undefined;
+        confidenceScore?: number | undefined;
+        evidenceIds?: string[] | undefined;
+        warnings?: string[] | undefined;
+    } | undefined;
+    sendRiskReview?: {
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+        issues?: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }[] | undefined;
     } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -1482,16 +2369,16 @@ export declare const CustomerResearchSummarySchema: z.ZodObject<{
     riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     checkedPages: z.ZodDefault<z.ZodNumber>;
 }, "strict", z.ZodTypeAny, {
-    depth: "quick" | "standard" | "deep";
     confidenceScore: number;
+    depth: "deep" | "quick" | "standard";
     buyerType: string;
     likelyNeed: string;
     primaryAngle: string;
     riskNotes: string[];
     checkedPages: number;
 }, {
-    depth?: "quick" | "standard" | "deep" | undefined;
     confidenceScore?: number | undefined;
+    depth?: "deep" | "quick" | "standard" | undefined;
     buyerType?: string | undefined;
     likelyNeed?: string | undefined;
     primaryAngle?: string | undefined;
@@ -1556,8 +2443,8 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     title: string;
     companyName: string;
     industry: string;
-    depth: "quick" | "standard" | "deep";
     confidenceScore: number;
+    depth: "deep" | "quick" | "standard";
     buyerType: string;
     productSignals: string[];
     buyingSignals: string[];
@@ -1580,8 +2467,8 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     textPreview?: string | undefined;
     title?: string | undefined;
     industry?: string | undefined;
-    depth?: "quick" | "standard" | "deep" | undefined;
     confidenceScore?: number | undefined;
+    depth?: "deep" | "quick" | "standard" | undefined;
     buyerType?: string | undefined;
     productSignals?: string[] | undefined;
     buyingSignals?: string[] | undefined;
@@ -1610,22 +2497,22 @@ export declare const GeneratedIcpSchema: z.ZodObject<{
 }, "strict", z.ZodTypeAny, {
     id: string;
     name: string;
-    industrySegment: string;
-    companyCharacteristics: string[];
     buyerRoles: string[];
-    buyingBehavior: string[];
     painPoints: string[];
     triggerEvents: string[];
+    industrySegment: string;
+    companyCharacteristics: string[];
+    buyingBehavior: string[];
     salesAngles: string[];
 }, {
     id: string;
     name: string;
-    industrySegment?: string | undefined;
-    companyCharacteristics?: string[] | undefined;
     buyerRoles?: string[] | undefined;
-    buyingBehavior?: string[] | undefined;
     painPoints?: string[] | undefined;
     triggerEvents?: string[] | undefined;
+    industrySegment?: string | undefined;
+    companyCharacteristics?: string[] | undefined;
+    buyingBehavior?: string[] | undefined;
     salesAngles?: string[] | undefined;
 }>;
 export declare const GeneratedUspSchema: z.ZodObject<{
@@ -1672,13 +2559,13 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }, {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }>, "many">;
         issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -1690,12 +2577,12 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         summary: string;
         rewriteHints: string[];
         reviewedAt: string;
@@ -1703,17 +2590,306 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
         checks: {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         reviewedAt: string;
         issues?: string[] | undefined;
         summary?: string | undefined;
         rewriteHints?: string[] | undefined;
+    }>>;
+    evidenceMap: z.ZodOptional<z.ZodObject<{
+        status: z.ZodDefault<z.ZodEnum<["success", "need_more_data"]>>;
+        minimumDataAvailable: z.ZodDefault<z.ZodBoolean>;
+        verifiedFacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        inferredInsights: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        genericContext: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        prohibitedClaims: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+            label: z.ZodString;
+            value: z.ZodString;
+            source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+            sourceUrl: z.ZodOptional<z.ZodString>;
+            snippet: z.ZodDefault<z.ZodString>;
+            usedInEmail: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }, {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }>, "many">>;
+        missingFields: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        createdAt: z.ZodOptional<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        status: "success" | "need_more_data";
+        minimumDataAvailable: boolean;
+        verifiedFacts: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        inferredInsights: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        genericContext: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        prohibitedClaims: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        missingFields: string[];
+        createdAt?: string | undefined;
+    }, {
+        status?: "success" | "need_more_data" | undefined;
+        createdAt?: string | undefined;
+        minimumDataAvailable?: boolean | undefined;
+        verifiedFacts?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        inferredInsights?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        genericContext?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        prohibitedClaims?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        missingFields?: string[] | undefined;
+    }>>;
+    strategyMatch: z.ZodOptional<z.ZodObject<{
+        personaId: z.ZodOptional<z.ZodString>;
+        uspId: z.ZodOptional<z.ZodString>;
+        ctaAssetId: z.ZodOptional<z.ZodString>;
+        buyerPain: z.ZodDefault<z.ZodString>;
+        buyerImplication: z.ZodDefault<z.ZodString>;
+        selectedUsp: z.ZodDefault<z.ZodString>;
+        microOffer: z.ZodDefault<z.ZodString>;
+        rationale: z.ZodDefault<z.ZodString>;
+        confidenceScore: z.ZodDefault<z.ZodNumber>;
+        evidenceIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    }, "strict", z.ZodTypeAny, {
+        buyerPain: string;
+        buyerImplication: string;
+        selectedUsp: string;
+        microOffer: string;
+        rationale: string;
+        confidenceScore: number;
+        evidenceIds: string[];
+        warnings: string[];
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+    }, {
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+        buyerPain?: string | undefined;
+        buyerImplication?: string | undefined;
+        selectedUsp?: string | undefined;
+        microOffer?: string | undefined;
+        rationale?: string | undefined;
+        confidenceScore?: number | undefined;
+        evidenceIds?: string[] | undefined;
+        warnings?: string[] | undefined;
+    }>>;
+    sendRiskReview: z.ZodOptional<z.ZodObject<{
+        score: z.ZodNumber;
+        passed: z.ZodBoolean;
+        level: z.ZodEnum<["pass", "warning", "blocked"]>;
+        issues: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            id: z.ZodString;
+            severity: z.ZodEnum<["info", "warning", "block"]>;
+            message: z.ZodString;
+            blocking: z.ZodDefault<z.ZodBoolean>;
+        }, "strict", z.ZodTypeAny, {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }, {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }>, "many">>;
+        checkedAt: z.ZodString;
+    }, "strict", z.ZodTypeAny, {
+        issues: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }[];
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+    }, {
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+        issues?: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }[] | undefined;
     }>>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
@@ -1731,15 +2907,86 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
             label: string;
             message: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         summary: string;
         rewriteHints: string[];
         reviewedAt: string;
+    } | undefined;
+    evidenceMap?: {
+        status: "success" | "need_more_data";
+        minimumDataAvailable: boolean;
+        verifiedFacts: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        inferredInsights: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        genericContext: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        prohibitedClaims: {
+            label: string;
+            value: string;
+            id: string;
+            source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            snippet: string;
+            usedInEmail: boolean;
+            sourceUrl?: string | undefined;
+        }[];
+        missingFields: string[];
+        createdAt?: string | undefined;
+    } | undefined;
+    strategyMatch?: {
+        buyerPain: string;
+        buyerImplication: string;
+        selectedUsp: string;
+        microOffer: string;
+        rationale: string;
+        confidenceScore: number;
+        evidenceIds: string[];
+        warnings: string[];
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+    } | undefined;
+    sendRiskReview?: {
+        issues: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking: boolean;
+        }[];
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
     } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -1755,17 +3002,88 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
         checks: {
             label: string;
             id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-            passed: boolean;
             score: number;
+            passed: boolean;
             message?: string | undefined;
         }[];
-        passed: boolean;
+        level: "pass" | "blocked" | "needs-work";
         score: number;
-        level: "pass" | "needs-work" | "blocked";
+        passed: boolean;
         reviewedAt: string;
         issues?: string[] | undefined;
         summary?: string | undefined;
         rewriteHints?: string[] | undefined;
+    } | undefined;
+    evidenceMap?: {
+        status?: "success" | "need_more_data" | undefined;
+        createdAt?: string | undefined;
+        minimumDataAvailable?: boolean | undefined;
+        verifiedFacts?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        inferredInsights?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        genericContext?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        prohibitedClaims?: {
+            label: string;
+            value: string;
+            id: string;
+            level: "verified" | "inferred" | "generic" | "prohibited";
+            source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+            sourceUrl?: string | undefined;
+            snippet?: string | undefined;
+            usedInEmail?: boolean | undefined;
+        }[] | undefined;
+        missingFields?: string[] | undefined;
+    } | undefined;
+    strategyMatch?: {
+        personaId?: string | undefined;
+        uspId?: string | undefined;
+        ctaAssetId?: string | undefined;
+        buyerPain?: string | undefined;
+        buyerImplication?: string | undefined;
+        selectedUsp?: string | undefined;
+        microOffer?: string | undefined;
+        rationale?: string | undefined;
+        confidenceScore?: number | undefined;
+        evidenceIds?: string[] | undefined;
+        warnings?: string[] | undefined;
+    } | undefined;
+    sendRiskReview?: {
+        level: "warning" | "pass" | "blocked";
+        score: number;
+        passed: boolean;
+        checkedAt: string;
+        issues?: {
+            message: string;
+            id: string;
+            severity: "info" | "warning" | "block";
+            blocking?: boolean | undefined;
+        }[] | undefined;
     } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -1781,6 +3099,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     email: z.ZodString;
     language: z.ZodDefault<z.ZodString>;
     tone: z.ZodDefault<z.ZodString>;
+    generationMode: z.ZodDefault<z.ZodEnum<["lite", "deep"]>>;
     research: z.ZodObject<{
         website: z.ZodString;
         companyName: z.ZodString;
@@ -1823,8 +3142,8 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
-        depth: "quick" | "standard" | "deep";
         confidenceScore: number;
+        depth: "deep" | "quick" | "standard";
         buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
@@ -1847,8 +3166,8 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
-        depth?: "quick" | "standard" | "deep" | undefined;
         confidenceScore?: number | undefined;
+        depth?: "deep" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -1877,22 +3196,22 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     }, "strict", z.ZodTypeAny, {
         id: string;
         name: string;
-        industrySegment: string;
-        companyCharacteristics: string[];
         buyerRoles: string[];
-        buyingBehavior: string[];
         painPoints: string[];
         triggerEvents: string[];
+        industrySegment: string;
+        companyCharacteristics: string[];
+        buyingBehavior: string[];
         salesAngles: string[];
     }, {
         id: string;
         name: string;
-        industrySegment?: string | undefined;
-        companyCharacteristics?: string[] | undefined;
         buyerRoles?: string[] | undefined;
-        buyingBehavior?: string[] | undefined;
         painPoints?: string[] | undefined;
         triggerEvents?: string[] | undefined;
+        industrySegment?: string | undefined;
+        companyCharacteristics?: string[] | undefined;
+        buyingBehavior?: string[] | undefined;
         salesAngles?: string[] | undefined;
     }>, "many">>;
     usps: z.ZodDefault<z.ZodArray<z.ZodObject<{
@@ -1938,13 +3257,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }, {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }>, "many">;
             issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -1956,12 +3275,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
@@ -1969,17 +3288,306 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        }>>;
+        evidenceMap: z.ZodOptional<z.ZodObject<{
+            status: z.ZodDefault<z.ZodEnum<["success", "need_more_data"]>>;
+            minimumDataAvailable: z.ZodDefault<z.ZodBoolean>;
+            verifiedFacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            inferredInsights: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            genericContext: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            prohibitedClaims: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            missingFields: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            createdAt: z.ZodOptional<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        }, {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        }>>;
+        strategyMatch: z.ZodOptional<z.ZodObject<{
+            personaId: z.ZodOptional<z.ZodString>;
+            uspId: z.ZodOptional<z.ZodString>;
+            ctaAssetId: z.ZodOptional<z.ZodString>;
+            buyerPain: z.ZodDefault<z.ZodString>;
+            buyerImplication: z.ZodDefault<z.ZodString>;
+            selectedUsp: z.ZodDefault<z.ZodString>;
+            microOffer: z.ZodDefault<z.ZodString>;
+            rationale: z.ZodDefault<z.ZodString>;
+            confidenceScore: z.ZodDefault<z.ZodNumber>;
+            evidenceIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        }, "strict", z.ZodTypeAny, {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        }, {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        }>>;
+        sendRiskReview: z.ZodOptional<z.ZodObject<{
+            score: z.ZodNumber;
+            passed: z.ZodBoolean;
+            level: z.ZodEnum<["pass", "warning", "blocked"]>;
+            issues: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                severity: z.ZodEnum<["info", "warning", "block"]>;
+                message: z.ZodString;
+                blocking: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }, {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }>, "many">>;
+            checkedAt: z.ZodString;
+        }, "strict", z.ZodTypeAny, {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+        }, {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
@@ -1997,15 +3605,86 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
+        } | undefined;
+        evidenceMap?: {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        } | undefined;
+        strategyMatch?: {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2021,17 +3700,88 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        } | undefined;
+        evidenceMap?: {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        } | undefined;
+        strategyMatch?: {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2062,13 +3812,13 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }, {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }>, "many">;
             issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -2080,12 +3830,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
@@ -2093,17 +3843,306 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        }>>;
+        evidenceMap: z.ZodOptional<z.ZodObject<{
+            status: z.ZodDefault<z.ZodEnum<["success", "need_more_data"]>>;
+            minimumDataAvailable: z.ZodDefault<z.ZodBoolean>;
+            verifiedFacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            inferredInsights: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            genericContext: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            prohibitedClaims: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+                label: z.ZodString;
+                value: z.ZodString;
+                source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+                sourceUrl: z.ZodOptional<z.ZodString>;
+                snippet: z.ZodDefault<z.ZodString>;
+                usedInEmail: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }, {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }>, "many">>;
+            missingFields: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            createdAt: z.ZodOptional<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        }, {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        }>>;
+        strategyMatch: z.ZodOptional<z.ZodObject<{
+            personaId: z.ZodOptional<z.ZodString>;
+            uspId: z.ZodOptional<z.ZodString>;
+            ctaAssetId: z.ZodOptional<z.ZodString>;
+            buyerPain: z.ZodDefault<z.ZodString>;
+            buyerImplication: z.ZodDefault<z.ZodString>;
+            selectedUsp: z.ZodDefault<z.ZodString>;
+            microOffer: z.ZodDefault<z.ZodString>;
+            rationale: z.ZodDefault<z.ZodString>;
+            confidenceScore: z.ZodDefault<z.ZodNumber>;
+            evidenceIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        }, "strict", z.ZodTypeAny, {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        }, {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        }>>;
+        sendRiskReview: z.ZodOptional<z.ZodObject<{
+            score: z.ZodNumber;
+            passed: z.ZodBoolean;
+            level: z.ZodEnum<["pass", "warning", "blocked"]>;
+            issues: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                severity: z.ZodEnum<["info", "warning", "block"]>;
+                message: z.ZodString;
+                blocking: z.ZodDefault<z.ZodBoolean>;
+            }, "strict", z.ZodTypeAny, {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }, {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }>, "many">>;
+            checkedAt: z.ZodString;
+        }, "strict", z.ZodTypeAny, {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+        }, {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
@@ -2121,15 +4160,86 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
+        } | undefined;
+        evidenceMap?: {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        } | undefined;
+        strategyMatch?: {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2145,17 +4255,88 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        } | undefined;
+        evidenceMap?: {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        } | undefined;
+        strategyMatch?: {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2192,6 +4373,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     email: string;
     leadId: string;
     tone: string;
+    generationMode: "lite" | "deep";
     promptSnapshot: string;
     draftId: string;
     research: {
@@ -2202,8 +4384,8 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
-        depth: "quick" | "standard" | "deep";
         confidenceScore: number;
+        depth: "deep" | "quick" | "standard";
         buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
@@ -2222,12 +4404,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     icps: {
         id: string;
         name: string;
-        industrySegment: string;
-        companyCharacteristics: string[];
         buyerRoles: string[];
-        buyingBehavior: string[];
         painPoints: string[];
         triggerEvents: string[];
+        industrySegment: string;
+        companyCharacteristics: string[];
+        buyingBehavior: string[];
         salesAngles: string[];
     }[];
     usps: {
@@ -2251,15 +4433,86 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
+        } | undefined;
+        evidenceMap?: {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        } | undefined;
+        strategyMatch?: {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2279,15 +4532,86 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 label: string;
                 message: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             summary: string;
             rewriteHints: string[];
             reviewedAt: string;
+        } | undefined;
+        evidenceMap?: {
+            status: "success" | "need_more_data";
+            minimumDataAvailable: boolean;
+            verifiedFacts: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            inferredInsights: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            genericContext: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            prohibitedClaims: {
+                label: string;
+                value: string;
+                id: string;
+                source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                snippet: string;
+                usedInEmail: boolean;
+                sourceUrl?: string | undefined;
+            }[];
+            missingFields: string[];
+            createdAt?: string | undefined;
+        } | undefined;
+        strategyMatch?: {
+            buyerPain: string;
+            buyerImplication: string;
+            selectedUsp: string;
+            microOffer: string;
+            rationale: string;
+            confidenceScore: number;
+            evidenceIds: string[];
+            warnings: string[];
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            issues: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking: boolean;
+            }[];
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2318,8 +4642,8 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
-        depth?: "quick" | "standard" | "deep" | undefined;
         confidenceScore?: number | undefined;
+        depth?: "deep" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -2346,17 +4670,88 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        } | undefined;
+        evidenceMap?: {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        } | undefined;
+        strategyMatch?: {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2374,16 +4769,17 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     } | undefined;
     profileId?: string | undefined;
     tone?: string | undefined;
+    generationMode?: "lite" | "deep" | undefined;
     promptSnapshot?: string | undefined;
     icps?: {
         id: string;
         name: string;
-        industrySegment?: string | undefined;
-        companyCharacteristics?: string[] | undefined;
         buyerRoles?: string[] | undefined;
-        buyingBehavior?: string[] | undefined;
         painPoints?: string[] | undefined;
         triggerEvents?: string[] | undefined;
+        industrySegment?: string | undefined;
+        companyCharacteristics?: string[] | undefined;
+        buyingBehavior?: string[] | undefined;
         salesAngles?: string[] | undefined;
     }[] | undefined;
     usps?: {
@@ -2404,17 +4800,88 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             checks: {
                 label: string;
                 id: "buyerReason" | "humanTone" | "personalized" | "nextStep" | "twoSecondRead";
-                passed: boolean;
                 score: number;
+                passed: boolean;
                 message?: string | undefined;
             }[];
-            passed: boolean;
+            level: "pass" | "blocked" | "needs-work";
             score: number;
-            level: "pass" | "needs-work" | "blocked";
+            passed: boolean;
             reviewedAt: string;
             issues?: string[] | undefined;
             summary?: string | undefined;
             rewriteHints?: string[] | undefined;
+        } | undefined;
+        evidenceMap?: {
+            status?: "success" | "need_more_data" | undefined;
+            createdAt?: string | undefined;
+            minimumDataAvailable?: boolean | undefined;
+            verifiedFacts?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            inferredInsights?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            genericContext?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            prohibitedClaims?: {
+                label: string;
+                value: string;
+                id: string;
+                level: "verified" | "inferred" | "generic" | "prohibited";
+                source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+                sourceUrl?: string | undefined;
+                snippet?: string | undefined;
+                usedInEmail?: boolean | undefined;
+            }[] | undefined;
+            missingFields?: string[] | undefined;
+        } | undefined;
+        strategyMatch?: {
+            personaId?: string | undefined;
+            uspId?: string | undefined;
+            ctaAssetId?: string | undefined;
+            buyerPain?: string | undefined;
+            buyerImplication?: string | undefined;
+            selectedUsp?: string | undefined;
+            microOffer?: string | undefined;
+            rationale?: string | undefined;
+            confidenceScore?: number | undefined;
+            evidenceIds?: string[] | undefined;
+            warnings?: string[] | undefined;
+        } | undefined;
+        sendRiskReview?: {
+            level: "warning" | "pass" | "blocked";
+            score: number;
+            passed: boolean;
+            checkedAt: string;
+            issues?: {
+                message: string;
+                id: string;
+                severity: "info" | "warning" | "block";
+                blocking?: boolean | undefined;
+            }[] | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -2492,6 +4959,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     tone: z.ZodDefault<z.ZodString>;
     providerId: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
+    generationMode: z.ZodDefault<z.ZodEnum<["lite", "deep"]>>;
     researchDepth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
     rateLimit: z.ZodDefault<z.ZodObject<{
         maxPerHour: z.ZodDefault<z.ZodNumber>;
@@ -2565,8 +5033,9 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     language: string;
     profileId: string;
     tone: string;
+    generationMode: "lite" | "deep";
     mode: "first-email-only";
-    researchDepth: "quick" | "standard" | "deep";
+    researchDepth: "deep" | "quick" | "standard";
     rateLimit: {
         maxPerHour: number;
         minDelayMinutes: number;
@@ -2606,9 +5075,10 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     model?: string | undefined;
     language?: string | undefined;
     tone?: string | undefined;
+    generationMode?: "lite" | "deep" | undefined;
     senderAccountId?: string | undefined;
     mode?: "first-email-only" | undefined;
-    researchDepth?: "quick" | "standard" | "deep" | undefined;
+    researchDepth?: "deep" | "quick" | "standard" | undefined;
     rateLimit?: {
         maxPerHour?: number | undefined;
         minDelayMinutes?: number | undefined;
@@ -2656,16 +5126,16 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
         riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         checkedPages: z.ZodDefault<z.ZodNumber>;
     }, "strict", z.ZodTypeAny, {
-        depth: "quick" | "standard" | "deep";
         confidenceScore: number;
+        depth: "deep" | "quick" | "standard";
         buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
         riskNotes: string[];
         checkedPages: number;
     }, {
-        depth?: "quick" | "standard" | "deep" | undefined;
         confidenceScore?: number | undefined;
+        depth?: "deep" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;
@@ -2704,8 +5174,8 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
     researchSummary?: {
-        depth: "quick" | "standard" | "deep";
         confidenceScore: number;
+        depth: "deep" | "quick" | "standard";
         buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
@@ -2739,8 +5209,8 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
     researchSummary?: {
-        depth?: "quick" | "standard" | "deep" | undefined;
         confidenceScore?: number | undefined;
+        depth?: "deep" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;
@@ -3120,7 +5590,7 @@ export declare const LogEntrySchema: z.ZodObject<{
     message: string;
     id: string;
     source: "gateway" | "channel" | "server" | "job" | "install";
-    level: "error" | "debug" | "info" | "warn" | "done";
+    level: "info" | "error" | "debug" | "warn" | "done";
     createdAt?: string | undefined;
     fileId?: string | undefined;
     line?: number | undefined;
@@ -3128,7 +5598,7 @@ export declare const LogEntrySchema: z.ZodObject<{
     message: string;
     id: string;
     source: "gateway" | "channel" | "server" | "job" | "install";
-    level: "error" | "debug" | "info" | "warn" | "done";
+    level: "info" | "error" | "debug" | "warn" | "done";
     createdAt?: string | undefined;
     fileId?: string | undefined;
     line?: number | undefined;

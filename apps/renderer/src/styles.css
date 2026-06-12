@@ -3700,6 +3700,79 @@ textarea,
   line-height: 1.45;
 }
 
+.letter-strategy-summary {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 8px;
+  background: rgba(236, 253, 245, 0.72);
+}
+
+.letter-strategy-summary span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: #134e4a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.letter-strategy-summary strong {
+  color: #0f766e;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.letter-risk-summary {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.letter-risk-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.letter-risk-summary strong {
+  color: #111827;
+  font-size: 12px;
+}
+
+.letter-risk-summary em {
+  margin-left: auto;
+  color: #475569;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.letter-risk-summary.warning {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.letter-risk-summary.blocked {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.letter-risk-summary ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .campaign-control-row {
   display: flex;
   flex-wrap: wrap;
@@ -7437,8 +7510,10 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-form-grid input,
+.letter-form-grid select,
 .letter-form-grid textarea,
 .letter-field input,
+.letter-field select,
 .letter-field textarea,
 .letter-search input,
 .letter-import-textarea {
@@ -7455,8 +7530,10 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-form-grid input:focus,
+.letter-form-grid select:focus,
 .letter-form-grid textarea:focus,
 .letter-field input:focus,
+.letter-field select:focus,
 .letter-field textarea:focus,
 .letter-search input:focus,
 .letter-import-textarea:focus {
@@ -7527,6 +7604,55 @@ button.letter-stat-card { cursor: pointer; }
 .letter-primary.compact {
   min-height: 34px;
   padding: 7px 12px;
+}
+
+.letter-assets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.letter-assets-wide {
+  grid-column: 1 / -1;
+}
+
+.letter-asset-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.letter-asset-list.columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.letter-asset-row {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.letter-asset-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.letter-asset-row span {
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .letter-drop-zone {
@@ -8471,6 +8597,11 @@ button.letter-stat-card { cursor: pointer; }
     grid-template-columns: 1fr;
   }
 
+  .letter-assets-grid,
+  .letter-asset-list.columns {
+    grid-template-columns: 1fr;
+  }
+
   .letter-detail-panel {
     position: static;
     max-height: none;
@@ -8524,6 +8655,11 @@ button.letter-stat-card { cursor: pointer; }
   .letter-two-column,
   .letter-leads-layout,
   .letter-campaign-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .letter-assets-grid,
+  .letter-asset-list.columns {
     grid-template-columns: 1fr;
   }
 

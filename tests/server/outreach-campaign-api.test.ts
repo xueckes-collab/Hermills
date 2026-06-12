@@ -57,7 +57,7 @@ describe("outreach campaign API", () => {
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
           subject: "Contractor work light options",
-          body: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?"
+          body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
         });
       }
       return JSON.stringify({
@@ -79,7 +79,7 @@ describe("outreach campaign API", () => {
         }],
         initialEmail: {
           subject: "Work light options",
-          body: "Hi, I saw your contractor lighting channel. I can share two sample-ready work light options with MOQ and lead time. Would a short comparison help?"
+          body: "Hi, I saw your contractor lighting channel, so reliable stock likely matters before adding work-light options.\nI can share two sample-ready work light options with MOQ and lead time.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
         },
         followUps: Array.from({ length: 9 }, (_, index) => ({
           step: index + 1,
@@ -109,6 +109,7 @@ describe("outreach campaign API", () => {
     expect(createResponse.statusCode, createResponse.body).toBe(200);
     expect(createResponse.json().stats).toMatchObject({ total: 2, pending: 2, sent: 0 });
     expect(createResponse.json().researchDepth).toBe("deep");
+    expect(createResponse.json().generationMode).toBe("deep");
     expect(runtime.requests).toHaveLength(0);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
@@ -118,8 +119,12 @@ describe("outreach campaign API", () => {
     expect(generatedResponse.json().stats).toMatchObject({ generated: 2, sent: 0 });
     expect(generatedResponse.json().recipients.every((recipient: { draft?: unknown; status: string }) => recipient.status === "generated" && recipient.draft)).toBe(true);
     expect(generatedResponse.json().recipients.every((recipient: { draft?: { qualityReview?: { passed?: boolean } } }) => recipient.draft?.qualityReview?.passed === true)).toBe(true);
+    expect(generatedResponse.json().recipients.every((recipient: { draft?: { generationMode?: string; evidenceMap?: unknown; strategyMatch?: unknown; sendRiskReview?: { passed?: boolean } } }) =>
+      recipient.draft?.generationMode === "deep" && recipient.draft.evidenceMap && recipient.draft.strategyMatch && recipient.draft.sendRiskReview?.passed === true
+    )).toBe(true);
     expect(generatedResponse.json().recipients.every((recipient: { researchSummary?: { depth?: string; confidenceScore?: number } }) => recipient.researchSummary?.depth === "deep" && Number(recipient.researchSummary.confidenceScore) > 0)).toBe(true);
     expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Research depth: deep"))).toBe(true);
+    expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Outreach OS evidence and asset map"))).toBe(true);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
     const senderResponse = await server.inject({
@@ -164,6 +169,20 @@ describe("outreach campaign API", () => {
     expect(blockedApproval.statusCode).toBe(400);
     expect(blockedApproval.json().error.message).toContain("Email needs rewrite");
 
+    const blockedRiskApproval = await server.inject({
+      method: "POST",
+      url: `/api/outreach/campaigns/${campaignId}/recipients/${firstRecipient.id}/approve`,
+      headers,
+      payload: {
+        confirm: true,
+        subject: "Re: purchase order attached",
+        body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
+      }
+    });
+    expect(blockedRiskApproval.statusCode).toBe(400);
+    expect(blockedRiskApproval.json().error.message).toContain("Email send risk blocked");
+    expect(blockedRiskApproval.json().error.message).toContain("fake reply");
+
     const reviewResponse = await server.inject({
       method: "POST",
       url: `/api/outreach/campaigns/${campaignId}/recipients/${firstRecipient.id}/review`,
@@ -190,7 +209,7 @@ describe("outreach campaign API", () => {
       payload: {
         confirm: true,
         subject: "Contractor work light options",
-        body: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?"
+        body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
       }
     });
     expect(approveResponse.statusCode).toBe(200);
@@ -234,7 +253,7 @@ describe("outreach campaign API", () => {
     expect(sentMail).toMatchObject({
       to: firstRecipient.email,
       subject: "Contractor work light options",
-      text: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?\n\nBest regards\nSales team"
+      text: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
     });
     expect(String(sentMail.html)).toContain("<strong>Sales team</strong>");
     expect(String(sentMail.html)).toContain("cid:hermills-signature-logo");

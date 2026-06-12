@@ -55,7 +55,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -1963,7 +1963,7 @@ type SignatureFormDraft = {
 }
 
 type OutreachMode = 'single' | 'campaign'
-type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'mail' | 'signature' | 'profile'
+type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'assets' | 'mail' | 'signature' | 'profile'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
 type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
@@ -2091,10 +2091,14 @@ function LetterGenerationTrace({
 
 function LetterQualitySummary({
   review,
+  strategy,
+  riskReview,
   stale,
   copy,
 }: {
   review?: OutreachEmailQualityReview
+  strategy?: OutreachStrategyMatch
+  riskReview?: OutreachSendRiskReview
   stale?: boolean
   copy: UiCopy
 }) {
@@ -2125,6 +2129,27 @@ function LetterQualitySummary({
         ))}
       </div>
       {review.summary ? <p>{review.summary}</p> : null}
+      {strategy ? (
+        <div className="letter-strategy-summary">
+          <span><strong>切入点</strong>{strategy.buyerPain || '未记录'}</span>
+          <span><strong>匹配 USP</strong>{strategy.selectedUsp || '未记录'}</span>
+          <span><strong>CTA 资产</strong>{strategy.microOffer || '未记录'}</span>
+        </div>
+      ) : null}
+      {riskReview ? (
+        <div className={`letter-risk-summary ${riskReview.level}`}>
+          <div>
+            <ShieldCheck size={14} />
+            <strong>发送风控 {riskReview.score}/100</strong>
+            <em>{riskReview.level === 'blocked' ? '阻断' : riskReview.level === 'warning' ? '警告' : '通过'}</em>
+          </div>
+          {riskReview.issues.length ? (
+            <ul>
+              {riskReview.issues.slice(0, 4).map((issue) => <li key={`${issue.id}-${issue.message}`}>{issue.message}</li>)}
+            </ul>
+          ) : <p>没有发现发送阻断风险。</p>}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2197,6 +2222,12 @@ function DevelopmentLetterPage({
   const [senderTestRecipient, setSenderTestRecipient] = useState('')
   const [emailSignature, setEmailSignature] = useState<OutreachEmailSignature>()
   const [signatureDraft, setSignatureDraft] = useState<SignatureFormDraft>(() => emptySignatureDraft(companyProfile))
+  const [buyerPersonas, setBuyerPersonas] = useState<OutreachBuyerPersona[]>([])
+  const [uspAssets, setUspAssets] = useState<OutreachUspCandidate[]>([])
+  const [ctaAssets, setCtaAssets] = useState<OutreachCtaAsset[]>([])
+  const [personaDraft, setPersonaDraft] = useState({ name: '', companyType: '', buyerRoles: '', painPoints: '' })
+  const [uspDraft, setUspDraft] = useState({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
+  const [ctaDraft, setCtaDraft] = useState({ name: '', type: 'sample_options' as OutreachCtaAsset['type'], description: '', assetText: '' })
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2245,10 +2276,14 @@ function DevelopmentLetterPage({
   const campaignSentCount = selectedCampaign?.stats.sent ?? 0
   const visibleResearchDepth = selectedCampaign?.researchDepth ?? campaignResearchDepth
   const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
+  const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
+  const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
   const singleDraftChanged = selectedWorkflowEmail
     ? selectedWorkflowEmail.subject !== draftSubject || selectedWorkflowEmail.body !== draftBody
     : Boolean(draft && (draft.subject !== draftSubject || draft.body !== draftBody))
   const campaignQualityReview = selectedCampaignRecipient?.draft?.qualityReview
+  const campaignStrategyMatch = selectedCampaignRecipient?.draft?.strategyMatch
+  const campaignRiskReview = selectedCampaignRecipient?.draft?.sendRiskReview
   const campaignDraftChanged = Boolean(selectedCampaignRecipient?.draft && (
     selectedCampaignRecipient.draft.subject !== campaignDraftSubject ||
     selectedCampaignRecipient.draft.body !== campaignDraftBody
@@ -2268,9 +2303,11 @@ function DevelopmentLetterPage({
         ? copy.devLetter.quality.saveBeforeReview
         : !activeQualityReview?.passed
           ? copy.devLetter.quality.blockedSend
-          : !senderDeliveryReady
-            ? copy.devLetter.warnings.senderNotConfirmed
-            : ''
+          : activeRiskReview?.level === 'blocked'
+            ? (activeRiskReview.issues.find((issue) => issue.blocking)?.message ?? '发送风控未通过')
+            : !senderDeliveryReady
+              ? copy.devLetter.warnings.senderNotConfirmed
+              : ''
   const canSendSingleDraft = !singleSendBlocker && busy !== 'send'
   const letterStats = useMemo(() => ({
     total: leads.length,
@@ -2374,6 +2411,26 @@ function DevelopmentLetterPage({
       cancelled = true
     }
   }, [companyProfile.name, companyProfile.website])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.outreachBuyerPersonas(), api.outreachUsps(), api.outreachCtaAssets()])
+      .then(([personas, usps, ctas]) => {
+        if (cancelled) return
+        setBuyerPersonas(personas)
+        setUspAssets(usps)
+        setCtaAssets(ctas)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setBuyerPersonas([])
+        setUspAssets([])
+        setCtaAssets([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedSenderId && senderAccounts[0]) setSelectedSenderId(senderAccounts[0].id)
@@ -2525,6 +2582,94 @@ function DevelopmentLetterPage({
     setFollowUps(await api.outreachFollowUps(campaignId))
   }
 
+  function splitAssetLines(value: string) {
+    return value.split(/[\n;；、,，]/).map((item) => item.trim()).filter(Boolean)
+  }
+
+  async function saveBuyerPersonaAsset() {
+    if (!personaDraft.name.trim()) {
+      setError('请先填写画像名称。')
+      return
+    }
+    setBusy('assetPersona')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachBuyerPersona({
+        name: personaDraft.name.trim(),
+        companyType: personaDraft.companyType.trim(),
+        buyerRoles: splitAssetLines(personaDraft.buyerRoles),
+        painPoints: splitAssetLines(personaDraft.painPoints),
+        successMetrics: [],
+        objections: [],
+        triggerEvents: [],
+        evidenceNotes: [],
+        enabled: true,
+      })
+      setBuyerPersonas([saved, ...buyerPersonas])
+      setPersonaDraft({ name: '', companyType: '', buyerRoles: '', painPoints: '' })
+      setNotice('买家画像已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveUspAsset() {
+    if (!uspDraft.headline.trim()) {
+      setError('请先填写 USP 标题。')
+      return
+    }
+    setBusy('assetUsp')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachUsp({
+        category: uspDraft.category.trim() || 'Strategic value',
+        headline: uspDraft.headline.trim(),
+        buyerAngle: uspDraft.buyerAngle.trim(),
+        proof: uspDraft.proof.trim(),
+        proofLevel: uspDraft.proof.trim() ? 'profile-derived' : 'needs-proof',
+        assetIds: [],
+        enabled: true,
+      })
+      setUspAssets([saved, ...uspAssets])
+      setUspDraft({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
+      setNotice('USP 已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveCtaAsset() {
+    if (!ctaDraft.name.trim()) {
+      setError('请先填写 CTA 资产名称。')
+      return
+    }
+    setBusy('assetCta')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachCtaAsset({
+        name: ctaDraft.name.trim(),
+        type: ctaDraft.type,
+        description: ctaDraft.description.trim(),
+        assetText: ctaDraft.assetText.trim(),
+        enabled: true,
+      })
+      setCtaAssets([saved, ...ctaAssets])
+      setCtaDraft({ name: '', type: 'sample_options', description: '', assetText: '' })
+      setNotice('CTA 资产已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   function toggleCampaignLead(leadId: string) {
     setSelectedCampaignLeadIds((current) => current.includes(leadId)
       ? current.filter((id) => id !== leadId)
@@ -2562,6 +2707,7 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
+        generationMode: campaignResearchDepth === 'deep' ? 'deep' : 'lite',
         researchDepth: campaignResearchDepth,
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
@@ -2879,6 +3025,7 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
+        generationMode: 'deep',
         researchDepth: 'deep',
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
@@ -2990,6 +3137,7 @@ function DevelopmentLetterPage({
         leadId: lead.id,
         language,
         tone,
+        generationMode: 'lite',
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel
       })
@@ -3028,6 +3176,7 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
+        generationMode: quickResearchDepth === 'deep' ? 'deep' : 'lite',
         researchDepth: quickResearchDepth
       })
       const nextLeads = await api.outreachLeads()
@@ -3062,7 +3211,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const next = await api.updateOutreachDraft(activeDraftId, { subject: draftSubject, body: draftBody, language, tone })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError, qualityReview: next.qualityReview })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError, qualityReview: next.qualityReview, sendRiskReview: next.sendRiskReview })
       else setDraft(next)
       setNotice(copy.devLetter.status.draftSaved)
       return next
@@ -3116,7 +3265,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const rewritten = await api.rewriteOutreachDraft(draftId, { providerId: defaultProvider?.id, model: defaultProvider?.defaultModel })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview, strategyMatch: rewritten.strategyMatch, sendRiskReview: rewritten.sendRiskReview })
       else setDraft(rewritten)
       setDraftSubject(rewritten.subject)
       setDraftBody(rewritten.body)
@@ -3415,7 +3564,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const sent = await api.sendOutreachDraft(draftId, { senderAccountId: sender.id, to })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError, sendRiskReview: sent.sendRiskReview })
       else setDraft(sent)
       setLeads(await api.outreachLeads())
       setNotice(copy.devLetter.status.sent)
@@ -3431,6 +3580,7 @@ function DevelopmentLetterPage({
     { id: 'leads', label: '客户', icon: Users },
     { id: 'compose', label: '写信', icon: Pencil },
     { id: 'automation', label: '批量任务', icon: Zap },
+    { id: 'assets', label: '销售资产', icon: ShieldCheck },
     { id: 'mail', label: '邮箱', icon: Settings },
     { id: 'signature', label: '签名Logo', icon: ImageIcon },
     { id: 'profile', label: '公司资料', icon: UserRound },
@@ -3444,11 +3594,13 @@ function DevelopmentLetterPage({
         ? '输入客户网站和邮箱，生成可审核的开发信'
         : letterView === 'automation'
           ? '批量生成开发信、逐封审核和跟进客户'
-          : letterView === 'mail'
-            ? '配置 SMTP、API 通道和外发测试'
-            : letterView === 'signature'
-              ? '保存邮件签名和 Logo，之后所有开发信自动使用'
-              : '维护 AI 写信时使用的公司资料'
+          : letterView === 'assets'
+            ? '维护买家画像、USP 和 CTA 资产，让每封邮件有证据、有卖点、有下一步'
+            : letterView === 'mail'
+              ? '配置 SMTP、API 通道和外发测试'
+              : letterView === 'signature'
+                ? '保存邮件签名和 Logo，之后所有开发信自动使用'
+                : '维护 AI 写信时使用的公司资料'
 
   return (
     <div className="letter-app-shell">
@@ -3745,7 +3897,7 @@ function DevelopmentLetterPage({
                       <>
                         <label className="letter-field">邮件主题<input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></label>
                         <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></label>
-                        <LetterQualitySummary review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
+                        <LetterQualitySummary review={activeQualityReview} strategy={activeStrategyMatch} riskReview={activeRiskReview} stale={singleDraftChanged} copy={copy} />
                         <div className="letter-action-row wrap letter-sticky-actions">
                           <button className="letter-primary" type="button" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</button>
                           <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
@@ -3869,7 +4021,7 @@ function DevelopmentLetterPage({
                           </div>
                           <label className="letter-field">邮件主题<input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></label>
                           <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></label>
-                          <LetterQualitySummary review={campaignQualityReview} stale={campaignDraftChanged} copy={copy} />
+                          <LetterQualitySummary review={campaignQualityReview} strategy={campaignStrategyMatch} riskReview={campaignRiskReview} stale={campaignDraftChanged} copy={copy} />
                           <div className="letter-action-row wrap">
                             <button className="letter-secondary" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>{busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
                             <button className="letter-secondary" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>{busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
@@ -3890,6 +4042,108 @@ function DevelopmentLetterPage({
                 )}
               </section>
             ) : null}
+          </div>
+        ) : null}
+
+        {letterView === 'assets' ? (
+          <div className="letter-view">
+            <section className="letter-stats-grid compact">
+              {[
+                { label: '买家画像', value: buyerPersonas.length, icon: Users, tone: 'blue' },
+                { label: 'USP 库', value: uspAssets.length, icon: ShieldCheck, tone: 'green' },
+                { label: 'CTA 资产', value: ctaAssets.length, icon: FileText, tone: 'amber' },
+                { label: '公司资料', value: companyMaterials.length, icon: FolderOpen, tone: 'violet' },
+              ].map((stat) => {
+                const Icon = stat.icon
+                return <div className="letter-stat-card" key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong><i className={stat.tone}><Icon size={20} /></i></div>
+              })}
+            </section>
+
+            <section className="letter-assets-grid">
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Users size={18} /> 买家画像库</h2>
+                    <p>提前保存常见买家角色，AI 写信时会用它判断买家痛点和采购触发点。</p>
+                  </div>
+                </div>
+                <div className="letter-form-grid">
+                  <label>画像名称<input value={personaDraft.name} onChange={(event) => setPersonaDraft({ ...personaDraft, name: event.target.value })} placeholder="Flooring importer / Contractor distributor" /></label>
+                  <label>公司类型<input value={personaDraft.companyType} onChange={(event) => setPersonaDraft({ ...personaDraft, companyType: event.target.value })} placeholder="importer, distributor, retailer..." /></label>
+                  <label className="letter-form-span">买家角色<input value={personaDraft.buyerRoles} onChange={(event) => setPersonaDraft({ ...personaDraft, buyerRoles: event.target.value })} placeholder="采购经理, category manager, owner" /></label>
+                  <label className="letter-form-span">典型痛点<textarea value={personaDraft.painPoints} onChange={(event) => setPersonaDraft({ ...personaDraft, painPoints: event.target.value })} placeholder="lead time risk; certification proof; sample comparison" /></label>
+                </div>
+                <button className="letter-primary full" type="button" disabled={busy === 'assetPersona'} onClick={saveBuyerPersonaAsset}>保存买家画像</button>
+                <div className="letter-asset-list">
+                  {buyerPersonas.length ? buyerPersonas.slice(0, 6).map((persona) => (
+                    <article className="letter-asset-row" key={persona.id}>
+                      <strong>{persona.name}</strong>
+                      <span>{persona.companyType || persona.buyerRoles.join(', ') || '未补充类型'}</span>
+                    </article>
+                  )) : <div className="letter-empty small">还没有买家画像。先保存一个常见客户类型。</div>}
+                </div>
+              </div>
+
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><ShieldCheck size={18} /> USP 库</h2>
+                    <p>不要让 AI 瞎编卖点。把真实 USP、证据和适用场景放在这里。</p>
+                  </div>
+                </div>
+                <div className="letter-form-grid">
+                  <label className="letter-form-span">USP 标题<input value={uspDraft.headline} onChange={(event) => setUspDraft({ ...uspDraft, headline: event.target.value })} placeholder="Sample-ready SPC flooring options" /></label>
+                  <label>分类<input value={uspDraft.category} onChange={(event) => setUspDraft({ ...uspDraft, category: event.target.value })} /></label>
+                  <label className="letter-form-span">买家角度<textarea value={uspDraft.buyerAngle} onChange={(event) => setUspDraft({ ...uspDraft, buyerAngle: event.target.value })} placeholder="Why this matters to buyer sourcing risk, KPI or channel..." /></label>
+                  <label className="letter-form-span">可证明依据<textarea value={uspDraft.proof} onChange={(event) => setUspDraft({ ...uspDraft, proof: event.target.value })} placeholder="Certification, sample policy, MOQ, lead time, catalog, case..." /></label>
+                </div>
+                <button className="letter-primary full" type="button" disabled={busy === 'assetUsp'} onClick={saveUspAsset}>保存 USP</button>
+                <div className="letter-asset-list">
+                  {uspAssets.length ? uspAssets.slice(0, 6).map((usp) => (
+                    <article className="letter-asset-row" key={usp.id}>
+                      <strong>{usp.headline}</strong>
+                      <span>{usp.buyerAngle || usp.proof || usp.category}</span>
+                    </article>
+                  )) : <div className="letter-empty small">还没有 USP。保存后写信会优先匹配真实卖点。</div>}
+                </div>
+              </div>
+
+              <div className="letter-panel letter-assets-wide">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><FileText size={18} /> CTA 资产库</h2>
+                    <p>低摩擦 CTA 必须真的能交付。比如样品选项、MOQ/交期表、认证包、规格对比。</p>
+                  </div>
+                </div>
+                <div className="letter-form-grid">
+                  <label>资产名称<input value={ctaDraft.name} onChange={(event) => setCtaDraft({ ...ctaDraft, name: event.target.value })} placeholder="2-3 sample-ready options" /></label>
+                  <label>资产类型
+                    <select value={ctaDraft.type} onChange={(event) => setCtaDraft({ ...ctaDraft, type: event.target.value as OutreachCtaAsset['type'] })}>
+                      <option value="sample_options">样品/选项包</option>
+                      <option value="moq_leadtime_sheet">MOQ/交期表</option>
+                      <option value="spec_comparison">规格对比</option>
+                      <option value="certification_pack">认证/证明包</option>
+                      <option value="catalog">产品目录</option>
+                      <option value="case_study">案例</option>
+                      <option value="packaging_options">包装选项</option>
+                      <option value="quote_range">报价范围</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </label>
+                  <label className="letter-form-span">描述<input value={ctaDraft.description} onChange={(event) => setCtaDraft({ ...ctaDraft, description: event.target.value })} placeholder="What the buyer receives if they reply" /></label>
+                  <label className="letter-form-span">资产内容<textarea value={ctaDraft.assetText} onChange={(event) => setCtaDraft({ ...ctaDraft, assetText: event.target.value })} placeholder="可交付内容、包含哪些信息、适合哪些客户..." /></label>
+                </div>
+                <button className="letter-primary full" type="button" disabled={busy === 'assetCta'} onClick={saveCtaAsset}>保存 CTA 资产</button>
+                <div className="letter-asset-list columns">
+                  {ctaAssets.length ? ctaAssets.slice(0, 8).map((asset) => (
+                    <article className="letter-asset-row" key={asset.id}>
+                      <strong>{asset.name}</strong>
+                      <span>{asset.type.replace(/_/g, ' ')} · {asset.description || '未补充描述'}</span>
+                    </article>
+                  )) : <div className="letter-empty small">还没有 CTA 资产。没有资产时，风控会阻止虚假的资料包承诺。</div>}
+                </div>
+              </div>
+            </section>
           </div>
         ) : null}
 

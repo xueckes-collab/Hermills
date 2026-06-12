@@ -35,7 +35,9 @@ import {
   previewSecret,
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
+  OutreachBuyerPersonaSchema,
   OutreachResearchDepthSchema,
+  OutreachCtaAssetSchema,
   OutreachSendChannelSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
@@ -43,10 +45,16 @@ import {
   OutreachEmailSignatureLogoSchema,
   OutreachEmailSignatureSchema,
   OutreachEmailQualityReviewSchema,
+  OutreachEvidenceItemSchema,
+  OutreachEvidenceMapSchema,
   OutreachFeedbackSchema,
   OutreachFollowUpJobSchema,
+  OutreachGenerationModeSchema,
   OutreachLeadSchema,
+  OutreachSendRiskReviewSchema,
   OutreachSenderAccountSchema,
+  OutreachStrategyMatchSchema,
+  OutreachUspCandidateSchema,
   OutreachWorkflowSchema,
   ProviderCredentialSchema,
   RuntimeStatusSchema,
@@ -69,14 +77,22 @@ import {
   type OnboardingUpdate,
   type OutreachCampaign,
   type OutreachCampaignRecipient,
+  type OutreachBuyerPersona,
+  type OutreachCtaAsset,
   type OutreachDraft,
   type OutreachEmailQualityReview,
   type OutreachEmailSignature,
+  type OutreachEvidenceItem,
+  type OutreachEvidenceMap,
   type OutreachFeedback,
   type OutreachFollowUpJob,
+  type OutreachGenerationMode,
   type OutreachLead,
   type OutreachResearchDepth,
+  type OutreachSendRiskReview,
   type OutreachSenderAccount,
+  type OutreachStrategyMatch,
+  type OutreachUspCandidate,
   type OutreachWorkflow,
   type ProviderCredential,
   type RuntimeStatus
@@ -419,12 +435,46 @@ const DeleteOutreachLeadsBody = z.object({
   profileId: z.string().min(1).optional()
 }).strict();
 
+const UpsertOutreachBuyerPersonaBody = OutreachBuyerPersonaSchema.omit({
+  id: true,
+  profileId: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  profileId: z.string().min(1).optional()
+}).strict();
+
+const UpdateOutreachBuyerPersonaBody = UpsertOutreachBuyerPersonaBody.partial().strict();
+
+const UpsertOutreachUspBody = OutreachUspCandidateSchema.omit({
+  id: true,
+  profileId: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  profileId: z.string().min(1).optional()
+}).strict();
+
+const UpdateOutreachUspBody = UpsertOutreachUspBody.partial().strict();
+
+const UpsertOutreachCtaAssetBody = OutreachCtaAssetSchema.omit({
+  id: true,
+  profileId: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  profileId: z.string().min(1).optional()
+}).strict();
+
+const UpdateOutreachCtaAssetBody = UpsertOutreachCtaAssetBody.partial().strict();
+
 const GenerateOutreachDraftBody = z.object({
   profileId: z.string().min(1).optional(),
   leadId: z.string().min(1).optional(),
   lead: OutreachLeadInputBody.optional(),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  generationMode: OutreachGenerationModeSchema.default("lite"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional()
 }).strict().refine((body) => Boolean(body.leadId || body.lead), {
@@ -437,6 +487,7 @@ const AutoOutreachDraftBody = z.object({
   email: z.string().trim().min(3).max(320),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
   researchDepth: OutreachResearchDepthSchema.default("standard"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional()
@@ -536,6 +587,7 @@ const CreateOutreachCampaignBody = z.object({
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
   researchDepth: OutreachResearchDepthSchema.default("standard"),
   rateLimit: OutreachCampaignRateLimitBody.optional()
 }).strict();
@@ -618,6 +670,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const onboarding = new OnboardingRepository(options.baseDir);
   const companyProfile = new CompanyProfileRepository(options.baseDir);
   const outreachLeads = new OutreachLeadRepository(options.baseDir);
+  const outreachAssets = new OutreachAssetRepository(options.baseDir);
   const outreachDrafts = new OutreachDraftRepository(options.baseDir);
   const outreachSenders = new OutreachSenderRepository(options.baseDir, fetchImpl);
   const outreachEmailSignature = new OutreachEmailSignatureRepository(options.baseDir);
@@ -988,6 +1041,63 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     await outreachLeads.remove(id);
     return reply.code(204).send();
   });
+  server.get("/api/outreach/personas", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachAssets.listPersonas(await resolveProfileId(query.profileId));
+  });
+  server.post("/api/outreach/personas", async (request) => {
+    const body = UpsertOutreachBuyerPersonaBody.parse(request.body ?? {});
+    return outreachAssets.createPersona({ ...body, profileId: await resolveProfileId(body.profileId) });
+  });
+  server.put("/api/outreach/personas/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = UpdateOutreachBuyerPersonaBody.parse(request.body ?? {});
+    return outreachAssets.updatePersona(id, await resolveProfileId(body.profileId), body);
+  });
+  server.delete("/api/outreach/personas/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    await outreachAssets.deletePersona(id, await resolveProfileId(query.profileId));
+    return reply.code(204).send();
+  });
+  server.get("/api/outreach/usps", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachAssets.listUsps(await resolveProfileId(query.profileId));
+  });
+  server.post("/api/outreach/usps", async (request) => {
+    const body = UpsertOutreachUspBody.parse(request.body ?? {});
+    return outreachAssets.createUsp({ ...body, profileId: await resolveProfileId(body.profileId) });
+  });
+  server.put("/api/outreach/usps/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = UpdateOutreachUspBody.parse(request.body ?? {});
+    return outreachAssets.updateUsp(id, await resolveProfileId(body.profileId), body);
+  });
+  server.delete("/api/outreach/usps/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    await outreachAssets.deleteUsp(id, await resolveProfileId(query.profileId));
+    return reply.code(204).send();
+  });
+  server.get("/api/outreach/cta-assets", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachAssets.listCtaAssets(await resolveProfileId(query.profileId));
+  });
+  server.post("/api/outreach/cta-assets", async (request) => {
+    const body = UpsertOutreachCtaAssetBody.parse(request.body ?? {});
+    return outreachAssets.createCtaAsset({ ...body, profileId: await resolveProfileId(body.profileId) });
+  });
+  server.put("/api/outreach/cta-assets/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = UpdateOutreachCtaAssetBody.parse(request.body ?? {});
+    return outreachAssets.updateCtaAsset(id, await resolveProfileId(body.profileId), body);
+  });
+  server.delete("/api/outreach/cta-assets/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    await outreachAssets.deleteCtaAsset(id, await resolveProfileId(query.profileId));
+    return reply.code(204).send();
+  });
   server.get("/api/outreach/drafts", async (request) => {
     const query = OutreachLeadListQuery.parse(request.query ?? {});
     return outreachDrafts.list({ profileId: await resolveProfileId(query.profileId), q: query.q });
@@ -1007,6 +1117,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       drafts: outreachDrafts
     });
     await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -1020,6 +1131,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
@@ -1037,6 +1149,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
@@ -1077,6 +1190,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       tone: body.tone,
       providerId: body.providerId,
       model: body.model,
+      generationMode: body.generationMode,
       researchDepth: body.researchDepth,
       rateLimit: body.rateLimit,
       leads
@@ -1098,6 +1212,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
@@ -1115,6 +1230,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       recipientId,
       subject: body.subject,
       body: body.body,
+      companyProfile,
+      materials,
+      assets: outreachAssets,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       campaigns: outreachCampaigns
@@ -1139,6 +1257,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
@@ -1163,6 +1282,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       senders: outreachSenders,
       campaigns: outreachCampaigns,
+      companyProfile,
+      materials,
+      assets: outreachAssets,
       emailSignature: outreachEmailSignature
     });
     await scheduleOutreachFollowUps({
@@ -1236,6 +1358,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       leads: outreachLeads,
       campaigns: outreachCampaigns,
       followUps: outreachFollowUps,
+      companyProfile,
+      materials,
+      assets: outreachAssets,
       emailSignature: outreachEmailSignature
     });
   });
@@ -1255,7 +1380,16 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     await assertActiveProfile(draft.profileId);
     const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
     const review = reviewOutreachEmail({ subject: draft.subject, body: draft.body, lead });
-    await outreachDrafts.update(id, { qualityReview: review });
+    const companyKnowledgeContext = await buildCompanyKnowledgeContext(companyProfile, materials);
+    const sendRiskReview = reviewOutreachSendRisk({
+      subject: draft.subject,
+      body: draft.body,
+      qualityReview: review,
+      lead,
+      ctaAssets: await outreachAssets.listCtaAssets(await resolveProfileId(draft.profileId)),
+      companyKnowledgeContext
+    });
+    await outreachDrafts.update(id, { qualityReview: review, sendRiskReview });
     return review;
   });
   server.post("/api/outreach/drafts/:id/rewrite", async (request) => {
@@ -1272,6 +1406,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      assets: outreachAssets,
       drafts: outreachDrafts
     });
   });
@@ -1356,7 +1491,17 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const sender = await outreachSenders.require(body.senderAccountId);
     await assertActiveProfile(sender.profileId);
     const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
-    const sent = await sendOutreachDraft({ draft, sender, lead, to: body.to, senders: outreachSenders, drafts: outreachDrafts, emailSignature: outreachEmailSignature });
+    const sent = await sendOutreachDraft({
+      draft,
+      sender,
+      lead,
+      to: body.to,
+      senders: outreachSenders,
+      drafts: outreachDrafts,
+      emailSignature: outreachEmailSignature,
+      ctaAssets: await outreachAssets.listCtaAssets(await resolveProfileId(draft.profileId)),
+      companyKnowledgeContext: await buildCompanyKnowledgeContext(companyProfile, materials)
+    });
     if (lead) await outreachLeads.update(lead.id, { status: "email_sent", currentState: "waiting_response_status", statusColor: "blue", currentRound: Math.max(lead.currentRound ?? 0, 1) });
     return sent;
   });
@@ -2371,6 +2516,12 @@ interface OutreachLeadStoreDocument {
   leads: OutreachLead[];
 }
 
+interface OutreachAssetStoreDocument {
+  personas: OutreachBuyerPersona[];
+  usps: OutreachUspCandidate[];
+  ctaAssets: OutreachCtaAsset[];
+}
+
 interface OutreachDraftStoreDocument {
   drafts: OutreachDraft[];
 }
@@ -2423,6 +2574,145 @@ function createWriteLock() {
       release();
     }
   };
+}
+
+class OutreachAssetRepository {
+  private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "outreach-assets.json");
+  }
+
+  async listPersonas(profileId: string): Promise<OutreachBuyerPersona[]> {
+    return (await this.read()).personas.filter((item) => item.profileId === profileId && item.enabled);
+  }
+
+  async createPersona(input: z.infer<typeof UpsertOutreachBuyerPersonaBody> & { profileId: string }): Promise<OutreachBuyerPersona> {
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const persona = OutreachBuyerPersonaSchema.parse({ ...input, id: randomUUID(), createdAt: now, updatedAt: now });
+      const document = await this.read();
+      document.personas.unshift(persona);
+      await this.write(document);
+      return persona;
+    });
+  }
+
+  async updatePersona(id: string, profileId: string, input: z.infer<typeof UpdateOutreachBuyerPersonaBody>): Promise<OutreachBuyerPersona> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.personas.findIndex((item) => item.id === id && item.profileId === profileId);
+      if (index === -1) throw new ClientInputError(`Buyer persona not found: ${id}`);
+      const next = OutreachBuyerPersonaSchema.parse({ ...document.personas[index], ...input, profileId, updatedAt: new Date().toISOString() });
+      document.personas[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  async deletePersona(id: string, profileId: string): Promise<void> {
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const next = document.personas.filter((item) => item.id !== id || item.profileId !== profileId);
+      if (next.length === document.personas.length) throw new ClientInputError(`Buyer persona not found: ${id}`);
+      await this.write({ ...document, personas: next });
+    });
+  }
+
+  async listUsps(profileId: string): Promise<OutreachUspCandidate[]> {
+    return (await this.read()).usps.filter((item) => item.profileId === profileId && item.enabled);
+  }
+
+  async createUsp(input: z.infer<typeof UpsertOutreachUspBody> & { profileId: string }): Promise<OutreachUspCandidate> {
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const usp = OutreachUspCandidateSchema.parse({ ...input, id: randomUUID(), createdAt: now, updatedAt: now });
+      const document = await this.read();
+      document.usps.unshift(usp);
+      await this.write(document);
+      return usp;
+    });
+  }
+
+  async updateUsp(id: string, profileId: string, input: z.infer<typeof UpdateOutreachUspBody>): Promise<OutreachUspCandidate> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.usps.findIndex((item) => item.id === id && item.profileId === profileId);
+      if (index === -1) throw new ClientInputError(`USP asset not found: ${id}`);
+      const next = OutreachUspCandidateSchema.parse({ ...document.usps[index], ...input, profileId, updatedAt: new Date().toISOString() });
+      document.usps[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  async deleteUsp(id: string, profileId: string): Promise<void> {
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const next = document.usps.filter((item) => item.id !== id || item.profileId !== profileId);
+      if (next.length === document.usps.length) throw new ClientInputError(`USP asset not found: ${id}`);
+      await this.write({ ...document, usps: next });
+    });
+  }
+
+  async listCtaAssets(profileId: string): Promise<OutreachCtaAsset[]> {
+    return (await this.read()).ctaAssets.filter((item) => item.profileId === profileId && item.enabled);
+  }
+
+  async createCtaAsset(input: z.infer<typeof UpsertOutreachCtaAssetBody> & { profileId: string }): Promise<OutreachCtaAsset> {
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const asset = OutreachCtaAssetSchema.parse({ ...input, id: randomUUID(), createdAt: now, updatedAt: now });
+      const document = await this.read();
+      document.ctaAssets.unshift(asset);
+      await this.write(document);
+      return asset;
+    });
+  }
+
+  async updateCtaAsset(id: string, profileId: string, input: z.infer<typeof UpdateOutreachCtaAssetBody>): Promise<OutreachCtaAsset> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.ctaAssets.findIndex((item) => item.id === id && item.profileId === profileId);
+      if (index === -1) throw new ClientInputError(`CTA asset not found: ${id}`);
+      const next = OutreachCtaAssetSchema.parse({ ...document.ctaAssets[index], ...input, profileId, updatedAt: new Date().toISOString() });
+      document.ctaAssets[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  async deleteCtaAsset(id: string, profileId: string): Promise<void> {
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const next = document.ctaAssets.filter((item) => item.id !== id || item.profileId !== profileId);
+      if (next.length === document.ctaAssets.length) throw new ClientInputError(`CTA asset not found: ${id}`);
+      await this.write({ ...document, ctaAssets: next });
+    });
+  }
+
+  private async read(): Promise<OutreachAssetStoreDocument> {
+    try {
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as Partial<OutreachAssetStoreDocument>;
+      return {
+        personas: Array.isArray(parsed.personas) ? parsed.personas.map((item) => OutreachBuyerPersonaSchema.parse(item)) : [],
+        usps: Array.isArray(parsed.usps) ? parsed.usps.map((item) => OutreachUspCandidateSchema.parse(item)) : [],
+        ctaAssets: Array.isArray(parsed.ctaAssets) ? parsed.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item)) : []
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { personas: [], usps: [], ctaAssets: [] };
+      throw error;
+    }
+  }
+
+  private async write(document: OutreachAssetStoreDocument): Promise<void> {
+    await writePrivateJson(this.filePath, {
+      personas: document.personas.map((item) => OutreachBuyerPersonaSchema.parse(item)),
+      usps: document.usps.map((item) => OutreachUspCandidateSchema.parse(item)),
+      ctaAssets: document.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item))
+    });
+  }
 }
 
 class OutreachLeadRepository {
@@ -2623,16 +2913,18 @@ class OutreachDraftRepository {
     });
   }
 
-  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview">>): Promise<OutreachDraft> {
+  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview" | "evidenceMap" | "strategyMatch" | "sendRiskReview">>): Promise<OutreachDraft> {
     return this.withWriteLock(async () => {
       const document = await this.read();
       const index = document.drafts.findIndex((draft) => draft.id === id);
       if (index === -1) throw new ClientInputError(`Outreach draft not found: ${id}`);
       const clearsReview = (input.subject !== undefined || input.body !== undefined) && input.qualityReview === undefined;
+      const clearsRiskReview = (input.subject !== undefined || input.body !== undefined) && input.sendRiskReview === undefined;
       const next = OutreachDraftSchema.parse({
         ...document.drafts[index],
         ...input,
         qualityReview: clearsReview ? undefined : input.qualityReview ?? document.drafts[index].qualityReview,
+        sendRiskReview: clearsRiskReview ? undefined : input.sendRiskReview ?? document.drafts[index].sendRiskReview,
         updatedAt: new Date().toISOString()
       });
       document.drafts[index] = next;
@@ -2797,6 +3089,7 @@ class OutreachCampaignRepository {
     tone: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     rateLimit?: z.infer<typeof OutreachCampaignRateLimitBody>;
     researchDepth?: OutreachResearchDepth;
     leads: OutreachLead[];
@@ -2835,6 +3128,7 @@ class OutreachCampaignRepository {
         tone: input.tone,
         providerId: input.providerId,
         model: input.model,
+        generationMode: input.generationMode ?? "deep",
         researchDepth: input.researchDepth ?? "standard",
         rateLimit: input.rateLimit ?? {},
         status: "draft",
@@ -3698,6 +3992,15 @@ interface OutreachGenerationBrief {
   missingEvidence: string[];
 }
 
+interface OutreachOsContext {
+  mode: OutreachGenerationMode;
+  evidenceMap: OutreachEvidenceMap;
+  strategyMatch: OutreachStrategyMatch;
+  personas: OutreachBuyerPersona[];
+  usps: OutreachUspCandidate[];
+  ctaAssets: OutreachCtaAsset[];
+}
+
 interface PolishedOutreachDraft {
   subject: string;
   body: string;
@@ -4529,7 +4832,7 @@ function buildOutreachGenerationBrief(input: {
   const facts = extractCompanyKnowledgeFacts(input.companyKnowledgeContext);
   const product = facts.mainProducts[0] || input.lead.need || "this product category";
   const buyerSegment = input.research?.buyerType || input.lead.industry || "Potential B2B buyer";
-  const buyerReason = strongestResearchSignal(input.research) || input.lead.need || input.lead.notes || `appears relevant to ${product}`;
+  const buyerReason = strongestResearchSignal(input.research) || input.lead.need || input.lead.notes || `appears to be reviewing ${product}`;
   const likelyPain = input.research?.painSignals[0]
     ?? input.research?.inferredNeed
     ?? input.lead.need
@@ -4547,6 +4850,221 @@ function buildOutreachGenerationBrief(input: {
     microOffer: selectMicroOffer({ facts, likelyPain, product }),
     missingEvidence: missingOutreachEvidence(facts)
   };
+}
+
+function buildOutreachOsContext(input: {
+  mode: OutreachGenerationMode;
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  companyKnowledgeContext: string;
+  personas: OutreachBuyerPersona[];
+  usps: OutreachUspCandidate[];
+  ctaAssets: OutreachCtaAsset[];
+  brief: OutreachGenerationBrief;
+}): OutreachOsContext {
+  const evidenceMap = buildOutreachEvidenceMap(input);
+  const strategyMatch = buildOutreachStrategyMatch({
+    ...input,
+    evidenceMap
+  });
+  return {
+    mode: input.mode,
+    evidenceMap,
+    strategyMatch,
+    personas: input.personas,
+    usps: input.usps,
+    ctaAssets: input.ctaAssets
+  };
+}
+
+function buildOutreachEvidenceMap(input: {
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  companyKnowledgeContext: string;
+  brief: OutreachGenerationBrief;
+}): OutreachEvidenceMap {
+  const facts = extractCompanyKnowledgeFacts(input.companyKnowledgeContext);
+  const verified: OutreachEvidenceItem[] = [];
+  const inferred: OutreachEvidenceItem[] = [];
+  const generic: OutreachEvidenceItem[] = [];
+  const prohibited: OutreachEvidenceItem[] = [];
+  const addEvidence = (
+    bucket: OutreachEvidenceItem[],
+    level: OutreachEvidenceItem["level"],
+    label: string,
+    value: string | undefined,
+    source: OutreachEvidenceItem["source"],
+    sourceUrl?: string,
+    snippet = ""
+  ) => {
+    const clean = value?.trim();
+    if (!clean) return;
+    bucket.push(OutreachEvidenceItemSchema.parse({
+      id: stableEvidenceId(label, clean),
+      level,
+      label,
+      value: truncatePlain(clean, 800),
+      source,
+      sourceUrl,
+      snippet: truncatePlain(snippet, 1000)
+    }));
+  };
+  addEvidence(verified, "verified", "Lead company", input.lead.companyName, "lead", input.lead.website);
+  addEvidence(verified, "verified", "Lead website", input.lead.website, "lead", input.lead.website);
+  addEvidence(verified, "verified", "Lead industry", input.lead.industry, "lead", input.lead.website);
+  addEvidence(verified, "verified", "Lead need", input.lead.need, "lead", input.lead.website);
+  addEvidence(verified, "verified", "Lead notes", input.lead.notes, "lead", input.lead.website);
+  for (const item of input.research?.evidence ?? []) {
+    addEvidence(verified, "verified", item.label, item.value, "website", item.sourceUrl, item.snippet);
+  }
+  for (const signal of input.research?.productSignals ?? []) addEvidence(verified, "verified", "Product signal", signal, "website", input.research?.website);
+  for (const signal of input.research?.buyingSignals ?? []) addEvidence(verified, "verified", "Buying signal", signal, "website", input.research?.website);
+  for (const signal of input.research?.painSignals ?? []) addEvidence(inferred, "inferred", "Pain signal", signal, "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Buyer type", input.research?.buyerType || input.brief.buyerSegment, "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Likely need", input.research?.inferredNeed || input.brief.likelyPain, "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Recommended angle", input.research?.recommendedAngle || input.brief.procurementTrigger, "model", input.research?.website);
+  for (const product of facts.mainProducts) addEvidence(verified, "verified", "Seller product", product, "company-profile");
+  for (const certification of facts.certifications) addEvidence(verified, "verified", "Seller certification", certification, "company-profile");
+  for (const claim of unsupportedOutreachClaims(input.lead, input.research)) {
+    addEvidence(prohibited, "prohibited", "Unsupported claim", claim, "model", input.lead.website);
+  }
+  if (!verified.length && !inferred.length) {
+    addEvidence(generic, "generic", "Generic sourcing context", "Teams sourcing this category often need a low-friction supplier-fit check.", "model");
+  }
+  const missingFields = [
+    facts.mainProducts.length ? "" : "seller product category",
+    input.lead.website || input.research?.website ? "" : "buyer website",
+    input.lead.email ? "" : "buyer email",
+    verified.some((item) => item.source === "website") ? "" : "verified buyer website evidence",
+    facts.certifications.length || facts.shippingTerms.length ? "" : "seller proof assets"
+  ].filter(Boolean);
+  return OutreachEvidenceMapSchema.parse({
+    status: missingFields.length >= 3 ? "need_more_data" : "success",
+    minimumDataAvailable: Boolean((facts.mainProducts.length || input.lead.need) && (input.research?.buyerType || input.lead.industry || input.lead.website)),
+    verifiedFacts: verified.slice(0, 24),
+    inferredInsights: inferred.slice(0, 24),
+    genericContext: generic.slice(0, 12),
+    prohibitedClaims: prohibited.slice(0, 12),
+    missingFields,
+    createdAt: new Date().toISOString()
+  });
+}
+
+function buildOutreachStrategyMatch(input: {
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  companyKnowledgeContext: string;
+  personas: OutreachBuyerPersona[];
+  usps: OutreachUspCandidate[];
+  ctaAssets: OutreachCtaAsset[];
+  brief: OutreachGenerationBrief;
+  evidenceMap: OutreachEvidenceMap;
+}): OutreachStrategyMatch {
+  const persona = selectOutreachPersona(input.personas, input.lead, input.research);
+  const usp = selectOutreachUspAsset(input.usps, input.brief);
+  const selectedUsp = usp?.headline || input.brief.selectedUsp.headline;
+  const microOffer = input.brief.microOffer;
+  const desiredAssetType = inferCtaAssetType(`${selectedUsp} ${microOffer}`);
+  const ctaAsset = input.ctaAssets.find((asset) => asset.type === desiredAssetType) ?? input.ctaAssets[0];
+  const evidenceIds = [
+    ...input.evidenceMap.verifiedFacts,
+    ...input.evidenceMap.inferredInsights
+  ].slice(0, 6).map((item) => item.id);
+  const warnings = [
+    input.evidenceMap.status === "need_more_data" ? `Missing data: ${input.evidenceMap.missingFields.join(", ")}` : "",
+    input.usps.length ? "" : "No saved USP bank item; using company profile fallback.",
+    input.ctaAssets.length ? "" : "No saved CTA asset; CTA must stay conservative or use profile-derived proof.",
+    input.brief.missingEvidence.length ? `Proof still thin: ${input.brief.missingEvidence.join(", ")}` : ""
+  ].filter(Boolean);
+  return OutreachStrategyMatchSchema.parse({
+    personaId: persona?.id,
+    uspId: usp?.id,
+    ctaAssetId: ctaAsset?.id,
+    buyerPain: input.brief.likelyPain,
+    buyerImplication: input.brief.procurementTrigger,
+    selectedUsp,
+    microOffer,
+    rationale: `Match buyer signal (${input.brief.buyerReason}) to one seller value (${selectedUsp}) and one low-friction CTA (${microOffer}).`,
+    confidenceScore: Math.min(100, 40 + input.evidenceMap.verifiedFacts.length * 8 + input.evidenceMap.inferredInsights.length * 3 + (usp ? 10 : 0) + (ctaAsset ? 10 : 0)),
+    evidenceIds,
+    warnings
+  });
+}
+
+function applyOutreachOsStrategyToBrief(brief: OutreachGenerationBrief, strategy: OutreachStrategyMatch): OutreachGenerationBrief {
+  return {
+    ...brief,
+    selectedUsp: {
+      ...brief.selectedUsp,
+      headline: strategy.selectedUsp || brief.selectedUsp.headline,
+      buyerAngle: strategy.buyerImplication || brief.selectedUsp.buyerAngle
+    },
+    microOffer: strategy.microOffer || brief.microOffer
+  };
+}
+
+function formatOutreachOsContext(context: OutreachOsContext): string {
+  const evidenceLine = (item: OutreachEvidenceItem) => `${item.level.toUpperCase()} ${item.label}: ${item.value}${item.sourceUrl ? ` (${item.sourceUrl})` : ""}`;
+  const ctaAsset = context.ctaAssets.find((asset) => asset.id === context.strategyMatch.ctaAssetId);
+  const usp = context.usps.find((item) => item.id === context.strategyMatch.uspId);
+  return [
+    "--- Outreach OS evidence and asset map ---",
+    `Generation mode: ${context.mode}`,
+    "Use this section as private strategy. Do not expose framework names or reasoning.",
+    context.evidenceMap.verifiedFacts.length ? `Verified facts:\n${context.evidenceMap.verifiedFacts.slice(0, 8).map(evidenceLine).join("\n")}` : "Verified facts: none",
+    context.evidenceMap.inferredInsights.length ? `Inferred insights:\n${context.evidenceMap.inferredInsights.slice(0, 6).map(evidenceLine).join("\n")}` : "",
+    context.evidenceMap.missingFields.length ? `Missing data: ${context.evidenceMap.missingFields.join(", ")}` : "",
+    `Selected buyer pain: ${context.strategyMatch.buyerPain}`,
+    `Selected buyer implication: ${context.strategyMatch.buyerImplication}`,
+    `Selected USP: ${context.strategyMatch.selectedUsp}${usp?.proof ? ` | Proof: ${usp.proof}` : ""}`,
+    `Selected CTA: ${context.strategyMatch.microOffer}${ctaAsset ? ` | Backed by asset: ${ctaAsset.name} (${ctaAsset.type})` : " | No saved CTA asset; keep the offer conservative and profile-derived."}`,
+    context.strategyMatch.warnings.length ? `Warnings: ${context.strategyMatch.warnings.join("; ")}` : "",
+    "Rules:",
+    "- VERIFIED facts may be stated directly.",
+    "- INFERRED insights must be phrased as likely buyer patterns, not as known facts.",
+    "- GENERIC context is only allowed when evidence is thin.",
+    "- PROHIBITED claims must never appear in the email.",
+    "- The CTA must map to the selected CTA asset or to visible company-profile proof."
+  ].filter(Boolean).join("\n");
+}
+
+function stableEvidenceId(label: string, value: string): string {
+  return `ev_${createHash("sha1").update(`${label}:${value}`).digest("hex").slice(0, 12)}`;
+}
+
+function unsupportedOutreachClaims(lead: OutreachLead, research?: CustomerResearchResult): string[] {
+  const text = `${lead.notes}\n${research?.textPreview ?? ""}`;
+  const claims = [];
+  if (/exclusive supplier|official partner|guaranteed|number one|#1|best in the world/i.test(text)) {
+    claims.push("Avoid unsupported superlatives, exclusive-partner claims, or guaranteed results.");
+  }
+  return claims;
+}
+
+function selectOutreachPersona(personas: OutreachBuyerPersona[], lead: OutreachLead, research?: CustomerResearchResult): OutreachBuyerPersona | undefined {
+  const target = normalizeQualityText(`${lead.industry} ${lead.need} ${research?.buyerType ?? ""} ${research?.industry ?? ""}`);
+  return personas.find((persona) => {
+    const haystack = normalizeQualityText(`${persona.name} ${persona.companyType} ${persona.buyerRoles.join(" ")} ${persona.painPoints.join(" ")}`);
+    return haystack.split(/\s+/).some((token) => token.length > 3 && target.includes(token));
+  }) ?? personas[0];
+}
+
+function selectOutreachUspAsset(usps: OutreachUspCandidate[], brief: OutreachGenerationBrief): OutreachUspCandidate | undefined {
+  const target = normalizeQualityText(`${brief.likelyPain} ${brief.procurementTrigger} ${brief.selectedUsp.headline}`);
+  return usps.find((usp) => {
+    const haystack = normalizeQualityText(`${usp.category} ${usp.headline} ${usp.buyerAngle} ${usp.proof}`);
+    return haystack.split(/\s+/).some((token) => token.length > 3 && target.includes(token));
+  }) ?? usps[0];
+}
+
+function inferCtaAssetType(value: string): OutreachCtaAsset["type"] {
+  const text = normalizeQualityText(value);
+  if (/certification|spec|proof/.test(text)) return "certification_pack";
+  if (/moq|lead time|lead-time/.test(text)) return "moq_leadtime_sheet";
+  if (/comparison|side by side|compare/.test(text)) return "spec_comparison";
+  if (/sample|option a|option b|a\/b|2-3|matched options/.test(text)) return "sample_options";
+  if (/catalog/.test(text)) return "catalog";
+  return "custom";
 }
 
 function extractCompanyKnowledgeFacts(companyKnowledgeContext: string): {
@@ -4580,13 +5098,22 @@ function splitCompanyKnowledgeList(value: string): string[] {
 function strongestResearchSignal(research?: CustomerResearchResult): string {
   if (!research) return "";
   return [
-    research.productSignals[0],
     research.buyingSignals[0],
     research.painSignals[0],
     research.inferredNeed,
     research.recommendedAngle,
+    combinedResearchSignal(research),
+    research.productSignals[0],
     research.description
   ].find((item) => item && item.trim()) ?? "";
+}
+
+function combinedResearchSignal(research: CustomerResearchResult): string {
+  const product = research.productSignals[0];
+  const buyer = research.buyerType || research.industry;
+  if (product && buyer) return `${buyer} appears to be working around ${product}`;
+  if (product) return `their site shows interest in ${product}`;
+  return "";
 }
 
 function triggerFromBuyerSegment(segment: string): string {
@@ -4677,6 +5204,14 @@ function formatOutreachGenerationBrief(brief: OutreachGenerationBrief): string {
 }
 
 const outreachTemplatePhrases = [
+  "i am reaching out",
+  "i'm reaching out",
+  "reaching out to",
+  "just following up",
+  "touching base",
+  "hope you are doing well",
+  "hope this email finds you well",
+  "wanted to check in",
   "dear sir/madam",
   "dear sir or madam",
   "esteemed company",
@@ -4691,6 +5226,8 @@ const outreachTemplatePhrases = [
   "trusted partner",
   "win-win cooperation",
   "please kindly",
+  "best price",
+  "do not hesitate to contact",
   "do you have any need",
   "can you share your requirements",
   "we are a manufacturing service",
@@ -4712,6 +5249,77 @@ const outreachNextStepPhrases = [
   "i can send",
   "i can share",
   "want me to send"
+];
+
+const outreachMicroOfferPhrases = [
+  "2-3",
+  "two",
+  "three",
+  "a/b",
+  "option a",
+  "option b",
+  "options",
+  "matched options",
+  "sample",
+  "samples",
+  "spec",
+  "specs",
+  "certification",
+  "proof pack",
+  "moq",
+  "lead time",
+  "lead-time",
+  "comparison",
+  "side by side",
+  "table",
+  "fit sheet",
+  "checklist",
+  "short pack",
+  "small pack"
+];
+
+const outreachBuyerImplicationPhrases = [
+  "compare",
+  "review",
+  "source",
+  "sourcing",
+  "stock",
+  "reorder",
+  "replenish",
+  "replacement",
+  "launch",
+  "deadline",
+  "seasonal",
+  "compliance",
+  "certification",
+  "proof",
+  "risk",
+  "delay",
+  "lead time",
+  "lead-time",
+  "moq",
+  "margin",
+  "channel",
+  "contractor",
+  "distributor",
+  "importer",
+  "retail",
+  "assortment",
+  "category",
+  "sampling",
+  "sample-ready"
+];
+
+const genericOutreachSubjects = [
+  "quick question",
+  "just checking in",
+  "checking in",
+  "follow up",
+  "following up",
+  "hello",
+  "cooperation",
+  "business cooperation",
+  "supply"
 ];
 
 type OutreachQualityResearchContext = {
@@ -4740,37 +5348,42 @@ function reviewOutreachEmail(input: {
   const evidenceTokens = buyerEvidenceTokens(input.lead, input.research);
   const activePersonalizationTokens = evidenceTokens.length ? evidenceTokens : tokens;
   const templateHits = outreachTemplatePhrases.filter((phrase) => normalized.includes(phrase));
+  const genericSubject = genericOutreachSubjects.some((phrase) => normalizeQualityText(subject) === phrase || normalizeQualityText(subject).includes(phrase));
   const startsWithSupplierIntro = /^(we|our company|i am|this is)\b/.test(opening) && !/\b(saw|noticed|looking at|checked|read|your)\b/.test(opening);
   const openingHasSpecificEvidence = containsAny(opening, activePersonalizationTokens);
   const openingHasBuyerObservation = /\b(saw|noticed|looking at|checked|read|your website|your product|your category|your range|your store|your catalog|your channel|your market|your project|your customers)\b/.test(opening);
   const genericWebsiteOpening = /\b(saw|noticed|checked|read|looked at)\s+(your|the)\s+(website|site|company|business)\b/.test(opening) && !openingHasSpecificEvidence;
+  const hasBuyerImplication = containsAny(normalized, outreachBuyerImplicationPhrases);
+  const hasMicroOffer = containsAny(normalized, outreachMicroOfferPhrases);
+  const hasLowFrictionAsk = (normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase)))
+    && (hasMicroOffer || /\breply with\s+[abc]\b/.test(normalized));
   const buyerReasonPassed = Boolean(opening) && !startsWithSupplierIntro && (
     openingHasSpecificEvidence ||
     (!evidenceTokens.length && openingHasBuyerObservation && containsAny(opening, tokens))
   );
   const humanTonePassed = templateHits.length === 0 && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
-  const personalizedPassed = containsAny(normalized, activePersonalizationTokens) && !looksLikeMassTemplate(normalized) && !genericWebsiteOpening;
-  const nextStepPassed = normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase));
+  const personalizedPassed = containsAny(normalized, activePersonalizationTokens) && hasBuyerImplication && !looksLikeMassTemplate(normalized) && !genericWebsiteOpening && !genericSubject;
+  const nextStepPassed = hasLowFrictionAsk;
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
-  const twoSecondPassed = words <= 130 && countWords(opening) <= 32 && subject.length <= 60 && paragraphCount <= 5;
+  const twoSecondPassed = words <= 120 && countWords(opening) <= 30 && subject.length <= 55 && paragraphCount <= 5 && !genericSubject;
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
     qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? "translated sales wording"}.`),
-    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 6, personalizedPassed ? "The message uses a concrete buyer signal instead of only naming the company." : "The message could still be sent unchanged to many buyers."),
-    qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer with a simple next step." : "The message does not make the next action clear."),
-    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 130) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "The email is too long or the opening is too slow.")
+    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs a buyer signal plus a business implication, not just a name or category."),
+    qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a small comparison, options, specs, proof pack, or A/B choice."),
+    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 120) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "The email is too long, the subject is generic, or the opening is too slow.")
   ];
   const score = Math.max(0, Math.min(100, checks.reduce((sum, check) => sum + check.score, 0)));
-  const hardFailed = !buyerReasonPassed || !humanTonePassed || !nextStepPassed;
-  const passed = score >= 80 && !hardFailed;
+  const hardFailed = !buyerReasonPassed || !humanTonePassed || !personalizedPassed || !nextStepPassed || !twoSecondPassed;
+  const passed = score >= 90 && !hardFailed;
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
     buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not write only that you saw their website.",
     humanTonePassed ? "" : "Remove translated-template phrases and write like a short human business note.",
-    personalizedPassed ? "" : "Add one customer-specific product, category, channel, project, certification, or procurement detail and connect it to the offer.",
-    nextStepPassed ? "" : "End with one low-friction ask, such as sending 2-3 matched options.",
+    personalizedPassed ? "" : "Add one customer-specific product, category, channel, project, certification, or procurement detail and explain the buyer implication.",
+    nextStepPassed ? "" : "End with one low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, or an A/B choice.",
     twoSecondPassed ? "" : "Shorten to about 3 short lines: why this buyer, why relevant, what next."
   ].filter(Boolean);
   return OutreachEmailQualityReviewSchema.parse({
@@ -4794,11 +5407,17 @@ function normalizeQualityText(value: string): string {
 }
 
 function firstBusinessLine(body: string): string {
-  return body.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !/^hi\b|^hello\b|^dear\b/i.test(line.replace(/[,，].*$/, ""))) ?? body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
+  const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.find((line) => {
+    const opening = normalizeOpeningLine(line);
+    return opening && countWords(opening) > 2;
+  }) ?? lines[0] ?? "";
 }
 
 function normalizeOpeningLine(line: string): string {
-  return normalizeQualityText(line.replace(/^(hi|hello|dear)\b[^,，.!?]*[,，]?\s*/i, ""));
+  return normalizeQualityText(line
+    .replace(/^(hi|hello)[,，]\s*/i, "")
+    .replace(/^(hi|hello|dear)\s+[^,，.!?]{1,40}[,，]\s*/i, ""));
 }
 
 function buyerContextTokens(lead?: OutreachLead, research?: OutreachQualityResearchContext): string[] {
@@ -4865,6 +5484,92 @@ function assertOutreachQualityPassed(review: OutreachEmailQualityReview): void {
   if (!review.passed) throw new ClientInputError(`Email needs rewrite before sending. ${review.issues[0] ?? review.summary}`);
 }
 
+function reviewOutreachSendRisk(input: {
+  subject: string;
+  body: string;
+  qualityReview?: OutreachEmailQualityReview;
+  sender?: OutreachSenderAccount;
+  lead?: OutreachLead;
+  ctaAssets?: OutreachCtaAsset[];
+  companyKnowledgeContext?: string;
+}): OutreachSendRiskReview {
+  const issues: OutreachSendRiskReview["issues"] = [];
+  const addIssue = (id: string, severity: OutreachSendRiskReview["issues"][number]["severity"], message: string) => {
+    issues.push({ id, severity, message, blocking: severity === "block" });
+  };
+  const normalized = normalizeQualityText(`${input.subject}\n${input.body}`);
+  if (input.qualityReview && !input.qualityReview.passed) {
+    addIssue("quality_gate", "block", input.qualityReview.issues[0] ?? "Email quality review did not pass.");
+  }
+  if (/^\s*(re|fw|fwd)\s*:/i.test(input.subject) || /\b(invoice|payment overdue|urgent order|purchase order|po attached)\b/i.test(input.subject)) {
+    addIssue("misleading_subject", "block", "Subject looks like a fake reply, order, invoice, or payment thread.");
+  }
+  if (/\bguaranteed\s+(profit|result|ranking|delivery)\b|\bexclusive supplier\b|\bofficial partner\b|\b#1\b/i.test(`${input.subject}\n${input.body}`)) {
+    addIssue("unsupported_claim", "block", "Email contains unsupported proof or guarantee language.");
+  }
+  if (input.sender) {
+    if (!input.sender.enabled) addIssue("sender_disabled", "block", "Sender account is disabled.");
+    if (!input.sender.deliveryConfirmedAt) addIssue("mailbox_not_confirmed", "block", "Sender mailbox must be tested and delivery-confirmed before sending.");
+    if (!input.sender.email.includes("@")) addIssue("sender_identity", "block", "Sender email is invalid.");
+    if (!senderLooksDomainAligned(input.sender)) {
+      addIssue("domain_alignment", "warning", "Sender domain alignment could not be verified locally. Keep volume low and confirm SPF/DKIM/DMARC with the mailbox provider.");
+    }
+  } else {
+    addIssue("sender_not_checked", "info", "Sender account was not supplied for this draft risk check.");
+  }
+  const ctaType = inferCtaAssetType(`${input.subject}\n${input.body}`);
+  if (mentionsConcreteCtaAsset(normalized)) {
+    const backed = hasAvailableCtaAsset(ctaType, input.ctaAssets ?? [], input.companyKnowledgeContext ?? "");
+    if (!backed) {
+      const severity = ctaType === "certification_pack" || ctaType === "quote_range" ? "block" : "warning";
+      addIssue("cta_asset_missing", severity, `CTA mentions a concrete ${ctaType.replace(/_/g, " ")} but no matching saved asset or profile proof was found.`);
+    }
+  }
+  if (!/\bunsubscribe\b|退订|取消订阅/i.test(input.body)) {
+    addIssue("unsubscribe_missing", "warning", "No unsubscribe or opt-out sentence was found. Add one for cold outreach compliance where required.");
+  }
+  if (input.lead?.replyStatus === "unsubscribed") {
+    addIssue("lead_unsubscribed", "block", "This lead is marked unsubscribed.");
+  }
+  const blockingCount = issues.filter((issue) => issue.blocking).length;
+  const warningCount = issues.filter((issue) => issue.severity === "warning").length;
+  const score = Math.max(0, 100 - blockingCount * 45 - warningCount * 10);
+  return OutreachSendRiskReviewSchema.parse({
+    score,
+    passed: blockingCount === 0,
+    level: blockingCount ? "blocked" : warningCount ? "warning" : "pass",
+    issues,
+    checkedAt: new Date().toISOString()
+  });
+}
+
+function assertOutreachSendRiskPassed(review: OutreachSendRiskReview): void {
+  if (!review.passed) throw new ClientInputError(`Email send risk blocked: ${review.issues.find((issue) => issue.blocking)?.message ?? "Fix the send risk issues before sending."}`);
+}
+
+function mentionsConcreteCtaAsset(normalized: string): boolean {
+  return /\b(catalog|sample|samples|spec|specs|certification|proof pack|moq|lead time|lead-time|comparison|quote|pricing|price range|a\/b|option a|option b|matched options)\b/.test(normalized);
+}
+
+function hasAvailableCtaAsset(type: OutreachCtaAsset["type"], ctaAssets: OutreachCtaAsset[], companyKnowledgeContext: string): boolean {
+  if (ctaAssets.some((asset) => asset.enabled && (asset.type === type || asset.type === "custom"))) return true;
+  const context = normalizeQualityText(companyKnowledgeContext);
+  if (type === "certification_pack") return /\bcertifications?:\s*\S/.test(companyKnowledgeContext) || /certification|ce|fsc|iso|sgs|test report/.test(context);
+  if (type === "moq_leadtime_sheet") return /shipping terms|lead time|moq|delivery|logistics/.test(context);
+  if (type === "sample_options") return /main products?:\s*\S/.test(companyKnowledgeContext) || /sample|product catalog|main products/.test(context);
+  if (type === "spec_comparison") return /spec|catalog|product|technical|datasheet/.test(context);
+  if (type === "catalog") return /catalog|main products|product/.test(context);
+  return false;
+}
+
+function senderLooksDomainAligned(sender: OutreachSenderAccount): boolean {
+  const domain = sender.email.split("@")[1]?.toLowerCase() ?? "";
+  const host = sender.host?.toLowerCase() ?? "";
+  if (!domain || !host) return false;
+  if (/gmail\.com|googlemail\.com|outlook\.com|hotmail\.com|qq\.com|zoho\.com/.test(domain)) return true;
+  return host.includes(domain) || domain.split(".").slice(-2).join(".") === host.split(".").slice(-2).join(".");
+}
+
 function researchDepthPromptGuidance(depth: OutreachResearchDepth): string {
   if (depth === "quick") return "Keep analysis conservative and compact; use only the strongest website clues.";
   if (depth === "deep") return "Use the full buyer-risk, procurement-trigger, and objection model, but still avoid unsupported claims.";
@@ -4876,6 +5581,7 @@ async function generateOutreachDraft(input: {
   body: {
     language: string;
     tone: string;
+    generationMode?: OutreachGenerationMode;
     providerId?: string;
     model?: string;
   };
@@ -4884,6 +5590,7 @@ async function generateOutreachDraft(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
   customerResearchContext?: string;
 }): Promise<OutreachDraft> {
@@ -4901,7 +5608,26 @@ async function generateOutreachDraft(input: {
     lead: input.lead,
     companyKnowledgeContext
   });
-  const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, generationBrief, input.customerResearchContext);
+  const [personas, usps, ctaAssets] = await Promise.all([
+    input.assets.listPersonas(input.profileId),
+    input.assets.listUsps(input.profileId),
+    input.assets.listCtaAssets(input.profileId)
+  ]);
+  const outreachOs = buildOutreachOsContext({
+    mode: input.body.generationMode ?? "lite",
+    lead: input.lead,
+    companyKnowledgeContext,
+    personas,
+    usps,
+    ctaAssets,
+    brief: generationBrief
+  });
+  const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
+  const outreachOsContext = formatOutreachOsContext(outreachOs);
+  const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, strategicBrief, [
+    input.customerResearchContext,
+    outreachOsContext
+  ].filter(Boolean).join("\n\n"));
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
     model: input.body.model ?? providerRecord?.defaultModel,
@@ -4912,7 +5638,7 @@ async function generateOutreachDraft(input: {
   const polished = await polishOutreachDraft({
     candidate: parsed,
     lead: input.lead,
-    brief: generationBrief,
+    brief: strategicBrief,
     language: input.body.language,
     tone: input.body.tone,
     companyKnowledgeContext,
@@ -4927,11 +5653,22 @@ async function generateOutreachDraft(input: {
     body: polished.body,
     language: input.body.language,
     tone: input.body.tone,
+    generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
     model: input.body.model ?? providerRecord?.defaultModel,
     usage: estimateMessageUsage(prompt, `${polished.subject}\n${polished.body}`),
-    qualityReview: polished.qualityReview
+    qualityReview: polished.qualityReview,
+    evidenceMap: outreachOs.evidenceMap,
+    strategyMatch: outreachOs.strategyMatch,
+    sendRiskReview: reviewOutreachSendRisk({
+      subject: polished.subject,
+      body: polished.body,
+      qualityReview: polished.qualityReview,
+      lead: input.lead,
+      ctaAssets,
+      companyKnowledgeContext
+    })
   });
 }
 
@@ -4943,6 +5680,7 @@ async function generateOutreachWorkflow(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
@@ -4984,10 +5722,28 @@ async function generateOutreachWorkflow(input: {
     research,
     companyKnowledgeContext
   });
+  const [personas, usps, ctaAssets] = await Promise.all([
+    input.assets.listPersonas(input.profileId),
+    input.assets.listUsps(input.profileId),
+    input.assets.listCtaAssets(input.profileId)
+  ]);
+  const outreachOs = buildOutreachOsContext({
+    mode: input.body.generationMode ?? "deep",
+    lead,
+    research,
+    companyKnowledgeContext,
+    personas,
+    usps,
+    ctaAssets,
+    brief: generationBrief
+  });
+  const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
+  const outreachOsContext = formatOutreachOsContext(outreachOs);
   const prompt = buildOutreachWorkflowPrompt({
     lead,
     research,
-    generationBrief,
+    generationBrief: strategicBrief,
+    outreachOsContext,
     companyKnowledgeContext,
     language: input.body.language,
     tone: input.body.tone
@@ -5006,7 +5762,7 @@ async function generateOutreachWorkflow(input: {
     },
     lead,
     research,
-    brief: generationBrief,
+    brief: strategicBrief,
     language: input.body.language,
     tone: input.body.tone,
     companyKnowledgeContext,
@@ -5018,9 +5774,17 @@ async function generateOutreachWorkflow(input: {
   const polishedFollowUps = polishWorkflowFollowUps({
     followUps: generated.followUps,
     lead,
-    brief: generationBrief,
+    brief: strategicBrief,
     language: input.body.language,
     tone: input.body.tone
+  });
+  const initialSendRiskReview = reviewOutreachSendRisk({
+    subject: polishedInitial.subject,
+    body: polishedInitial.body,
+    qualityReview: initialQualityReview,
+    lead,
+    ctaAssets,
+    companyKnowledgeContext
   });
   const initialDraft = await input.drafts.create({
     profileId: input.profileId,
@@ -5029,14 +5793,26 @@ async function generateOutreachWorkflow(input: {
     body: polishedInitial.body,
     language: input.body.language,
     tone: input.body.tone,
+    generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
     model: input.body.model ?? providerRecord?.defaultModel,
     usage: estimateMessageUsage(prompt, `${polishedInitial.subject}\n${polishedInitial.body}`),
-    qualityReview: initialQualityReview
+    qualityReview: initialQualityReview,
+    evidenceMap: outreachOs.evidenceMap,
+    strategyMatch: outreachOs.strategyMatch,
+    sendRiskReview: initialSendRiskReview
   });
   const followUps = [];
   for (const email of polishedFollowUps.slice(0, 9)) {
+    const sendRiskReview = reviewOutreachSendRisk({
+      subject: email.subject,
+      body: email.body,
+      qualityReview: email.qualityReview,
+      lead,
+      ctaAssets,
+      companyKnowledgeContext
+    });
     const draft = await input.drafts.create({
       profileId: input.profileId,
       leadId: lead.id,
@@ -5044,13 +5820,17 @@ async function generateOutreachWorkflow(input: {
       body: email.body,
       language: input.body.language,
       tone: input.body.tone,
+      generationMode: outreachOs.mode,
       promptSnapshot: truncateForContext(prompt, 30_000),
       providerId: providerRecord?.id,
       model: input.body.model ?? providerRecord?.defaultModel,
       usage: estimateMessageUsage(prompt, `${email.subject}\n${email.body}`),
-      qualityReview: email.qualityReview
+      qualityReview: email.qualityReview,
+      evidenceMap: outreachOs.evidenceMap,
+      strategyMatch: outreachOs.strategyMatch,
+      sendRiskReview
     });
-    followUps.push({ ...email, draftId: draft.id });
+    followUps.push({ ...email, draftId: draft.id, evidenceMap: outreachOs.evidenceMap, strategyMatch: outreachOs.strategyMatch, sendRiskReview });
   }
   const now = new Date().toISOString();
   return input.workflows.create({
@@ -5061,12 +5841,22 @@ async function generateOutreachWorkflow(input: {
     email: input.body.email,
     language: input.body.language,
     tone: input.body.tone,
+    generationMode: outreachOs.mode,
     research: CustomerResearchSnapshotSchema.parse({ ...research, createdAt: now }),
     icps: generated.icps,
     usps: generated.usps,
-    initialEmail: { ...generated.initialEmail, subject: polishedInitial.subject, body: polishedInitial.body, draftId: initialDraft.id, qualityReview: initialQualityReview },
+    initialEmail: {
+      ...generated.initialEmail,
+      subject: polishedInitial.subject,
+      body: polishedInitial.body,
+      draftId: initialDraft.id,
+      qualityReview: initialQualityReview,
+      evidenceMap: outreachOs.evidenceMap,
+      strategyMatch: outreachOs.strategyMatch,
+      sendRiskReview: initialSendRiskReview
+    },
     followUps,
-    promptSnapshot: truncateForContext(`${prompt}\n\n--- Customer context ---\n${customerResearchContext}`, 30_000),
+    promptSnapshot: truncateForContext(`${prompt}\n\n--- Customer context ---\n${customerResearchContext}\n\n${outreachOsContext}`, 30_000),
     providerId: providerRecord?.id,
     model: input.body.model ?? providerRecord?.defaultModel,
     usage: estimateMessageUsage(prompt, replyText)
@@ -5079,6 +5869,7 @@ async function generateOutreachCampaignWorkflows(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
@@ -5116,6 +5907,7 @@ async function generateOutreachCampaignWorkflows(input: {
           email: recipient.email,
           language: campaign.language,
           tone: campaign.tone,
+          generationMode: campaign.generationMode,
           researchDepth: campaign.researchDepth,
           providerId: campaign.providerId,
           model: campaign.model
@@ -5126,6 +5918,7 @@ async function generateOutreachCampaignWorkflows(input: {
         providers: input.providers,
         companyProfile: input.companyProfile,
         materials: input.materials,
+        assets: input.assets,
         leads: input.leads,
         drafts: input.drafts,
         workflows: input.workflows,
@@ -5170,6 +5963,9 @@ async function approveOutreachCampaignRecipient(input: {
   recipientId: string;
   subject?: string;
   body?: string;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
   campaigns: OutreachCampaignRepository;
@@ -5203,7 +5999,14 @@ async function approveOutreachCampaignRecipient(input: {
     body: draft.body,
     research: workflow.research
   });
-  await input.drafts.update(draft.id, { qualityReview: review });
+  const sendRiskReview = reviewOutreachSendRisk({
+    subject: draft.subject,
+    body: draft.body,
+    qualityReview: review,
+    ctaAssets: await input.assets.listCtaAssets(detail.profileId),
+    companyKnowledgeContext: await buildCompanyKnowledgeContext(input.companyProfile, input.materials)
+  });
+  await input.drafts.update(draft.id, { qualityReview: review, sendRiskReview });
   await input.workflows.update(workflow.id, {
     initialEmail: {
       ...workflow.initialEmail,
@@ -5212,10 +6015,12 @@ async function approveOutreachCampaignRecipient(input: {
       status: draft.status,
       sentAt: draft.sentAt,
       sendError: draft.sendError,
-      qualityReview: review
+      qualityReview: review,
+      sendRiskReview
     }
   });
   assertOutreachQualityPassed(review);
+  assertOutreachSendRiskPassed(sendRiskReview);
   await input.campaigns.updateRecipient(recipient.id, {
     status: "approved",
     approvedAt: new Date().toISOString(),
@@ -5264,6 +6069,7 @@ async function rewriteOutreachCampaignRecipient(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
@@ -5285,6 +6091,7 @@ async function rewriteOutreachCampaignRecipient(input: {
     providers: input.providers,
     companyProfile: input.companyProfile,
     materials: input.materials,
+    assets: input.assets,
     drafts: input.drafts
   });
   const review = rewritten.qualityReview ?? reviewOutreachEmail({ subject: rewritten.subject, body: rewritten.body, lead, research: workflow.research });
@@ -5296,7 +6103,8 @@ async function rewriteOutreachCampaignRecipient(input: {
       status: rewritten.status,
       sentAt: rewritten.sentAt,
       sendError: rewritten.sendError,
-      qualityReview: review
+      qualityReview: review,
+      sendRiskReview: rewritten.sendRiskReview
     }
   });
   await input.campaigns.updateRecipient(recipient.id, { status: "generated", approvedAt: undefined, sendError: undefined });
@@ -5312,6 +6120,7 @@ async function rewriteOutreachDraft(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
 }): Promise<OutreachDraft> {
   await assertCompanyProfileReady(input.companyProfile);
@@ -5350,10 +6159,19 @@ async function rewriteOutreachDraft(input: {
     lead: input.lead,
     research: input.workflow?.research
   });
+  const sendRiskReview = reviewOutreachSendRisk({
+    subject: parsed.subject,
+    body: parsed.body,
+    qualityReview: review,
+    lead: input.lead,
+    ctaAssets: await input.assets.listCtaAssets(input.draft.profileId ?? ""),
+    companyKnowledgeContext
+  });
   return input.drafts.update(input.draft.id, {
     subject: parsed.subject,
     body: parsed.body,
-    qualityReview: review
+    qualityReview: review,
+    sendRiskReview
   });
 }
 
@@ -5369,14 +6187,15 @@ function buildOutreachRewritePrompt(input: {
     "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
     "Hard rules:",
-    "- Use around 3 short lines and under 130 words.",
-    "- Line 1 must tell this buyer the specific reason they are being contacted.",
+    "- Use around 3 short lines and under 120 words.",
+    "- Line 1 must tell this buyer the specific reason they are being contacted and why that clue matters.",
     "- Line 1 must include a concrete buyer evidence clue from the website, lead notes, or research summary; company name alone does not count.",
     "- Translate the evidence into a buyer implication before saying what we sell.",
-    "- Line 2 must say what we do and why it is relevant to this buyer.",
-    "- Line 3 must ask one low-friction next step, such as sending 2-3 matched options, a small comparison, or an MOQ/lead-time table.",
+    "- Line 2 must say what we do and why it is relevant to this buyer's sourcing risk, KPI, channel, procurement task, or timing.",
+    "- Line 3 must ask one low-friction micro-offer, such as 2-3 matched options, a small comparison, an MOQ/lead-time table, a certification/spec pack, or A/B choices.",
     "- Do not start with our company credentials.",
-    "- Do not use translated-template phrases, Dear Sir/Madam, esteemed company, long-term cooperation, high quality and competitive price, one-stop solution, win-win cooperation, or please kindly.",
+    "- Do not use vague CTAs like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
+    "- Do not use translated-template phrases, reaching out, hope you are doing well, Dear Sir/Madam, esteemed company, long-term cooperation, high quality and competitive price, best price, one-stop solution, win-win cooperation, or please kindly.",
     "- Do not invent proof, certifications, prices, cases, or fake familiarity.",
     "",
     "--- Current draft ---",
@@ -5490,12 +6309,13 @@ function buildOutreachRepairPrompt(input: {
     "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
     "Repair rules:",
-    "- Keep the body around 3 short lines and under 130 words.",
-    "- First business line must say why this specific buyer should care.",
+    "- Keep the body around 3 short lines and under 120 words.",
+    "- First business line must say why this specific buyer should care and what the business implication is.",
     "- First business line must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
     "- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.",
     "- Use exactly one buyer-relevant USP from the private brief.",
-    "- End with one low-friction next step.",
+    "- End with one low-friction micro-offer: 2-3 matched options, MOQ/lead-time table, spec/certification pack, short comparison, or A/B choices.",
+    "- Never end with only 'Would you like details?', 'Are you interested?', or 'Can we have a call?'.",
     "- Remove generic supplier phrases, translated English, and company-first bragging.",
     "- Do not invent proof, pricing, certifications, cases, delivery promises, or fake familiarity.",
     "",
@@ -5530,12 +6350,13 @@ function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGener
   const company = lead.companyName || "your team";
   const subjectBase = brief.selectedUsp.headline.replace(/\bproof pack\b/i, "proof");
   const reason = stripLeadingCompanyName(brief.buyerReason, company);
+  const productOrAngle = truncatePlain(brief.selectedUsp.headline.replace(/\bfit check\b/i, "options"), 38);
   return {
-    subject: truncatePlain(subjectBase || `${company} fit check`, 58),
+    subject: truncatePlain(subjectBase || `${productOrAngle} for ${company}`, 55),
     body: [
-      `Hi, I saw ${company} ${lowercaseFirstBusinessPhrase(reason)}.`,
-      `${brief.selectedUsp.headline} may help because ${lowercaseFirstBusinessPhrase(brief.selectedUsp.buyerAngle)}.`,
-      `Would it help if I sent ${brief.microOffer}?`
+      `Hi, I noticed ${company} ${buyerReasonForSentence(reason)}, so a quick supplier-fit check may save review time.`,
+      `${brief.selectedUsp.headline} may be relevant here. ${buyerAngleSentence(brief.selectedUsp.buyerAngle)}`,
+      `If useful, I can send a small A/B pack: A for fast sampling, B for repeat supply, with ${brief.microOffer}. Which fits better?`
     ].join("\n")
   };
 }
@@ -5554,6 +6375,24 @@ function lowercaseFirstBusinessPhrase(value: string): string {
   const clean = value.replace(/\s+/g, " ").trim().replace(/[.。]+$/, "");
   if (!clean) return "may be reviewing this category";
   return `${clean[0]?.toLowerCase() ?? ""}${clean.slice(1)}`;
+}
+
+function buyerReasonForSentence(value: string): string {
+  const phrase = lowercaseFirstBusinessPhrase(value);
+  if (/^(handles|imports|distributes|sources|sells|serves|stocks|offers|manufactures|reviews|works|focuses|prepares)\b/.test(phrase)) {
+    return phrase;
+  }
+  if (/^(appears|seems|looks)\b/.test(phrase)) return phrase;
+  return `works around ${phrase}`;
+}
+
+function buyerAngleSentence(value: string): string {
+  const phrase = lowercaseFirstBusinessPhrase(value);
+  if (/^helps\b/.test(phrase)) return `This matters because it ${phrase}.`;
+  if (/^(keeps|reduces|gives|lets|supports|makes|cuts|saves|allows|improves)\b/.test(phrase)) {
+    return `This helps because it ${phrase}.`;
+  }
+  return `This helps because ${phrase}.`;
 }
 
 function polishWorkflowFollowUps(input: {
@@ -5602,8 +6441,8 @@ function fallbackFollowUpFromBrief(
     `Hi, quick note on ${company} and ${lowercaseFirstBusinessPhrase(brief.procurementTrigger)}.`,
     `${brief.selectedUsp.headline} may be worth a quick look because ${lowercaseFirstBusinessPhrase(brief.likelyPain)}.`,
     index === 2
-      ? `Should I send ${brief.microOffer}, or is someone else better for this?`
-      : `Would it help if I sent ${brief.microOffer}?`
+      ? `Should I send an A/B option pack with ${brief.microOffer}, or is someone else better for this?`
+      : `Would it help if I sent an A/B option pack with ${brief.microOffer}?`
   ];
   if (index === 7) {
     lines[2] = "If this is not relevant, I can close the loop here.";
@@ -5642,6 +6481,9 @@ async function sendOutreachCampaignBatch(input: {
   drafts: OutreachDraftRepository;
   senders: OutreachSenderRepository;
   campaigns: OutreachCampaignRepository;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   emailSignature: OutreachEmailSignatureRepository;
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
@@ -5653,6 +6495,10 @@ async function sendOutreachCampaignBatch(input: {
   const candidates = detail.recipients.filter((recipient) => ["approved", "queued"].includes(recipient.status));
   if (!candidates.length) throw new ClientInputError("Approve at least one generated campaign draft before sending.");
   const now = new Date().toISOString();
+  const [companyKnowledgeContext, ctaAssets] = await Promise.all([
+    buildCompanyKnowledgeContext(input.companyProfile, input.materials),
+    input.assets.listCtaAssets(campaign.profileId)
+  ]);
   await input.campaigns.updateCampaign(campaign.id, {
     senderAccountId: sender.id,
     status: "sending",
@@ -5678,7 +6524,9 @@ async function sendOutreachCampaignBatch(input: {
         to: recipient.email,
         senders: input.senders,
         drafts: input.drafts,
-        emailSignature: input.emailSignature
+        emailSignature: input.emailSignature,
+        ctaAssets,
+        companyKnowledgeContext
       });
       await input.campaigns.updateRecipient(recipient.id, {
         status: "sent",
@@ -5756,10 +6604,14 @@ async function tickOutreachFollowUps(input: {
   leads: OutreachLeadRepository;
   campaigns: OutreachCampaignRepository;
   followUps: OutreachFollowUpRepository;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  assets: OutreachAssetRepository;
   emailSignature: OutreachEmailSignatureRepository;
 }): Promise<{ processed: number; sent: number; ready: number; failed: number; stopped: number }> {
   const due = await input.followUps.due(input.now, input.limit);
   const result = { processed: 0, sent: 0, ready: 0, failed: 0, stopped: 0 };
+  const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
   for (const job of due) {
     result.processed += 1;
     const campaign = await input.campaigns.requireWithRecipients(job.campaignId, input.drafts);
@@ -5779,7 +6631,17 @@ async function tickOutreachFollowUps(input: {
       const sender = await input.senders.require(job.senderAccountId);
       const draft = await input.drafts.require(job.draftId);
       const lead = await input.leads.get(job.leadId);
-      const sent = await sendOutreachDraft({ draft, sender, lead, to: job.email, senders: input.senders, drafts: input.drafts, emailSignature: input.emailSignature });
+      const sent = await sendOutreachDraft({
+        draft,
+        sender,
+        lead,
+        to: job.email,
+        senders: input.senders,
+        drafts: input.drafts,
+        emailSignature: input.emailSignature,
+        ctaAssets: await input.assets.listCtaAssets(job.profileId),
+        companyKnowledgeContext
+      });
       await input.followUps.update(job.id, { status: "sent", sentAt: sent.sentAt ?? new Date().toISOString(), sendError: undefined });
       result.sent += 1;
     } catch (error) {
@@ -6290,11 +7152,12 @@ async function resolveGenerationProvider(providerId: string | undefined, provide
 
 function outreachInstructions(): string {
   return [
-    "You are Hermills Outreach, a practical B2B foreign-trade cold email writer.",
-    "Write concise, specific, reply-worthy emails for international sales.",
-    "Privately follow this chain before writing: buyer website evidence -> buyer risk or opportunity -> one matching supplier USP -> one low-friction next step.",
-    "The first business line must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger.",
+    "You are Hermills Outreach, a senior B2B export sales strategist writing warm emails, not generic cold blasts.",
+    "Write concise, specific, reply-worthy emails for international sales. The buyer should feel the note is about their business, not the sender's factory.",
+    "Privately follow this chain before writing: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
+    "The first business line must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
     "Never treat the buyer company name or the fact that a website exists as enough personalization.",
+    "Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
     "If evidence is missing, write conservatively and focus on a low-friction next step.",
     "Return only valid JSON with keys subject and body."
@@ -6307,9 +7170,9 @@ function outreachWorkflowInstructions(): string {
     "Internally act as a coordinated agent queue: Website Reader -> Buyer Psychology Analyst -> ICP/USP Matcher -> Email Writer -> QA Reviewer.",
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
     "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
-    "For every initial email, privately follow this chain: buyer website evidence -> buyer risk or opportunity -> one matching supplier USP -> one low-friction next step.",
+    "For every initial email, privately follow this chain: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
-    "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, or vague claims without buyer logic and proof.",
+    "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, vague CTAs, or claims without buyer logic and proof.",
     "Return only valid JSON that matches the requested schema. Do not add fields, markdown, or commentary."
   ].join("\n");
 }
@@ -6340,17 +7203,18 @@ function buildOutreachPrompt(
     `Tone: ${tone}.`,
     "Requirements:",
     "- Use a short subject line.",
-    "- Keep the body around 3 short lines and under 130 words.",
-    "- Use this exact thinking structure: line 1 = the specific buyer reason why you are contacting them; line 2 = what we do and why it is relevant to that buyer; line 3 = one low-friction ask.",
+    "- Keep the body around 3 short lines and under 120 words.",
+    "- Use this exact thinking structure: line 1 = the specific buyer reason plus why it matters; line 2 = one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel; line 3 = one low-friction micro-offer.",
     "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in line 1.",
     "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
     "- Use only one USP in the email. Do not list all company strengths.",
     "- The first business line must not introduce our company credentials first. It must tell the buyer why this email is about them.",
     "- Do not write only 'I saw your website' or only mention the company name. Use a product/category/channel/market/project/certification/procurement clue.",
-    "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, or certification/spec pack.",
+    "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, certification/spec pack, or A/B choices.",
+    "- Never use a vague CTA like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
     "- Sound like a human business note, not translated English or a mass template.",
-    "- Never use Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
+    "- Never use reaching out, just following up, hope you are doing well, Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, best price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
     "- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.",
     "- Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
@@ -6370,6 +7234,7 @@ function buildOutreachWorkflowPrompt(input: {
   lead: OutreachLead;
   research: CustomerResearchResult;
   generationBrief: OutreachGenerationBrief;
+  outreachOsContext?: string;
   companyKnowledgeContext: string;
   language: string;
   tone: string;
@@ -6392,10 +7257,12 @@ function buildOutreachWorkflowPrompt(input: {
     "Private operating mode:",
     "- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.",
     "- Treat the private outreach brief below as the locked angle for the first email.",
+    input.outreachOsContext ?? "",
     "- For the initial email, choose exactly one concrete website evidence item and turn it into a buyer implication before mentioning our USP.",
     "- Do not treat the buyer company name or 'I saw your website' as personalization.",
     "- Do not expose research steps, agent names, or internal reasoning in any email.",
     "- If evidence is thin, write a low-risk micro-offer instead of a broad supplier pitch.",
+    "- A passing initial email must include a real reply trigger: A/B options, a small comparison, an MOQ/lead-time table, a spec/certification pack, or 2-3 matched options. 'Would you like details?' is a failing CTA.",
     "",
     "ICP rules:",
     "- Generate 2-3 ICPs likely to buy in the next 3-6 months.",
@@ -6414,14 +7281,15 @@ function buildOutreachWorkflowPrompt(input: {
     "",
     "Initial warm email rules:",
     "- Subject under 50 characters.",
-    "- Body under 130 words.",
+    "- Body under 120 words.",
     "- Peer-to-peer, helpful, warm, concise.",
-    "- Use this three-line formula: one line with the specific buyer reason for contacting them -> one line on what we do and why it is relevant -> one line with a low-friction ask.",
+    "- Use this three-line formula: buyer-specific context hook plus why it matters -> one relevant USP tied to their sourcing risk, KPI, channel, or procurement task -> low-friction micro-offer.",
     "- The first business line must be about the buyer, not our credentials.",
     "- The first business line must include a concrete evidence clue: product category, channel, market, project, certification/compliance signal, sourcing/procurement signal, or pain/risk signal.",
     "- Translate the evidence into a buyer implication instead of simply naming the evidence.",
     "- Mention one buyer pain point and one matching USP. Do not include a catalog dump.",
     "- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.",
+    "- Do not write vague CTAs like 'Would you like details?', 'Are you interested?', or 'Can we schedule a call?'.",
     "- Sound like a warm human business note, not translated English or a mass blast. Do not fake prior familiarity.",
     "",
     "Never use these phrases:",
@@ -6685,6 +7553,8 @@ async function sendOutreachDraft(input: {
   senders: OutreachSenderRepository;
   drafts: OutreachDraftRepository;
   emailSignature: OutreachEmailSignatureRepository;
+  ctaAssets?: OutreachCtaAsset[];
+  companyKnowledgeContext?: string;
 }): Promise<OutreachDraft> {
   if (!input.sender.enabled) throw new ClientInputError("Sender account is disabled.");
   if (!input.sender.deliveryConfirmedAt) throw new ClientInputError("Confirm the sender mailbox before sending outreach.");
@@ -6692,8 +7562,21 @@ async function sendOutreachDraft(input: {
   const to = input.to ?? input.lead?.email;
   if (!to) throw new ClientInputError("Lead email is missing.");
   const qualityReview = input.draft.qualityReview ?? reviewOutreachEmail({ subject: input.draft.subject, body: input.draft.body, lead: input.lead });
-  if (!input.draft.qualityReview) await input.drafts.update(input.draft.id, { qualityReview });
+  const sendRiskReview = reviewOutreachSendRisk({
+    subject: input.draft.subject,
+    body: input.draft.body,
+    qualityReview,
+    sender: input.sender,
+    lead: input.lead,
+    ctaAssets: input.ctaAssets,
+    companyKnowledgeContext: input.companyKnowledgeContext
+  });
+  await input.drafts.update(input.draft.id, {
+    ...(!input.draft.qualityReview ? { qualityReview } : {}),
+    sendRiskReview
+  });
   assertOutreachQualityPassed(qualityReview);
+  assertOutreachSendRiskPassed(sendRiskReview);
   try {
     const signedMessage = await buildSignedOutreachMailMessage({
       draft: input.draft,

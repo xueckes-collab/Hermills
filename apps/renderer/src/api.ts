@@ -475,6 +475,113 @@ export type OutreachLeadStats = {
   followupDue: number;
 };
 
+export type OutreachGenerationMode = "lite" | "deep";
+export type OutreachEvidenceLevel = "verified" | "inferred" | "generic" | "prohibited";
+
+export type OutreachEvidenceItem = {
+  id: string;
+  level: OutreachEvidenceLevel;
+  label: string;
+  value: string;
+  source: "lead" | "website" | "company-profile" | "material" | "model" | "user";
+  sourceUrl?: string;
+  snippet: string;
+  usedInEmail: boolean;
+};
+
+export type OutreachEvidenceMap = {
+  status: "success" | "need_more_data";
+  minimumDataAvailable: boolean;
+  verifiedFacts: OutreachEvidenceItem[];
+  inferredInsights: OutreachEvidenceItem[];
+  genericContext: OutreachEvidenceItem[];
+  prohibitedClaims: OutreachEvidenceItem[];
+  missingFields: string[];
+  createdAt?: string;
+};
+
+export type OutreachCtaAssetType =
+  | "catalog"
+  | "sample_options"
+  | "spec_comparison"
+  | "moq_leadtime_sheet"
+  | "case_study"
+  | "certification_pack"
+  | "packaging_options"
+  | "quote_range"
+  | "custom";
+
+export type OutreachCtaAsset = {
+  id: string;
+  profileId?: string;
+  name: string;
+  type: OutreachCtaAssetType;
+  description: string;
+  assetText: string;
+  materialId?: string;
+  url?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachBuyerPersona = {
+  id: string;
+  profileId?: string;
+  name: string;
+  companyType: string;
+  buyerRoles: string[];
+  painPoints: string[];
+  successMetrics: string[];
+  objections: string[];
+  triggerEvents: string[];
+  evidenceNotes: string[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachUspCandidate = {
+  id: string;
+  profileId?: string;
+  category: string;
+  headline: string;
+  buyerAngle: string;
+  proof: string;
+  proofLevel: "verified" | "profile-derived" | "needs-proof";
+  assetIds: string[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachStrategyMatch = {
+  personaId?: string;
+  uspId?: string;
+  ctaAssetId?: string;
+  buyerPain: string;
+  buyerImplication: string;
+  selectedUsp: string;
+  microOffer: string;
+  rationale: string;
+  confidenceScore: number;
+  evidenceIds: string[];
+  warnings: string[];
+};
+
+export type OutreachSendRiskReview = {
+  score: number;
+  passed: boolean;
+  level: "pass" | "warning" | "blocked";
+  issues: Array<{
+    id: string;
+    severity: "info" | "warning" | "block";
+    message: string;
+    blocking: boolean;
+  }>;
+  checkedAt: string;
+};
+
 export type OutreachDraft = {
   id: string;
   profileId?: string;
@@ -484,11 +591,15 @@ export type OutreachDraft = {
   body: string;
   language: string;
   tone: string;
+  generationMode: OutreachGenerationMode;
   promptSnapshot: string;
   providerId?: string;
   model?: string;
   usage?: ChatMessage["usage"];
   qualityReview?: OutreachEmailQualityReview;
+  evidenceMap?: OutreachEvidenceMap;
+  strategyMatch?: OutreachStrategyMatch;
+  sendRiskReview?: OutreachSendRiskReview;
   sentAt?: string;
   sendError?: string;
   createdAt: string;
@@ -646,6 +757,9 @@ export type EmailSequenceDraft = {
   body: string;
   status: "draft" | "sent" | "failed";
   qualityReview?: OutreachEmailQualityReview;
+  evidenceMap?: OutreachEvidenceMap;
+  strategyMatch?: OutreachStrategyMatch;
+  sendRiskReview?: OutreachSendRiskReview;
   sentAt?: string;
   sendError?: string;
 };
@@ -659,6 +773,7 @@ export type OutreachWorkflow = {
   email: string;
   language: string;
   tone: string;
+  generationMode: OutreachGenerationMode;
   research: CustomerResearchSnapshot;
   icps: GeneratedIcp[];
   usps: GeneratedUsp[];
@@ -752,6 +867,7 @@ export type OutreachCampaign = {
   tone: string;
   providerId?: string;
   model?: string;
+  generationMode: OutreachGenerationMode;
   researchDepth: OutreachResearchDepth;
   rateLimit: OutreachCampaignRateLimit;
   stats: OutreachCampaignStats;
@@ -1322,6 +1438,45 @@ export const api = {
       body: JSON.stringify({ ids })
     });
   },
+  async outreachBuyerPersonas(): Promise<OutreachBuyerPersona[]> {
+    return request<OutreachBuyerPersona[]>("/api/outreach/personas");
+  },
+  async saveOutreachBuyerPersona(input: Omit<Partial<OutreachBuyerPersona>, "createdAt" | "updatedAt"> & { name: string; id?: string }): Promise<OutreachBuyerPersona> {
+    const { id, ...payload } = input;
+    return request<OutreachBuyerPersona>(id ? `/api/outreach/personas/${id}` : "/api/outreach/personas", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachBuyerPersona(id: string): Promise<void> {
+    await request<void>(`/api/outreach/personas/${id}`, { method: "DELETE" });
+  },
+  async outreachUsps(): Promise<OutreachUspCandidate[]> {
+    return request<OutreachUspCandidate[]>("/api/outreach/usps");
+  },
+  async saveOutreachUsp(input: Omit<Partial<OutreachUspCandidate>, "createdAt" | "updatedAt"> & { headline: string; id?: string }): Promise<OutreachUspCandidate> {
+    const { id, ...payload } = input;
+    return request<OutreachUspCandidate>(id ? `/api/outreach/usps/${id}` : "/api/outreach/usps", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachUsp(id: string): Promise<void> {
+    await request<void>(`/api/outreach/usps/${id}`, { method: "DELETE" });
+  },
+  async outreachCtaAssets(): Promise<OutreachCtaAsset[]> {
+    return request<OutreachCtaAsset[]>("/api/outreach/cta-assets");
+  },
+  async saveOutreachCtaAsset(input: Omit<Partial<OutreachCtaAsset>, "createdAt" | "updatedAt"> & { name: string; id?: string }): Promise<OutreachCtaAsset> {
+    const { id, ...payload } = input;
+    return request<OutreachCtaAsset>(id ? `/api/outreach/cta-assets/${id}` : "/api/outreach/cta-assets", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachCtaAsset(id: string): Promise<void> {
+    await request<void>(`/api/outreach/cta-assets/${id}`, { method: "DELETE" });
+  },
   async outreachEmailSignature(): Promise<OutreachEmailSignature> {
     return request<OutreachEmailSignature>("/api/outreach/email-signature");
   },
@@ -1344,6 +1499,7 @@ export const api = {
     lead?: OutreachLeadInput;
     language?: string;
     tone?: string;
+    generationMode?: OutreachGenerationMode;
     providerId?: string;
     model?: string;
   }): Promise<OutreachDraft> {
@@ -1356,6 +1512,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachDraft> {
     return request<OutreachDraft>("/api/outreach/drafts/auto", { method: "POST", body: JSON.stringify(input) });
@@ -1367,6 +1524,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachWorkflow> {
     return request<OutreachWorkflow>("/api/outreach/workflows/auto", { method: "POST", body: JSON.stringify(input) });
@@ -1392,6 +1550,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
     rateLimit?: Partial<OutreachCampaignRateLimit>;
   }): Promise<OutreachCampaign> {
