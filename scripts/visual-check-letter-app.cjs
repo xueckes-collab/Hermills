@@ -61,7 +61,20 @@ async function runViewport({ name, width, height }) {
   });
 
   await loadUrlWithRetry(win, targetUrl);
-  await delay(1500);
+  await withTimeout((async () => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const ready = await win.webContents.executeJavaScript(`
+        (() => {
+          const textOf = (node) => ((node.getAttribute('aria-label') || '') + ' ' + (node.textContent || '')).trim();
+          return Boolean(document.querySelector('.letter-app-shell')) ||
+            [...document.querySelectorAll('button')].some((item) => /开发信|外联|outreach|Open outreach/i.test(textOf(item)));
+        })()
+      `);
+      if (ready) return;
+      await delay(500);
+    }
+    throw new Error("Letter workspace entry did not appear");
+  })(), 16000, `wait for workspace entry ${name}`);
 
   const opened = await win.webContents.executeJavaScript(`
     (() => {
@@ -96,6 +109,15 @@ async function runViewport({ name, width, height }) {
       })()
     `);
     await delay(250);
+    if (view === "客户管理") {
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const firstLead = document.querySelector('.letter-lead-row');
+          if (firstLead) firstLead.click();
+        })()
+      `);
+      await delay(450);
+    }
     const result = await win.webContents.executeJavaScript(`
       (() => {
         const shell = document.querySelector('.letter-app-shell');
@@ -105,7 +127,7 @@ async function runViewport({ name, width, height }) {
           return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
         };
         const main = shell.querySelector('.letter-main');
-        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row')]
+        const overflowEls = [...shell.querySelectorAll('button, input, textarea, .letter-panel, .letter-stat-card, .letter-lead-row, .letter-toolbar, .letter-filter-row, .letter-leads-layout, .letter-form-grid, .letter-action-row, .letter-draft-card, .letter-thinking-panel, .letter-campaign-review-grid, .letter-recipient-row, .letter-campaign-draft-view')]
           .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 3 && getComputedStyle(el).overflowX !== 'auto')
           .slice(0, 8)
           .map((el) => ({

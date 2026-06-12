@@ -1279,6 +1279,9 @@ export const api = {
       body: JSON.stringify({ ids })
     });
   },
+  async outreachDrafts(q?: string): Promise<OutreachDraft[]> {
+    return request<OutreachDraft[]>(`/api/outreach/drafts${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  },
   async generateOutreachDraft(input: {
     leadId?: string;
     lead?: OutreachLeadInput;

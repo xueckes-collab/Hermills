@@ -1225,7 +1225,7 @@ function ClientWorkspace({
           </SheetContent>
         </Sheet>
 
-        <section className="hermills-chat-panel">
+        <section className={`hermills-chat-panel ${workspaceView === 'outreach' ? 'outreach-active' : ''}`}>
           <div className="mobile-workspace-toolbar">
             <Button variant="ghost" size="icon-sm" aria-label={copy.topbar.chats} onClick={() => setSessionsOpen(true)}>
               <Menu />
@@ -1823,6 +1823,7 @@ type SenderFormDraft = {
 type OutreachMode = 'single' | 'campaign'
 type LetterOutreachView = 'dashboard' | 'leads' | 'automation' | 'profile' | 'mail'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
+type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
 const letterLeadFilters: Array<{ id: LetterLeadFilter; label: string }> = [
   { id: 'all', label: '全部' },
@@ -1889,6 +1890,103 @@ function letterRowsToCsv(input: string) {
   return ['company,email,website,contactName', ...converted].join('\n')
 }
 
+function letterGenerationSteps(mode: LetterGenerationMode) {
+  if (mode === 'campaign') {
+    return [
+      { title: '锁定客户名单', detail: '读取本批客户的网站、邮箱、联系人和备注，跳过资料不完整的客户。' },
+      { title: '逐个整理客户背景', detail: '提取客户网站里的业务线索、可能需求和风险点。' },
+      { title: '匹配公司资料', detail: '把你的产品、认证、物流、付款条款和客户需求对齐。' },
+      { title: '批量生成主题和正文', detail: '每个客户单独生成，不共用一封泛泛的群发邮件。' },
+      { title: '等待人工审核', detail: '生成后逐封展示，必须由用户检查通过后才会进入发送队列。' },
+    ]
+  }
+  return [
+    { title: '整理客户资料', detail: '读取客户邮箱、网站、联系人、需求和备注。' },
+    { title: '对照公司资料', detail: '匹配产品、认证、服务、物流和付款条款等可用卖点。' },
+    { title: '选择切入角度', detail: '找一个买家可能在意的理由，避免只写空泛介绍。' },
+    { title: '生成主题和正文', detail: '写出可编辑草稿，保持简洁、具体、像真人。' },
+    { title: '准备质量检查', detail: '后续可检查找他理由、个性化、下一步和 2 秒可读性。' },
+  ]
+}
+
+function LetterGenerationTrace({
+  mode,
+  running,
+  completedAt,
+  open,
+  onToggle,
+}: {
+  mode: LetterGenerationMode
+  running: boolean
+  completedAt: string
+  open: boolean
+  onToggle: (open: boolean) => void
+}) {
+  const steps = letterGenerationSteps(mode)
+  const status = running ? '正在生成' : completedAt ? '已完成' : '准备中'
+  const statusText = completedAt && !running ? `${status} · ${new Date(completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : status
+  return (
+    <details className="letter-thinking-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
+      <summary>
+        <span><Brain size={16} /> 生成过程</span>
+        <em>{statusText}</em>
+      </summary>
+      <div className="letter-thinking-note">这里显示的是可审核的生成步骤和依据，不展示模型内部私密推理链。</div>
+      <ol className="letter-thinking-steps">
+        {steps.map((step, index) => (
+          <li className={running && index === steps.length - 1 ? 'active' : ''} key={step.title}>
+            <span className="letter-thinking-dot">{index + 1}</span>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
+function LetterQualitySummary({
+  review,
+  stale,
+  copy,
+}: {
+  review?: OutreachEmailQualityReview
+  stale?: boolean
+  copy: UiCopy
+}) {
+  if (!review) {
+    return (
+      <div className="quality-review-card empty">
+        <div className="quality-review-top">
+          <strong>{copy.devLetter.quality.title}</strong>
+          <span>{copy.devLetter.quality.notReviewed}</span>
+        </div>
+        <p>发送或通过前建议先检查一次，系统会看找他理由、个性化和下一步是否清楚。</p>
+      </div>
+    )
+  }
+  const className = `quality-review-card ${review.level}${stale ? ' stale' : ''}`
+  return (
+    <div className={className}>
+      <div className="quality-review-top">
+        <strong>{stale ? copy.devLetter.quality.stale : copy.devLetter.quality.title}</strong>
+        <span>{copy.devLetter.quality.score(review.score)}</span>
+      </div>
+      <div className="quality-review-checks">
+        {review.checks.map((check) => (
+          <span className={check.passed ? 'passed' : 'failed'} key={check.id}>
+            {check.passed ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+            {copy.devLetter.quality.checks[check.id]}
+          </span>
+        ))}
+      </div>
+      {review.summary ? <p>{review.summary}</p> : null}
+    </div>
+  )
+}
+
 function DevelopmentLetterPage({
   companyProfile,
   companyMaterials,
@@ -1940,6 +2038,9 @@ function DevelopmentLetterPage({
   const [selectedEmailId, setSelectedEmailId] = useState('')
   const [draftSubject, setDraftSubject] = useState('')
   const [draftBody, setDraftBody] = useState('')
+  const [generationMode, setGenerationMode] = useState<LetterGenerationMode>('single')
+  const [generationOpen, setGenerationOpen] = useState(true)
+  const [generationCompletedAt, setGenerationCompletedAt] = useState('')
   const [language, setLanguage] = useState(copy.devLetter.defaults.language)
   const [tone, setTone] = useState(copy.devLetter.defaults.tone)
   const [senderDraft, setSenderDraft] = useState<SenderFormDraft>(() => emptySenderDraft(companyProfile, copy))
@@ -1999,6 +2100,12 @@ function DevelopmentLetterPage({
     selectedCampaignRecipient.draft.body !== campaignDraftBody
   ))
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
+  const singleGenerationRunning = busy === 'generate' || busy === 'auto'
+  const campaignGenerationRunning = busy === 'campaignGenerate'
+  const singleGenerationCompletedAt = generationMode === 'campaign' ? '' : generationCompletedAt
+  const campaignGenerationCompletedAt = generationMode === 'campaign' ? generationCompletedAt : ''
+  const hasVisibleSingleDraft = Boolean(activeDraftId || draftSubject.trim() || draftBody.trim() || workflow || singleGenerationRunning)
+  const hasVisibleCampaignDraft = Boolean(selectedCampaign || campaignGenerationRunning)
   const singleSendBlocker = activeDraftStatus === 'sent'
     ? copy.devLetter.results.status.sent
     : !activeDraftId
@@ -2059,6 +2166,37 @@ function DevelopmentLetterPage({
     if (!selectedLead) return
     setLeadDraft(leadFormFromLead(selectedLead))
   }, [selectedLead?.id])
+
+  useEffect(() => {
+    if (!selectedLead?.id) {
+      setDraft(undefined)
+      setWorkflow(undefined)
+      setSelectedEmailId('')
+      setDraftSubject('')
+      setDraftBody('')
+      return
+    }
+    if (workflow?.leadId === selectedLead.id) return
+    let cancelled = false
+    api.outreachDrafts()
+      .then((drafts) => {
+        if (cancelled) return
+        const latest = drafts
+          .filter((item) => item.leadId === selectedLead.id)
+          .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0]
+        setWorkflow(undefined)
+        setSelectedEmailId('')
+        setDraft(latest)
+        setDraftSubject(latest?.subject ?? '')
+        setDraftBody(latest?.body ?? '')
+      })
+      .catch(() => {
+        if (!cancelled) setDraft(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLead?.id, workflow?.leadId])
 
   useEffect(() => {
     if (!selectedSender) return
@@ -2246,12 +2384,16 @@ function DevelopmentLetterPage({
   async function generateCampaign() {
     if (!selectedCampaign) return
     if (!requireCompanyKnowledge()) return
+    setGenerationMode('campaign')
+    setGenerationOpen(true)
+    setGenerationCompletedAt('')
     setBusy('campaignGenerate')
     setError('')
     setNotice('')
     try {
       const campaign = await api.generateOutreachCampaign(selectedCampaign.id)
       replaceCampaign(campaign)
+      setGenerationCompletedAt(new Date().toISOString())
       setNotice(copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -2565,6 +2707,9 @@ function DevelopmentLetterPage({
     let lead = selectedLead
     if (!lead) lead = await saveLead()
     if (!lead) return
+    setGenerationMode('single')
+    setGenerationOpen(true)
+    setGenerationCompletedAt('')
     setBusy('generate')
     setError('')
     setNotice('')
@@ -2582,6 +2727,8 @@ function DevelopmentLetterPage({
       setDraftSubject(next.subject)
       setDraftBody(next.body)
       setLeads(await api.outreachLeads())
+      setLetterView('leads')
+      setGenerationCompletedAt(new Date().toISOString())
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -2595,6 +2742,9 @@ function DevelopmentLetterPage({
       setError(copy.devLetter.warnings.quickRequired)
       return
     }
+    setGenerationMode('quick')
+    setGenerationOpen(true)
+    setGenerationCompletedAt('')
     setBusy('auto')
     setError('')
     setNotice('')
@@ -2620,6 +2770,8 @@ function DevelopmentLetterPage({
       setDraftSubject(next.initialEmail.subject)
       setDraftBody(next.initialEmail.body)
       setNotice(copy.devLetter.status.workflowGenerated)
+      setLetterView('leads')
+      setGenerationCompletedAt(new Date().toISOString())
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -2762,13 +2914,18 @@ function DevelopmentLetterPage({
     }
   }
 
-  async function copyDraft() {
-    if (!draftSubject.trim() || !draftBody.trim()) {
+  async function copyEmailDraft(subject: string, body: string) {
+    if (!subject.trim() || !body.trim()) {
       setError(copy.devLetter.warnings.draftRequired)
-      return
+      return false
     }
-    await navigator.clipboard?.writeText(`Subject: ${draftSubject.trim()}\n\n${draftBody.trim()}`)
+    await navigator.clipboard?.writeText(`Subject: ${subject.trim()}\n\n${body.trim()}`)
     setNotice(copy.devLetter.status.copied)
+    return true
+  }
+
+  async function copyDraft() {
+    await copyEmailDraft(draftSubject, draftBody)
   }
 
   async function saveSender() {
@@ -3109,6 +3266,49 @@ function DevelopmentLetterPage({
                   <button className="letter-primary" type="button" disabled={busy === 'lead'} onClick={saveLead}>保存客户</button>
                   <button className="letter-secondary" type="button" disabled={!selectedLead || busy === 'generate'} onClick={generateDraft}>生成草稿</button>
                 </div>
+                {hasVisibleSingleDraft ? (
+                  <section className="letter-draft-card" aria-label="生成的开发信草稿">
+                    <div className="letter-draft-heading">
+                      <div>
+                        <h3><Mail size={17} /> 生成的开发信</h3>
+                        <p>生成完成后会显示在这里。你可以修改、复制、检查质量，再决定是否发送。</p>
+                      </div>
+                      {activeDraftStatus ? <span className="letter-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+                    </div>
+                    <LetterGenerationTrace
+                      mode={generationMode}
+                      running={singleGenerationRunning}
+                      completedAt={singleGenerationCompletedAt}
+                      open={generationOpen}
+                      onToggle={setGenerationOpen}
+                    />
+                    {workflowEmails.length > 1 ? (
+                      <div className="letter-email-sequence-tabs" aria-label="选择邮件序列">
+                        {workflowEmails.map((email) => (
+                          <button className={selectedWorkflowEmail?.id === email.id ? 'active' : ''} type="button" key={email.id} onClick={() => selectWorkflowEmail(email)}>
+                            {email.step === 0 ? copy.devLetter.results.firstEmail : copy.devLetter.results.followUp(email.step)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {draftSubject.trim() || draftBody.trim() ? (
+                      <>
+                        <label className="letter-field">邮件主题<input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></label>
+                        <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></label>
+                        <LetterQualitySummary review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
+                        <div className="letter-action-row wrap">
+                          <button className="letter-primary" type="button" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</button>
+                          <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
+                          <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
+                          <button className="letter-secondary" type="button" disabled={!draftSubject.trim() || !draftBody.trim()} onClick={copyDraft}>复制草稿</button>
+                          <button className="letter-secondary" type="button" disabled={!canSendSingleDraft} title={singleSendBlocker} onClick={sendDraft}>确认发送</button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="letter-empty small">生成中会先整理客户和公司资料，完成后主题和正文会出现在这里。</div>
+                    )}
+                  </section>
+                ) : null}
               </div>
             </section>
           </div>
@@ -3175,6 +3375,71 @@ function DevelopmentLetterPage({
                 ) : null}
               </div>
             </section>
+            {hasVisibleCampaignDraft ? (
+              <section className="letter-panel letter-campaign-review-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Eye size={18} /> 逐封查看生成邮件</h2>
+                    <p>批量生成后，每个客户的邮件都会在这里显示。检查通过后才会发送。</p>
+                  </div>
+                  {selectedCampaign ? <span className="letter-badge">{selectedCampaign.stats.generated} 待审核</span> : null}
+                </div>
+                <LetterGenerationTrace
+                  mode="campaign"
+                  running={campaignGenerationRunning}
+                  completedAt={campaignGenerationCompletedAt}
+                  open={generationOpen}
+                  onToggle={setGenerationOpen}
+                />
+                {selectedCampaign ? (
+                  <div className="letter-campaign-review-grid">
+                    <div className="letter-recipient-list" aria-label="批量客户邮件列表">
+                      {campaignRecipients.length ? campaignRecipients.map((recipient) => (
+                        <button
+                          className={`letter-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`}
+                          type="button"
+                          key={recipient.id}
+                          onClick={() => setSelectedCampaignRecipientId(recipient.id)}
+                        >
+                          <strong>{recipient.companyName}</strong>
+                          <span>{recipient.email || copy.devLetter.batch.missingEmail}</span>
+                          <small>{copy.devLetter.batch.recipientStatus[recipient.status]}</small>
+                        </button>
+                      )) : <div className="letter-empty small">这批任务里还没有客户。</div>}
+                    </div>
+                    <div className="letter-campaign-draft-view">
+                      {selectedCampaignRecipient?.draft ? (
+                        <>
+                          <div className="letter-draft-heading compact">
+                            <div>
+                              <h3>{selectedCampaignRecipient.companyName}</h3>
+                              <p>{selectedCampaignRecipient.website} · {selectedCampaignRecipient.email}</p>
+                            </div>
+                            <span className="letter-badge">{copy.devLetter.batch.recipientStatus[selectedCampaignRecipient.status]}</span>
+                          </div>
+                          <label className="letter-field">邮件主题<input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></label>
+                          <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></label>
+                          <LetterQualitySummary review={campaignQualityReview} stale={campaignDraftChanged} copy={copy} />
+                          <div className="letter-action-row wrap">
+                            <button className="letter-secondary" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>{busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
+                            <button className="letter-secondary" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>{busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
+                            <button className="letter-primary" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>{copy.devLetter.batch.actions.approve}</button>
+                            <button className="letter-secondary" type="button" disabled={!campaignDraftSubject.trim() || !campaignDraftBody.trim()} onClick={() => copyEmailDraft(campaignDraftSubject, campaignDraftBody)}>复制草稿</button>
+                            <button className="letter-secondary" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>{copy.devLetter.batch.actions.skip}</button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="letter-empty small">
+                          {campaignGenerationRunning ? '正在生成这批客户的邮件，完成后会在这里逐封显示。' : copy.devLetter.batch.emptyReview}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="letter-empty small">先选择客户并创建批量任务，生成后即可逐封查看邮件。</div>
+                )}
+              </section>
+            ) : null}
           </div>
         ) : null}
 

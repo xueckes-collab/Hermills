@@ -218,7 +218,7 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow-x:\s*hidden/);
     expect(stylesSource).toMatch(/\.letter-toolbar\s*\{[\s\S]*?flex-wrap:\s*wrap/);
     expect(stylesSource).toMatch(/\.letter-filter-row\s*\{[\s\S]*?flex-wrap:\s*wrap/);
-    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-leads-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-leads-layout,[\s\S]*?\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-toolbar\s*\{[\s\S]*?display:\s*grid/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-filter-row\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(92px,\s*1fr\)\)/);
     expect(stylesSource).toMatch(/\.hermills-app-shell > \.sources-drawer,[\s\S]*?\.hermills-app-shell > \.assistant-drawer\s*\{[\s\S]*?position:\s*fixed/);
@@ -230,19 +230,28 @@ describe("renderer usability contract", () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
     expect(appSource).toContain('className="letter-app-shell"');
+    expect(appSource).toContain("workspaceView === 'outreach' ? 'outreach-active' : ''");
     expect(appSource).toContain("type LetterOutreachView");
     expect(appSource).toContain("工作台");
     expect(appSource).toContain("客户管理");
     expect(appSource).toContain("批量导入");
     expect(appSource).toContain("importLetterFile");
     expect(appSource).toContain("deleteOutreachLeads");
+    expect(appSource).toContain("LetterGenerationTrace");
+    expect(appSource).toContain('className="letter-draft-card"');
+    expect(appSource).toContain("api.outreachDrafts");
+    expect(appSource).toContain("letter-campaign-review-grid");
     expect(stylesSource).toMatch(/\.letter-app-shell\s*\{[\s\S]*?overflow:\s*hidden/);
     expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow:\s*auto/);
     expect(stylesSource).toMatch(/\.letter-nav button,[\s\S]*?\.letter-primary,[\s\S]*?\.letter-secondary,[\s\S]*?min-height:\s*36px/);
     expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?color:\s*#111827/);
+    expect(stylesSource).toMatch(/\.letter-thinking-panel\s*\{/);
+    expect(stylesSource).toMatch(/\.letter-draft-card\s*\{/);
+    expect(stylesSource).toMatch(/\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*0\.72fr\) minmax\(320px,\s*1\.28fr\)/);
+    expect(stylesSource).toMatch(/\.hermills-chat-panel\.outreach-active \.mobile-workspace-toolbar\s*\{[\s\S]*?position:\s*static/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-sidebar\s*\{[\s\S]*?display:\s*grid/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-brand\s*\{[\s\S]*?padding:\s*0/);
-    expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+    expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout,[\s\S]*?\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   });
 
   it("keeps onboarding actions reachable by scrolling the content region instead of the whole card", async () => {
