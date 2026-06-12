@@ -9,16 +9,17 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        default:
+          "border-[#7c3aed] bg-[#7c3aed] text-white shadow-[0_8px_18px_rgba(124,58,237,0.18)] hover:border-[#8b5cf6] hover:bg-[#8b5cf6] hover:text-white",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-[#a78bfa]/55 bg-[#241b35] text-white hover:border-[#c4b5fd] hover:bg-[#2f2450] hover:text-white aria-expanded:border-[#c4b5fd] aria-expanded:bg-[#2f2450] aria-expanded:text-white dark:border-[#a78bfa]/45 dark:bg-[#241b35] dark:text-white dark:hover:bg-[#2f2450]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "border-[#a78bfa]/50 bg-[#2b2142] text-white hover:border-[#c4b5fd] hover:bg-[#38275f] hover:text-white aria-expanded:border-[#c4b5fd] aria-expanded:bg-[#38275f] aria-expanded:text-white",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "text-[#4c1d95] hover:bg-[#ede9fe] hover:text-[#2e1065] aria-expanded:bg-[#ede9fe] aria-expanded:text-[#2e1065] dark:text-[#f4f0ff] dark:hover:bg-[#2f2450] dark:hover:text-white",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "border-[#be123c] bg-[#be123c] text-white hover:border-[#e11d48] hover:bg-[#e11d48] focus-visible:border-[#e11d48] focus-visible:ring-[#fb7185]/35 dark:border-[#fb7185] dark:bg-[#9f1239] dark:hover:bg-[#be123c]",
+        link: "text-[#5b21b6] underline-offset-4 hover:text-[#4c1d95] hover:underline dark:text-[#ddd6fe] dark:hover:text-white",
       },
       size: {
         default:

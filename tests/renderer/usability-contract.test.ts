@@ -187,13 +187,21 @@ describe("renderer usability contract", () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
     expect(buttonSource).not.toContain("disabled:opacity-50");
+    expect(stylesSource).not.toContain("opacity: 0.55");
+    expect(stylesSource).not.toContain("opacity: 0.54");
     expect(stylesSource).toMatch(/\.first-run-shell \.primary-button,[\s\S]*?\.first-run-card \.primary-button\s*\{[\s\S]*?background:\s*#7c3aed/);
+    expect(stylesSource).toMatch(/\[data-slot="button"\]\[data-variant="outline"\],[\s\S]*?\[data-slot="button"\]\[data-variant="secondary"\]\s*\{[\s\S]*?background:\s*var\(--button-secondary-bg\)/);
+    expect(stylesSource).toMatch(/\[data-slot="button"\]:disabled\s*\{[\s\S]*?background:\s*var\(--button-disabled-bg\) !important/);
+    expect(stylesSource).toMatch(/\[data-slot="button"\]:disabled\s*\{[\s\S]*?color:\s*var\(--button-disabled-text\) !important/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell \.primary-button,\s*\.hermills-dark-shell \.send-button\s*\{[\s\S]*?background:\s*#7c3aed/);
-    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="outline"\],[\s\S]*?\.hermills-dark-shell \.soft-button\s*\{[\s\S]*?background:\s*#1a1b26/);
-    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="link"\],[\s\S]*?\.hermills-dark-shell \.text-button\s*\{[\s\S]*?color:\s*#fbbf24/);
-    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?background:\s*#242633 !important/);
-    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?color:\s*#cfd3e5 !important/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="outline"\],[\s\S]*?\.hermills-dark-shell \.soft-button\s*\{[\s\S]*?background:\s*var\(--button-secondary-bg\)/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell \[data-slot="button"\]\[data-variant="link"\],[\s\S]*?\.hermills-dark-shell \.text-button\s*\{[\s\S]*?color:\s*#ddd6fe/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?background:\s*var\(--button-disabled-bg\) !important/);
+    expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?color:\s*var\(--button-disabled-text\) !important/);
     expect(stylesSource).toMatch(/\.hermills-dark-shell button:disabled,[\s\S]*?opacity:\s*1/);
+    expect(stylesSource).toMatch(/\.letter-primary\s*\{[\s\S]*?background:\s*var\(--button-primary-bg\)/);
+    expect(stylesSource).toMatch(/\.letter-secondary\s*\{[\s\S]*?background:\s*var\(--button-secondary-bg\)/);
+    expect(stylesSource).toMatch(/\.letter-primary:disabled,[\s\S]*?\.letter-automation-banner button:disabled\s*\{[\s\S]*?opacity:\s*1/);
   });
 
   it("keeps outreach and drawers inside the desktop shell instead of creating page-level horizontal scroll", async () => {
@@ -232,6 +240,8 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.letter-main\s*\{[\s\S]*?overflow:\s*auto/);
     expect(stylesSource).toMatch(/\.letter-nav button,[\s\S]*?\.letter-primary,[\s\S]*?\.letter-secondary,[\s\S]*?min-height:\s*36px/);
     expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?color:\s*#111827/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-sidebar\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-brand\s*\{[\s\S]*?padding:\s*0/);
     expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   });
 
