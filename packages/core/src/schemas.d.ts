@@ -2340,7 +2340,7 @@ export declare const OutreachEmailSignatureSchema: z.ZodObject<{
         uploadedAt: string;
     } | undefined;
 }>;
-export declare const OutreachResearchDepthSchema: z.ZodEnum<["quick", "standard", "deep"]>;
+export declare const OutreachResearchDepthSchema: z.ZodEnum<["adaptive", "quick", "standard", "deep"]>;
 export declare const DeepResearchSidecarConfigSchema: z.ZodObject<{
     enabled: z.ZodDefault<z.ZodBoolean>;
     url: z.ZodOptional<z.ZodString>;
@@ -2361,7 +2361,7 @@ export declare const DeepResearchSidecarConfigSchema: z.ZodObject<{
     maxPages?: number | undefined;
 }>;
 export declare const CustomerResearchSummarySchema: z.ZodObject<{
-    depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+    depth: z.ZodDefault<z.ZodEnum<["adaptive", "quick", "standard", "deep"]>>;
     confidenceScore: z.ZodDefault<z.ZodNumber>;
     buyerType: z.ZodDefault<z.ZodString>;
     likelyNeed: z.ZodDefault<z.ZodString>;
@@ -2370,7 +2370,7 @@ export declare const CustomerResearchSummarySchema: z.ZodObject<{
     checkedPages: z.ZodDefault<z.ZodNumber>;
 }, "strict", z.ZodTypeAny, {
     confidenceScore: number;
-    depth: "deep" | "quick" | "standard";
+    depth: "deep" | "adaptive" | "quick" | "standard";
     buyerType: string;
     likelyNeed: string;
     primaryAngle: string;
@@ -2378,7 +2378,7 @@ export declare const CustomerResearchSummarySchema: z.ZodObject<{
     checkedPages: number;
 }, {
     confidenceScore?: number | undefined;
-    depth?: "deep" | "quick" | "standard" | undefined;
+    depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
     buyerType?: string | undefined;
     likelyNeed?: string | undefined;
     primaryAngle?: string | undefined;
@@ -2404,7 +2404,7 @@ export declare const CustomerResearchEvidenceSchema: z.ZodObject<{
 export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     website: z.ZodString;
     companyName: z.ZodString;
-    depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+    depth: z.ZodDefault<z.ZodEnum<["adaptive", "quick", "standard", "deep"]>>;
     confidenceScore: z.ZodDefault<z.ZodNumber>;
     buyerType: z.ZodDefault<z.ZodString>;
     productSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -2444,7 +2444,7 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     companyName: string;
     industry: string;
     confidenceScore: number;
-    depth: "deep" | "quick" | "standard";
+    depth: "deep" | "adaptive" | "quick" | "standard";
     buyerType: string;
     productSignals: string[];
     buyingSignals: string[];
@@ -2468,7 +2468,7 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     title?: string | undefined;
     industry?: string | undefined;
     confidenceScore?: number | undefined;
-    depth?: "deep" | "quick" | "standard" | undefined;
+    depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
     buyerType?: string | undefined;
     productSignals?: string[] | undefined;
     buyingSignals?: string[] | undefined;
@@ -3103,7 +3103,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
     research: z.ZodObject<{
         website: z.ZodString;
         companyName: z.ZodString;
-        depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+        depth: z.ZodDefault<z.ZodEnum<["adaptive", "quick", "standard", "deep"]>>;
         confidenceScore: z.ZodDefault<z.ZodNumber>;
         buyerType: z.ZodDefault<z.ZodString>;
         productSignals: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
@@ -3143,7 +3143,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         companyName: string;
         industry: string;
         confidenceScore: number;
-        depth: "deep" | "quick" | "standard";
+        depth: "deep" | "adaptive" | "quick" | "standard";
         buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
@@ -3167,7 +3167,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title?: string | undefined;
         industry?: string | undefined;
         confidenceScore?: number | undefined;
-        depth?: "deep" | "quick" | "standard" | undefined;
+        depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -4385,7 +4385,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         companyName: string;
         industry: string;
         confidenceScore: number;
-        depth: "deep" | "quick" | "standard";
+        depth: "deep" | "adaptive" | "quick" | "standard";
         buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
@@ -4643,7 +4643,7 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title?: string | undefined;
         industry?: string | undefined;
         confidenceScore?: number | undefined;
-        depth?: "deep" | "quick" | "standard" | undefined;
+        depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -4960,7 +4960,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     providerId: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
     generationMode: z.ZodDefault<z.ZodEnum<["lite", "deep"]>>;
-    researchDepth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+    researchDepth: z.ZodDefault<z.ZodEnum<["adaptive", "quick", "standard", "deep"]>>;
     rateLimit: z.ZodDefault<z.ZodObject<{
         maxPerHour: z.ZodDefault<z.ZodNumber>;
         minDelayMinutes: z.ZodDefault<z.ZodNumber>;
@@ -5035,7 +5035,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     tone: string;
     generationMode: "lite" | "deep";
     mode: "first-email-only";
-    researchDepth: "deep" | "quick" | "standard";
+    researchDepth: "deep" | "adaptive" | "quick" | "standard";
     rateLimit: {
         maxPerHour: number;
         minDelayMinutes: number;
@@ -5078,7 +5078,7 @@ export declare const OutreachCampaignSchema: z.ZodObject<{
     generationMode?: "lite" | "deep" | undefined;
     senderAccountId?: string | undefined;
     mode?: "first-email-only" | undefined;
-    researchDepth?: "deep" | "quick" | "standard" | undefined;
+    researchDepth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
     rateLimit?: {
         maxPerHour?: number | undefined;
         minDelayMinutes?: number | undefined;
@@ -5118,7 +5118,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     contactTitle: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     status: z.ZodDefault<z.ZodEnum<["pending", "researching", "generated", "approved", "queued", "sending", "sent", "replied", "bounced", "unsubscribed", "stopped", "failed", "skipped"]>>;
     researchSummary: z.ZodOptional<z.ZodObject<{
-        depth: z.ZodDefault<z.ZodEnum<["quick", "standard", "deep"]>>;
+        depth: z.ZodDefault<z.ZodEnum<["adaptive", "quick", "standard", "deep"]>>;
         confidenceScore: z.ZodDefault<z.ZodNumber>;
         buyerType: z.ZodDefault<z.ZodString>;
         likelyNeed: z.ZodDefault<z.ZodString>;
@@ -5127,7 +5127,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
         checkedPages: z.ZodDefault<z.ZodNumber>;
     }, "strict", z.ZodTypeAny, {
         confidenceScore: number;
-        depth: "deep" | "quick" | "standard";
+        depth: "deep" | "adaptive" | "quick" | "standard";
         buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
@@ -5135,7 +5135,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
         checkedPages: number;
     }, {
         confidenceScore?: number | undefined;
-        depth?: "deep" | "quick" | "standard" | undefined;
+        depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;
@@ -5175,7 +5175,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     initialDraftId?: string | undefined;
     researchSummary?: {
         confidenceScore: number;
-        depth: "deep" | "quick" | "standard";
+        depth: "deep" | "adaptive" | "quick" | "standard";
         buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
@@ -5210,7 +5210,7 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     initialDraftId?: string | undefined;
     researchSummary?: {
         confidenceScore?: number | undefined;
-        depth?: "deep" | "quick" | "standard" | undefined;
+        depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;

@@ -201,8 +201,6 @@ type ProviderKind = 'openai-compatible' | 'openai' | 'anthropic' | 'local'
 type ProviderPresetId = (typeof providerPresets)[number]['id']
 type SenderProviderId = 'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom'
 type SenderChannelId = 'gmailApi' | 'microsoftGraph' | 'zohoApi' | 'smtp' | 'enterpriseApi' | 'customHttpApi'
-const researchDepthOptions: OutreachResearchDepth[] = ['quick', 'standard', 'deep']
-
 type ProviderForm = {
   kind: ProviderKind
   displayName: string
@@ -2186,7 +2184,6 @@ function DevelopmentLetterPage({
   const [leadDraft, setLeadDraft] = useState<LeadFormDraft>(() => emptyLeadDraft())
   const [quickWebsite, setQuickWebsite] = useState('')
   const [quickEmail, setQuickEmail] = useState('')
-  const [quickResearchDepth, setQuickResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
@@ -2196,7 +2193,6 @@ function DevelopmentLetterPage({
   const [selectedLetterLeadIds, setSelectedLetterLeadIds] = useState<string[]>([])
   const [bulkImportText, setBulkImportText] = useState('')
   const [campaignName, setCampaignName] = useState(copy.devLetter.batch.defaultName)
-  const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
   const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
@@ -2274,7 +2270,6 @@ function DevelopmentLetterPage({
   const campaignReviewCount = selectedCampaign?.stats.generated ?? 0
   const campaignReadyCount = selectedCampaign?.stats.approved ?? 0
   const campaignSentCount = selectedCampaign?.stats.sent ?? 0
-  const visibleResearchDepth = selectedCampaign?.researchDepth ?? campaignResearchDepth
   const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
   const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
   const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
@@ -2707,8 +2702,8 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
-        generationMode: campaignResearchDepth === 'deep' ? 'deep' : 'lite',
-        researchDepth: campaignResearchDepth,
+        generationMode: 'deep',
+        researchDepth: 'adaptive',
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
       replaceCampaign(campaign)
@@ -3026,7 +3021,7 @@ function DevelopmentLetterPage({
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
         generationMode: 'deep',
-        researchDepth: 'deep',
+        researchDepth: 'adaptive',
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
       replaceCampaign(created)
@@ -3137,7 +3132,7 @@ function DevelopmentLetterPage({
         leadId: lead.id,
         language,
         tone,
-        generationMode: 'lite',
+        generationMode: 'deep',
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel
       })
@@ -3176,8 +3171,8 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
-        generationMode: quickResearchDepth === 'deep' ? 'deep' : 'lite',
-        researchDepth: quickResearchDepth
+        generationMode: 'deep',
+        researchDepth: 'adaptive'
       })
       const nextLeads = await api.outreachLeads()
       setLeads(nextLeads)
@@ -3730,25 +3725,18 @@ function DevelopmentLetterPage({
                 </div>
                 <div className="campaign-depth-picker letter-depth-picker">
                   <div>
-                    <strong>客户背调方式</strong>
-                    <small>普通适合日常开发，深度会调用内置爬取引擎分析更多官网页面。</small>
+                    <strong>自适应深度分析</strong>
+                    <small>后台会优先调用 Scrapling 深度抓取官网、产品页和联系页；失败时自动轻量兜底，不需要手动选择模式。</small>
                   </div>
-                  <div className="campaign-depth-options">
-                    {(['standard', 'deep'] as OutreachResearchDepth[]).map((depth) => (
-                      <button
-                        className={quickResearchDepth === depth ? 'active' : ''}
-                        type="button"
-                        key={depth}
-                        onClick={() => setQuickResearchDepth(depth)}
-                      >
-                        <strong>{depth === 'deep' ? '深度分析' : '普通分析'}</strong>
-                        <span>{depth === 'deep' ? '多页/动态官网' : '快速官网背调'}</span>
-                      </button>
-                    ))}
+                  <div className="letter-depth-flow" aria-label="自适应深度分析流程">
+                    <span>官网结构</span>
+                    <span>高价值页面</span>
+                    <span>采购线索</span>
+                    <span>开发信草稿</span>
                   </div>
                 </div>
                 <button className="letter-primary full" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
-                  {busy === 'auto' ? '正在深度分析并生成开发信...' : '深度分析并生成开发信'} <ChevronRight size={16} />
+                  {busy === 'auto' ? '正在分析客户官网并生成开发信...' : '分析客户官网并生成开发信'} <ChevronRight size={16} />
                 </button>
               </div>
 

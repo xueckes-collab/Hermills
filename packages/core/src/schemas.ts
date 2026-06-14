@@ -392,7 +392,7 @@ export const OutreachDraftSchema = z.object({
   body: z.string().trim().min(1).max(20000),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional"),
-  generationMode: OutreachGenerationModeSchema.default("lite"),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
   promptSnapshot: z.string().trim().max(30000).default(""),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
@@ -471,7 +471,7 @@ export const OutreachEmailSignatureSchema = z.object({
   updatedAt: z.string().datetime().optional()
 }).strict();
 
-export const OutreachResearchDepthSchema = z.enum(["quick", "standard", "deep"]);
+export const OutreachResearchDepthSchema = z.enum(["adaptive", "quick", "standard", "deep"]);
 
 export const DeepResearchSidecarConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -482,7 +482,7 @@ export const DeepResearchSidecarConfigSchema = z.object({
 }).strict();
 
 export const CustomerResearchSummarySchema = z.object({
-  depth: OutreachResearchDepthSchema.default("standard"),
+  depth: OutreachResearchDepthSchema.default("adaptive"),
   confidenceScore: z.number().int().min(0).max(100).default(0),
   buyerType: z.string().trim().max(160).default(""),
   likelyNeed: z.string().trim().max(800).default(""),
@@ -501,7 +501,7 @@ export const CustomerResearchEvidenceSchema = z.object({
 export const CustomerResearchSnapshotSchema = z.object({
   website: z.string().min(1).max(500),
   companyName: z.string().trim().min(1).max(180),
-  depth: OutreachResearchDepthSchema.default("standard"),
+  depth: OutreachResearchDepthSchema.default("adaptive"),
   confidenceScore: z.number().int().min(0).max(100).default(0),
   buyerType: z.string().trim().max(160).default(""),
   productSignals: z.array(z.string().trim().min(1).max(220)).max(12).default([]),
@@ -567,7 +567,7 @@ export const OutreachWorkflowSchema = z.object({
   email: z.string().min(3).max(320),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
-  generationMode: OutreachGenerationModeSchema.default("lite"),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
   research: CustomerResearchSnapshotSchema,
   icps: z.array(GeneratedIcpSchema).max(3).default([]),
   usps: z.array(GeneratedUspSchema).max(6).default([]),
@@ -618,8 +618,8 @@ export const OutreachCampaignSchema = z.object({
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
-  generationMode: OutreachGenerationModeSchema.default("lite"),
-  researchDepth: OutreachResearchDepthSchema.default("standard"),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
+  researchDepth: OutreachResearchDepthSchema.default("adaptive"),
   rateLimit: OutreachCampaignRateLimitSchema.default({}),
   stats: OutreachCampaignStatsSchema.default({}),
   startedAt: z.string().datetime().optional(),

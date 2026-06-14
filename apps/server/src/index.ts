@@ -474,7 +474,8 @@ const GenerateOutreachDraftBody = z.object({
   lead: OutreachLeadInputBody.optional(),
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
-  generationMode: OutreachGenerationModeSchema.default("lite"),
+  generationMode: OutreachGenerationModeSchema.default("deep"),
+  researchDepth: OutreachResearchDepthSchema.default("adaptive"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional()
 }).strict().refine((body) => Boolean(body.leadId || body.lead), {
@@ -488,7 +489,7 @@ const AutoOutreachDraftBody = z.object({
   language: z.string().trim().min(1).max(80).default("English"),
   tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
   generationMode: OutreachGenerationModeSchema.default("deep"),
-  researchDepth: OutreachResearchDepthSchema.default("standard"),
+  researchDepth: OutreachResearchDepthSchema.default("adaptive"),
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional()
 }).strict();
@@ -588,7 +589,7 @@ const CreateOutreachCampaignBody = z.object({
   providerId: z.string().min(1).optional(),
   model: z.string().min(1).max(100).optional(),
   generationMode: OutreachGenerationModeSchema.default("deep"),
-  researchDepth: OutreachResearchDepthSchema.default("standard"),
+  researchDepth: OutreachResearchDepthSchema.default("adaptive"),
   rateLimit: OutreachCampaignRateLimitBody.optional()
 }).strict();
 
@@ -1109,6 +1110,12 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       ? await outreachLeads.require(body.leadId)
       : await outreachLeads.create({ ...body.lead!, profileId });
     await assertActiveProfile(lead.profileId);
+    const research = lead.website
+      ? await researchCustomerWebsite(lead.website, body.researchDepth, {
+        email: lead.email,
+        deepResearch
+      })
+      : undefined;
     const draft = await generateOutreachDraft({
       lead,
       body,
@@ -1118,7 +1125,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       companyProfile,
       materials,
       assets: outreachAssets,
-      drafts: outreachDrafts
+      drafts: outreachDrafts,
+      research
     });
     await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
     return draft;
@@ -3129,7 +3137,7 @@ class OutreachCampaignRepository {
         providerId: input.providerId,
         model: input.model,
         generationMode: input.generationMode ?? "deep",
-        researchDepth: input.researchDepth ?? "standard",
+        researchDepth: input.researchDepth ?? "adaptive",
         rateLimit: input.rateLimit ?? {},
         status: "draft",
         createdAt: now,
@@ -4216,7 +4224,10 @@ function parseOptionalPositiveInteger(value: string | undefined): number | undef
 function normalizeDeepResearchResult(website: string, payload: DeepResearchCompanyResponse): CustomerResearchResult {
   const normalizedWebsite = normalizeWebsiteUrl(payload.website || payload.websiteUrl || payload.website_url || website);
   const sources = normalizeDeepResearchSources(payload.sources ?? []);
-  const sourceEvidence = sources.flatMap((source) => source.evidence.length ? source.evidence : [{
+  const sourceEvidence = sources.flatMap((source) => source.evidence.length ? source.evidence.map((item) => ({
+    ...item,
+    sourceUrl: item.sourceUrl ?? item.source_url ?? source.sourceUrl
+  })) : [{
     label: source.title ? "Page title" : "Page text",
     value: source.title || source.description || source.snippet,
     sourceUrl: source.sourceUrl,
@@ -4416,16 +4427,18 @@ function isPrivateOrLocalIp(host: string): boolean {
   return false;
 }
 
-async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "standard", options: { email?: string; deepResearch?: DeepResearchClient } = {}): Promise<CustomerResearchResult> {
+async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "adaptive", options: { email?: string; deepResearch?: DeepResearchClient } = {}): Promise<CustomerResearchResult> {
   const website = normalizeWebsiteUrl(rawWebsite);
   assertPublicResearchWebsite(website);
   let deepResearchFallbackReason = "";
-  if (depth === "deep" && options.deepResearch) {
+  const shouldTryDeepResearch = depth === "adaptive" || depth === "deep";
+  const localResearchDepth: OutreachResearchDepth = depth === "adaptive" ? "deep" : depth;
+  if (shouldTryDeepResearch && options.deepResearch) {
     try {
       const deepResult = await options.deepResearch.research({
         website,
         email: options.email,
-        maxPages: researchDepthLimits(depth).pages,
+        maxPages: researchDepthLimits("deep").pages,
         timeoutMs: 30_000
       });
       if (deepResult) return deepResult;
@@ -4433,10 +4446,12 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
       deepResearchFallbackReason = redactSecrets(error instanceof Error ? error.message : String(error));
     }
   }
-  const limits = researchDepthLimits(depth);
+  const limits = researchDepthLimits(localResearchDepth);
   const initial = await fetchWebsitePage(website);
   const fallbackNote = deepResearchFallbackReason
     ? `Deep research sidecar failed (${deepResearchFallbackReason}); used Node website research fallback.`
+    : shouldTryDeepResearch
+      ? `${depth === "adaptive" ? "Adaptive" : "Deep"} research sidecar was unavailable; used Node website research fallback.`
     : "";
   if (!initial.html) {
     return {
@@ -4460,7 +4475,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
     };
   }
 
-  const urls = [website, ...pickResearchLinks(website, initial.html, depth)].slice(0, limits.pages);
+  const urls = [website, ...pickResearchLinks(website, initial.html, localResearchDepth)].slice(0, limits.pages);
   const pages = [initial];
   for (const url of urls.slice(1)) pages.push(await fetchWebsitePage(url));
   const successfulPages = pages.filter((page): page is WebsitePageResult & { html: string } => Boolean(page.html));
@@ -4570,19 +4585,19 @@ function normalizeWebsiteUrl(value: string): string {
 
 function researchDepthLimits(depth: OutreachResearchDepth): { pages: number; textChars: number } {
   if (depth === "quick") return { pages: 1, textChars: 3_500 };
-  if (depth === "deep") return { pages: 8, textChars: 12_000 };
+  if (depth === "deep" || depth === "adaptive") return { pages: 8, textChars: 12_000 };
   return { pages: 4, textChars: 8_000 };
 }
 
 function researchConcurrency(depth: OutreachResearchDepth): number {
   if (depth === "quick") return 6;
-  if (depth === "deep") return 2;
+  if (depth === "deep" || depth === "adaptive") return 2;
   return 4;
 }
 
 function pickResearchLinks(baseUrl: string, html: string, depth: OutreachResearchDepth): string[] {
   const base = new URL(baseUrl);
-  const researchPattern = depth === "deep"
+  const researchPattern = depth === "deep" || depth === "adaptive"
     ? /about|company|product|solution|service|catalog|industr|contact|news|blog|case|customer|brand|category|collection|shop/i
     : /about|company|product|solution|service|catalog|industr|contact/i;
   const candidates = Array.from(html.matchAll(/href=["']([^"']+)["']/gi))
@@ -4915,10 +4930,12 @@ function buildOutreachEvidenceMap(input: {
   addEvidence(verified, "verified", "Lead need", input.lead.need, "lead", input.lead.website);
   addEvidence(verified, "verified", "Lead notes", input.lead.notes, "lead", input.lead.website);
   for (const item of input.research?.evidence ?? []) {
-    addEvidence(verified, "verified", item.label, item.value, "website", item.sourceUrl, item.snippet);
+    const bucket = researchEvidenceLooksInferred(item) ? inferred : verified;
+    const level = bucket === inferred ? "inferred" : "verified";
+    addEvidence(bucket, level, item.label, item.value, "website", item.sourceUrl, item.snippet);
   }
-  for (const signal of input.research?.productSignals ?? []) addEvidence(verified, "verified", "Product signal", signal, "website", input.research?.website);
-  for (const signal of input.research?.buyingSignals ?? []) addEvidence(verified, "verified", "Buying signal", signal, "website", input.research?.website);
+  for (const signal of input.research?.productSignals ?? []) addEvidence(inferred, "inferred", "Product signal", signal, "website", input.research?.website);
+  for (const signal of input.research?.buyingSignals ?? []) addEvidence(inferred, "inferred", "Buying signal", signal, "website", input.research?.website);
   for (const signal of input.research?.painSignals ?? []) addEvidence(inferred, "inferred", "Pain signal", signal, "model", input.research?.website);
   addEvidence(inferred, "inferred", "Buyer type", input.research?.buyerType || input.brief.buyerSegment, "model", input.research?.website);
   addEvidence(inferred, "inferred", "Likely need", input.research?.inferredNeed || input.brief.likelyPain, "model", input.research?.website);
@@ -4929,7 +4946,7 @@ function buildOutreachEvidenceMap(input: {
     addEvidence(prohibited, "prohibited", "Unsupported claim", claim, "model", input.lead.website);
   }
   if (!verified.length && !inferred.length) {
-    addEvidence(generic, "generic", "Generic sourcing context", "Teams sourcing this category often need a low-friction supplier-fit check.", "model");
+    addEvidence(generic, "generic", "Generic sourcing context", "Teams sourcing this category often need a focused comparison before adding a new option.", "model");
   }
   const missingFields = [
     facts.mainProducts.length ? "" : "seller product category",
@@ -4941,13 +4958,39 @@ function buildOutreachEvidenceMap(input: {
   return OutreachEvidenceMapSchema.parse({
     status: missingFields.length >= 3 ? "need_more_data" : "success",
     minimumDataAvailable: Boolean((facts.mainProducts.length || input.lead.need) && (input.research?.buyerType || input.lead.industry || input.lead.website)),
-    verifiedFacts: verified.slice(0, 24),
-    inferredInsights: inferred.slice(0, 24),
+    verifiedFacts: rankOutreachEvidenceForWriting(verified).slice(0, 24),
+    inferredInsights: rankOutreachEvidenceForWriting(inferred).slice(0, 24),
     genericContext: generic.slice(0, 12),
     prohibitedClaims: prohibited.slice(0, 12),
     missingFields,
     createdAt: new Date().toISOString()
   });
+}
+
+function researchEvidenceLooksInferred(item: CustomerResearchEvidence): boolean {
+  const label = normalizeQualityText(item.label);
+  const value = normalizeQualityText(item.value);
+  if (/\b(product|buying|risk|pain|need|recommended|angle|buyer type|industry)\s+signal\b/.test(label)) return true;
+  if (/\blikely|may|might|appears|seems|inferred|suggests|probably\b/.test(value)) return true;
+  return false;
+}
+
+function rankOutreachEvidenceForWriting(items: OutreachEvidenceItem[]): OutreachEvidenceItem[] {
+  return [...items].sort((a, b) => evidenceWritingScore(b) - evidenceWritingScore(a));
+}
+
+function evidenceWritingScore(item: OutreachEvidenceItem): number {
+  let score = 0;
+  const label = normalizeQualityText(item.label);
+  const text = normalizeQualityText(`${item.label} ${item.value} ${item.snippet}`);
+  if (item.source === "website") score += 60;
+  if (item.source === "lead") score += 25;
+  if (item.source === "company-profile" || item.source === "material") score += 10;
+  if (item.sourceUrl) score += 12;
+  if (item.snippet && item.snippet !== item.value) score += 10;
+  if (/\bproduct|category|collection|catalog|dealer|showroom|distributor|download|spec|faq|certification|contact|purchasing|procurement|stock|sample|moq|lead time\b/.test(text)) score += 18;
+  if (/page title|meta description|lead company|lead website/.test(label)) score -= 18;
+  return score;
 }
 
 function buildOutreachStrategyMatch(input: {
@@ -4965,15 +5008,18 @@ function buildOutreachStrategyMatch(input: {
   const selectedUsp = usp?.headline || input.brief.selectedUsp.headline;
   const microOffer = input.brief.microOffer;
   const desiredAssetType = inferCtaAssetType(`${selectedUsp} ${microOffer}`);
-  const ctaAsset = input.ctaAssets.find((asset) => asset.type === desiredAssetType) ?? input.ctaAssets[0];
-  const evidenceIds = [
-    ...input.evidenceMap.verifiedFacts,
-    ...input.evidenceMap.inferredInsights
-  ].slice(0, 6).map((item) => item.id);
+  const ctaAsset = selectOutreachCtaAsset(input.ctaAssets, desiredAssetType, `${selectedUsp} ${microOffer} ${input.brief.likelyPain}`);
+  const evidenceIds = rankOutreachEvidenceForWriting([
+    ...input.evidenceMap.verifiedFacts.filter((item) => item.source === "website"),
+    ...input.evidenceMap.verifiedFacts.filter((item) => item.source === "lead"),
+    ...input.evidenceMap.inferredInsights,
+    ...input.evidenceMap.verifiedFacts.filter((item) => item.source !== "website" && item.source !== "lead")
+  ]).slice(0, 6).map((item) => item.id);
+  const buyerImplication = deriveBuyerImplication(input.brief);
   const warnings = [
     input.evidenceMap.status === "need_more_data" ? `Missing data: ${input.evidenceMap.missingFields.join(", ")}` : "",
     input.usps.length ? "" : "No saved USP bank item; using company profile fallback.",
-    input.ctaAssets.length ? "" : "No saved CTA asset; CTA must stay conservative or use profile-derived proof.",
+    ctaAsset ? "" : `No saved ${desiredAssetType.replace(/_/g, " ")} CTA asset; CTA must stay conservative or use profile-derived proof.`,
     input.brief.missingEvidence.length ? `Proof still thin: ${input.brief.missingEvidence.join(", ")}` : ""
   ].filter(Boolean);
   return OutreachStrategyMatchSchema.parse({
@@ -4981,11 +5027,11 @@ function buildOutreachStrategyMatch(input: {
     uspId: usp?.id,
     ctaAssetId: ctaAsset?.id,
     buyerPain: input.brief.likelyPain,
-    buyerImplication: input.brief.procurementTrigger,
+    buyerImplication,
     selectedUsp,
     microOffer,
     rationale: `Match buyer signal (${input.brief.buyerReason}) to one seller value (${selectedUsp}) and one low-friction CTA (${microOffer}).`,
-    confidenceScore: Math.min(100, 40 + input.evidenceMap.verifiedFacts.length * 8 + input.evidenceMap.inferredInsights.length * 3 + (usp ? 10 : 0) + (ctaAsset ? 10 : 0)),
+    confidenceScore: Math.min(100, 36 + input.evidenceMap.verifiedFacts.filter((item) => item.source === "website").length * 10 + input.evidenceMap.inferredInsights.length * 3 + (usp ? 12 : 0) + (ctaAsset ? 10 : 0)),
     evidenceIds,
     warnings
   });
@@ -4997,7 +5043,7 @@ function applyOutreachOsStrategyToBrief(brief: OutreachGenerationBrief, strategy
     selectedUsp: {
       ...brief.selectedUsp,
       headline: strategy.selectedUsp || brief.selectedUsp.headline,
-      buyerAngle: strategy.buyerImplication || brief.selectedUsp.buyerAngle
+      buyerAngle: brief.selectedUsp.buyerAngle || strategy.buyerImplication
     },
     microOffer: strategy.microOffer || brief.microOffer
   };
@@ -5051,20 +5097,59 @@ function selectOutreachPersona(personas: OutreachBuyerPersona[], lead: OutreachL
 
 function selectOutreachUspAsset(usps: OutreachUspCandidate[], brief: OutreachGenerationBrief): OutreachUspCandidate | undefined {
   const target = normalizeQualityText(`${brief.likelyPain} ${brief.procurementTrigger} ${brief.selectedUsp.headline}`);
-  return usps.find((usp) => {
-    const haystack = normalizeQualityText(`${usp.category} ${usp.headline} ${usp.buyerAngle} ${usp.proof}`);
-    return haystack.split(/\s+/).some((token) => token.length > 3 && target.includes(token));
-  }) ?? usps[0];
+  const ranked = usps
+    .filter((usp) => usp.enabled)
+    .map((usp) => {
+      const haystack = normalizeQualityText(`${usp.category} ${usp.headline} ${usp.buyerAngle} ${usp.proof}`);
+      const proofBonus = usp.proofLevel === "verified" ? 3 : usp.proofLevel === "profile-derived" ? 2 : 0;
+      return { usp, score: overlapScore(target, haystack) + proofBonus };
+    })
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.score >= 2 ? ranked[0].usp : undefined;
 }
 
 function inferCtaAssetType(value: string): OutreachCtaAsset["type"] {
   const text = normalizeQualityText(value);
-  if (/certification|spec|proof/.test(text)) return "certification_pack";
-  if (/moq|lead time|lead-time/.test(text)) return "moq_leadtime_sheet";
-  if (/comparison|side by side|compare/.test(text)) return "spec_comparison";
-  if (/sample|option a|option b|a\/b|2-3|matched options/.test(text)) return "sample_options";
+  if (/moq|lead time|lead-time|delivery table|price table/.test(text)) return "moq_leadtime_sheet";
+  if (/option a|option b|a\/b|2-3|matched options|sample-ready|sample options/.test(text)) return "sample_options";
+  if (/comparison|side by side|compare|spec comparison/.test(text)) return "spec_comparison";
+  if (/certification pack|certification\/spec pack|certification|certificate|ce pack|iso pack|proof pack|test report/.test(text)) return "certification_pack";
+  if (/packaging|private label|labeling/.test(text)) return "packaging_options";
+  if (/quote|price range|pricing range/.test(text)) return "quote_range";
+  if (/case study|case example|project example/.test(text)) return "case_study";
   if (/catalog/.test(text)) return "catalog";
   return "custom";
+}
+
+function selectOutreachCtaAsset(assets: OutreachCtaAsset[], desiredType: OutreachCtaAsset["type"], target: string): OutreachCtaAsset | undefined {
+  const normalizedTarget = normalizeQualityText(target);
+  const ranked = assets
+    .filter((asset) => asset.enabled)
+    .map((asset) => {
+      const haystack = normalizeQualityText(`${asset.name} ${asset.type} ${asset.description} ${asset.assetText}`);
+      const typeBonus = asset.type === desiredType ? 8 : asset.type === "custom" ? 1 : 0;
+      const materialBonus = asset.materialId || asset.url || asset.assetText ? 2 : 0;
+      return { asset, score: typeBonus + materialBonus + overlapScore(normalizedTarget, haystack) };
+    })
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.score >= 5 ? ranked[0].asset : undefined;
+}
+
+function deriveBuyerImplication(brief: OutreachGenerationBrief): string {
+  const reason = brief.buyerReason.replace(/\s+/g, " ").trim();
+  const trigger = brief.procurementTrigger.replace(/\s+/g, " ").trim();
+  const pain = brief.likelyPain.replace(/\s+/g, " ").trim();
+  if (reason && trigger) return truncatePlain(`${reason}; that points to ${lowercaseFirstBusinessPhrase(trigger)}`, 800);
+  if (reason && pain) return truncatePlain(`${reason}; that may make ${lowercaseFirstBusinessPhrase(pain)} worth simplifying`, 800);
+  return trigger || pain || "A small supplier comparison may be easier than a broad catalog review.";
+}
+
+function overlapScore(target: string, haystack: string): number {
+  const targetTokens = new Set(target.split(/[^a-z0-9]+/i).map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)));
+  const haystackTokens = new Set(haystack.split(/[^a-z0-9]+/i).map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)));
+  let score = 0;
+  for (const token of targetTokens) if (haystackTokens.has(token)) score += 1;
+  return score;
 }
 
 function extractCompanyKnowledgeFacts(companyKnowledgeContext: string): {
@@ -5097,6 +5182,8 @@ function splitCompanyKnowledgeList(value: string): string[] {
 
 function strongestResearchSignal(research?: CustomerResearchResult): string {
   if (!research) return "";
+  const concreteEvidence = rankCustomerResearchEvidenceForOpening(research.evidence).find((item) => !researchEvidenceLooksInferred(item));
+  if (concreteEvidence) return concreteEvidence.value || concreteEvidence.snippet;
   return [
     research.buyingSignals[0],
     research.painSignals[0],
@@ -5106,6 +5193,20 @@ function strongestResearchSignal(research?: CustomerResearchResult): string {
     research.productSignals[0],
     research.description
   ].find((item) => item && item.trim()) ?? "";
+}
+
+function rankCustomerResearchEvidenceForOpening(items: CustomerResearchEvidence[]): CustomerResearchEvidence[] {
+  return [...items].sort((a, b) => {
+    const score = (item: CustomerResearchEvidence) => {
+      const text = normalizeQualityText(`${item.label} ${item.value} ${item.snippet}`);
+      let value = item.sourceUrl ? 8 : 0;
+      if (item.snippet && item.snippet !== item.value) value += 4;
+      if (/\bproduct|category|collection|dealer|showroom|download|spec|faq|certification|contact|purchasing|procurement|stock|sample|moq|lead time\b/.test(text)) value += 8;
+      if (/page title|meta description/.test(normalizeQualityText(item.label))) value -= 5;
+      return value;
+    };
+    return score(b) - score(a);
+  });
 }
 
 function combinedResearchSignal(research: CustomerResearchResult): string {
@@ -5232,7 +5333,13 @@ const outreachTemplatePhrases = [
   "can you share your requirements",
   "we are a manufacturing service",
   "we are manufacturer",
-  "we are a manufacturer"
+  "we are a manufacturer",
+  "supplier-fit check",
+  "quick look",
+  "worth reviewing",
+  "may be relevant here",
+  "this matters because",
+  "this helps because"
 ];
 
 const outreachNextStepPhrases = [
@@ -5319,7 +5426,9 @@ const genericOutreachSubjects = [
   "hello",
   "cooperation",
   "business cooperation",
-  "supply"
+  "supply",
+  "supplier fit",
+  "supplier-fit check"
 ];
 
 type OutreachQualityResearchContext = {
@@ -5329,6 +5438,10 @@ type OutreachQualityResearchContext = {
   buyerType?: string;
   inferredNeed?: string;
   recommendedAngle?: string;
+  title?: string;
+  description?: string;
+  textPreview?: string;
+  evidence?: CustomerResearchEvidence[];
   productSignals?: string[];
   buyingSignals?: string[];
   painSignals?: string[];
@@ -5348,15 +5461,20 @@ function reviewOutreachEmail(input: {
   const evidenceTokens = buyerEvidenceTokens(input.lead, input.research);
   const activePersonalizationTokens = evidenceTokens.length ? evidenceTokens : tokens;
   const templateHits = outreachTemplatePhrases.filter((phrase) => normalized.includes(phrase));
-  const genericSubject = genericOutreachSubjects.some((phrase) => normalizeQualityText(subject) === phrase || normalizeQualityText(subject).includes(phrase));
+  const genericSubject = isGenericOutreachSubject(subject, activePersonalizationTokens);
   const startsWithSupplierIntro = /^(we|our company|i am|this is)\b/.test(opening) && !/\b(saw|noticed|looking at|checked|read|your)\b/.test(opening);
-  const openingHasSpecificEvidence = containsAny(opening, activePersonalizationTokens);
+  const openingEvidenceHits = evidenceTokenHitCount(opening, activePersonalizationTokens);
+  const openingHasSpecificEvidence = openingEvidenceHits >= (activePersonalizationTokens.length >= 2 ? 2 : 1);
   const openingHasBuyerObservation = /\b(saw|noticed|looking at|checked|read|your website|your product|your category|your range|your store|your catalog|your channel|your market|your project|your customers)\b/.test(opening);
   const genericWebsiteOpening = /\b(saw|noticed|checked|read|looked at)\s+(your|the)\s+(website|site|company|business)\b/.test(opening) && !openingHasSpecificEvidence;
   const hasBuyerImplication = containsAny(normalized, outreachBuyerImplicationPhrases);
   const hasMicroOffer = containsAny(normalized, outreachMicroOfferPhrases);
+  const vagueCta = /\b(would you like details|are you interested|can we talk|can we have a call|can we schedule a call|please send (?:me )?your requirements|do you have any need|can i send samples|would you like samples|let me know if interested)\b/i.test(normalized);
+  const concreteCta = /\b(2-3|two|three|a\/b|option a|option b|matched options|moq|lead time|lead-time|spec(?:ification)? pack|certification pack|proof pack|short comparison|side by side|table)\b/i.test(normalized);
   const hasLowFrictionAsk = (normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase)))
-    && (hasMicroOffer || /\breply with\s+[abc]\b/.test(normalized));
+    && concreteCta
+    && (hasMicroOffer || /\breply with\s+[abc]\b/.test(normalized))
+    && !vagueCta;
   const buyerReasonPassed = Boolean(opening) && !startsWithSupplierIntro && (
     openingHasSpecificEvidence ||
     (!evidenceTokens.length && openingHasBuyerObservation && containsAny(opening, tokens))
@@ -5366,14 +5484,15 @@ function reviewOutreachEmail(input: {
   const nextStepPassed = hasLowFrictionAsk;
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
-  const twoSecondPassed = words <= 120 && countWords(opening) <= 30 && subject.length <= 55 && paragraphCount <= 5 && !genericSubject;
+  const tooFormulaic = /\b(line 1|line 2|line 3|buyer implication|procurement trigger|micro-offer|evidence chain|selected usp)\b/i.test(normalized);
+  const twoSecondPassed = words >= 35 && words <= 110 && countWords(opening) <= 32 && subject.length <= 50 && paragraphCount >= 1 && paragraphCount <= 4 && !genericSubject && !tooFormulaic;
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
     qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? "translated sales wording"}.`),
     qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs a buyer signal plus a business implication, not just a name or category."),
-    qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a small comparison, options, specs, proof pack, or A/B choice."),
-    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 120) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "The email is too long, the subject is generic, or the opening is too slow.")
+    qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table."),
+    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 110) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
   ];
   const score = Math.max(0, Math.min(100, checks.reduce((sum, check) => sum + check.score, 0)));
   const hardFailed = !buyerReasonPassed || !humanTonePassed || !personalizedPassed || !nextStepPassed || !twoSecondPassed;
@@ -5383,8 +5502,8 @@ function reviewOutreachEmail(input: {
     buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not write only that you saw their website.",
     humanTonePassed ? "" : "Remove translated-template phrases and write like a short human business note.",
     personalizedPassed ? "" : "Add one customer-specific product, category, channel, project, certification, or procurement detail and explain the buyer implication.",
-    nextStepPassed ? "" : "End with one low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, or an A/B choice.",
-    twoSecondPassed ? "" : "Shorten to about 3 short lines: why this buyer, why relevant, what next."
+    nextStepPassed ? "" : "End with one low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice.",
+    twoSecondPassed ? "" : "Rewrite as a 45-90 word human sales note, not a visible three-line formula."
   ].filter(Boolean);
   return OutreachEmailQualityReviewSchema.parse({
     score,
@@ -5430,35 +5549,107 @@ function buyerContextTokens(lead?: OutreachLead, research?: OutreachQualityResea
     research?.website,
     research?.industry,
     research?.buyerType,
-    research?.inferredNeed,
-    research?.recommendedAngle,
+    research?.title,
+    research?.description,
+    ...(research?.evidence ?? []).flatMap((item) => [item.label, item.value, item.snippet]),
     ...(research?.productSignals ?? []),
     ...(research?.buyingSignals ?? []),
-    ...(research?.painSignals ?? [])
+    ...(research?.painSignals ?? []),
+    research?.textPreview,
+    research?.inferredNeed,
+    research?.recommendedAngle,
+    lead?.notes
   ].filter(Boolean).flatMap((value) => String(value).split(/[^a-zA-Z0-9]+/));
-  return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 24);
+  return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 48);
 }
 
 function buyerEvidenceTokens(lead?: OutreachLead, research?: OutreachQualityResearchContext): string[] {
   const raw = [
     lead?.industry,
     lead?.need,
-    lead?.notes,
     research?.industry,
     research?.buyerType,
-    research?.inferredNeed,
-    research?.recommendedAngle,
+    research?.title,
+    research?.description,
+    ...(research?.evidence ?? []).flatMap((item) => [item.label, item.value, item.snippet]),
     ...(research?.productSignals ?? []),
     ...(research?.buyingSignals ?? []),
-    ...(research?.painSignals ?? [])
+    ...(research?.painSignals ?? []),
+    research?.textPreview,
+    research?.inferredNeed,
+    research?.recommendedAngle,
+    lead?.notes
   ].filter(Boolean).flatMap((value) => String(value).split(/[^a-zA-Z0-9]+/));
-  return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 20);
+  return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 48);
 }
 
-const commonQualityTokens = new Set(["http", "https", "www", "com", "company", "email", "buyer", "buyers", "sales", "supply", "product", "products", "service", "services", "import", "imports", "export", "exports", "business", "website", "quality", "price", "prices", "team", "need", "needs", "work", "works"]);
+const commonQualityTokens = new Set([
+  "http",
+  "https",
+  "www",
+  "com",
+  "company",
+  "email",
+  "buyer",
+  "buyers",
+  "sales",
+  "supply",
+  "supplier",
+  "suppliers",
+  "manufacturer",
+  "manufacturers",
+  "product",
+  "products",
+  "service",
+  "services",
+  "import",
+  "imports",
+  "export",
+  "exports",
+  "business",
+  "website",
+  "quality",
+  "price",
+  "prices",
+  "team",
+  "need",
+  "needs",
+  "work",
+  "works",
+  "category",
+  "categories",
+  "channel",
+  "channels",
+  "details",
+  "professional"
+]);
+
+function isGenericOutreachSubject(subject: string, tokens: string[]): boolean {
+  const normalized = normalizeQualityText(subject);
+  if (!normalized) return true;
+  if (genericOutreachSubjects.includes(normalized)) return true;
+  const weakGenericPhrases = ["supply", "supplier fit", "supplier-fit check", "quick question"];
+  return weakGenericPhrases.some((phrase) => normalized.includes(phrase)) && evidenceTokenHitCount(normalized, tokens) === 0;
+}
+
+function evidenceTokenHitCount(value: string, tokens: string[]): number {
+  const normalized = normalizeQualityText(value);
+  return Array.from(new Set(tokens)).filter((token) => {
+    const clean = normalizeQualityText(token);
+    return clean.length >= 4 && qualityTextContainsToken(normalized, clean);
+  }).length;
+}
 
 function containsAny(value: string, tokens: string[]): boolean {
-  return tokens.some((token) => value.includes(token));
+  return tokens.some((token) => qualityTextContainsToken(value, normalizeQualityText(token)));
+}
+
+function qualityTextContainsToken(value: string, token: string): boolean {
+  if (!token) return false;
+  if (value.includes(token)) return true;
+  if (/^[a-z0-9-]+$/i.test(token) && token.endsWith("s") && token.length > 4 && value.includes(token.slice(0, -1))) return true;
+  if (/^[a-z0-9-]+$/i.test(token) && !token.endsWith("s") && token.length > 3 && value.includes(`${token}s`)) return true;
+  return false;
 }
 
 function looksLikeMassTemplate(value: string): boolean {
@@ -5490,6 +5681,7 @@ function reviewOutreachSendRisk(input: {
   qualityReview?: OutreachEmailQualityReview;
   sender?: OutreachSenderAccount;
   lead?: OutreachLead;
+  research?: OutreachQualityResearchContext;
   ctaAssets?: OutreachCtaAsset[];
   companyKnowledgeContext?: string;
 }): OutreachSendRiskReview {
@@ -5506,6 +5698,17 @@ function reviewOutreachSendRisk(input: {
   }
   if (/\bguaranteed\s+(profit|result|ranking|delivery)\b|\bexclusive supplier\b|\bofficial partner\b|\b#1\b/i.test(`${input.subject}\n${input.body}`)) {
     addIssue("unsupported_claim", "block", "Email contains unsupported proof or guarantee language.");
+  }
+  const supportContext = normalizeQualityText([
+    input.companyKnowledgeContext ?? "",
+    input.research?.productSignals?.join(" ") ?? "",
+    input.research?.buyingSignals?.join(" ") ?? "",
+    input.research?.painSignals?.join(" ") ?? "",
+    input.ctaAssets?.map((asset) => `${asset.name} ${asset.description} ${asset.assetText}`).join(" ") ?? ""
+  ].join("\n"));
+  if (/\b(?:ce|iso|fsc|sgs|ul|rohs|reach)\b[-\s]*(?:certified|certification|backed|compliant)?|\bcertified\b/i.test(`${input.subject}\n${input.body}`)
+    && !/\b(?:ce|iso|fsc|sgs|ul|rohs|reach|certification|certifications|test report|compliance)\b/.test(supportContext)) {
+    addIssue("unsupported_claim", "block", "Email mentions certification or compliance proof that is not backed by saved company evidence.");
   }
   if (input.sender) {
     if (!input.sender.enabled) addIssue("sender_disabled", "block", "Sender account is disabled.");
@@ -5571,6 +5774,7 @@ function senderLooksDomainAligned(sender: OutreachSenderAccount): boolean {
 }
 
 function researchDepthPromptGuidance(depth: OutreachResearchDepth): string {
+  if (depth === "adaptive") return "Use self-adaptive depth: prefer deep website evidence from high-value pages, but stay conservative if the crawler had to fall back.";
   if (depth === "quick") return "Keep analysis conservative and compact; use only the strongest website clues.";
   if (depth === "deep") return "Use the full buyer-risk, procurement-trigger, and objection model, but still avoid unsupported claims.";
   return "Use a balanced buyer profile and practical procurement-trigger reasoning.";
@@ -5582,6 +5786,7 @@ async function generateOutreachDraft(input: {
     language: string;
     tone: string;
     generationMode?: OutreachGenerationMode;
+    researchDepth?: OutreachResearchDepth;
     providerId?: string;
     model?: string;
   };
@@ -5592,7 +5797,7 @@ async function generateOutreachDraft(input: {
   materials: MaterialRepository;
   assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
-  customerResearchContext?: string;
+  research?: CustomerResearchResult;
 }): Promise<OutreachDraft> {
   await assertCompanyProfileReady(input.companyProfile);
   const providerRecord = await resolveGenerationProvider(input.body.providerId, input.providers);
@@ -5604,8 +5809,10 @@ async function generateOutreachDraft(input: {
     defaultModel: providerRecord.defaultModel
   } : undefined;
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
+  const customerResearchContext = input.research ? formatCustomerResearchContext(input.research) : "";
   const generationBrief = buildOutreachGenerationBrief({
     lead: input.lead,
+    research: input.research,
     companyKnowledgeContext
   });
   const [personas, usps, ctaAssets] = await Promise.all([
@@ -5614,8 +5821,9 @@ async function generateOutreachDraft(input: {
     input.assets.listCtaAssets(input.profileId)
   ]);
   const outreachOs = buildOutreachOsContext({
-    mode: input.body.generationMode ?? "lite",
+    mode: input.body.generationMode ?? "deep",
     lead: input.lead,
+    research: input.research,
     companyKnowledgeContext,
     personas,
     usps,
@@ -5625,7 +5833,7 @@ async function generateOutreachDraft(input: {
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
   const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, strategicBrief, [
-    input.customerResearchContext,
+    customerResearchContext,
     outreachOsContext
   ].filter(Boolean).join("\n\n"));
   const replyText = await input.runtime.createHermesReply({
@@ -5638,6 +5846,7 @@ async function generateOutreachDraft(input: {
   const polished = await polishOutreachDraft({
     candidate: parsed,
     lead: input.lead,
+    research: input.research,
     brief: strategicBrief,
     language: input.body.language,
     tone: input.body.tone,
@@ -5666,6 +5875,7 @@ async function generateOutreachDraft(input: {
       body: polished.body,
       qualityReview: polished.qualityReview,
       lead: input.lead,
+      research: input.research,
       ctaAssets,
       companyKnowledgeContext
     })
@@ -5689,7 +5899,7 @@ async function generateOutreachWorkflow(input: {
   researchDepth?: OutreachResearchDepth;
 }): Promise<OutreachWorkflow> {
   await assertCompanyProfileReady(input.companyProfile);
-  const researchDepth = input.researchDepth ?? input.body.researchDepth ?? "standard";
+  const researchDepth = input.researchDepth ?? input.body.researchDepth ?? "adaptive";
   const research = input.research ?? await researchCustomerWebsite(input.body.website, researchDepth, {
     email: input.body.email,
     deepResearch: input.deepResearch
@@ -6164,6 +6374,7 @@ async function rewriteOutreachDraft(input: {
     body: parsed.body,
     qualityReview: review,
     lead: input.lead,
+    research: input.workflow?.research,
     ctaAssets: await input.assets.listCtaAssets(input.draft.profileId ?? ""),
     companyKnowledgeContext
   });
@@ -6187,12 +6398,12 @@ function buildOutreachRewritePrompt(input: {
     "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
     "Hard rules:",
-    "- Use around 3 short lines and under 120 words.",
-    "- Line 1 must tell this buyer the specific reason they are being contacted and why that clue matters.",
-    "- Line 1 must include a concrete buyer evidence clue from the website, lead notes, or research summary; company name alone does not count.",
+    "- Use 45-90 words in 2-4 compact paragraphs.",
+    "- The first real sentence must tell this buyer the specific reason they are being contacted and why that clue matters.",
+    "- The first real sentence must include a concrete buyer evidence clue from the website, lead notes, or research summary; company name alone does not count.",
     "- Translate the evidence into a buyer implication before saying what we sell.",
-    "- Line 2 must say what we do and why it is relevant to this buyer's sourcing risk, KPI, channel, procurement task, or timing.",
-    "- Line 3 must ask one low-friction micro-offer, such as 2-3 matched options, a small comparison, an MOQ/lead-time table, a certification/spec pack, or A/B choices.",
+    "- Mention one supplier USP and why it is relevant to this buyer's sourcing risk, KPI, channel, procurement task, or timing.",
+    "- End with one low-friction micro-offer, such as 2-3 matched options, a small comparison, an MOQ/lead-time table, a certification/spec pack, or A/B choices.",
     "- Do not start with our company credentials.",
     "- Do not use vague CTAs like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
     "- Do not use translated-template phrases, reaching out, hope you are doing well, Dear Sir/Madam, esteemed company, long-term cooperation, high quality and competitive price, best price, one-stop solution, win-win cooperation, or please kindly.",
@@ -6309,9 +6520,9 @@ function buildOutreachRepairPrompt(input: {
     "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
     "Repair rules:",
-    "- Keep the body around 3 short lines and under 120 words.",
-    "- First business line must say why this specific buyer should care and what the business implication is.",
-    "- First business line must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
+    "- Keep the body 45-90 words in 2-4 compact paragraphs.",
+    "- First real sentence must say why this specific buyer should care and what the business implication is.",
+    "- First real sentence must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
     "- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.",
     "- Use exactly one buyer-relevant USP from the private brief.",
     "- End with one low-friction micro-offer: 2-3 matched options, MOQ/lead-time table, spec/certification pack, short comparison, or A/B choices.",
@@ -6351,12 +6562,13 @@ function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGener
   const subjectBase = brief.selectedUsp.headline.replace(/\bproof pack\b/i, "proof");
   const reason = stripLeadingCompanyName(brief.buyerReason, company);
   const productOrAngle = truncatePlain(brief.selectedUsp.headline.replace(/\bfit check\b/i, "options"), 38);
+  const buyerAngle = buyerAngleSentence(brief.selectedUsp.buyerAngle);
   return {
     subject: truncatePlain(subjectBase || `${productOrAngle} for ${company}`, 55),
     body: [
-      `Hi, I noticed ${company} ${buyerReasonForSentence(reason)}, so a quick supplier-fit check may save review time.`,
-      `${brief.selectedUsp.headline} may be relevant here. ${buyerAngleSentence(brief.selectedUsp.buyerAngle)}`,
-      `If useful, I can send a small A/B pack: A for fast sampling, B for repeat supply, with ${brief.microOffer}. Which fits better?`
+      `Hi, I noticed ${company} ${buyerReasonForSentence(reason)}, so proof and timing may matter before adding another option.`,
+      `${brief.selectedUsp.headline} gives your team a simpler way to compare fit. ${buyerAngle}`,
+      `I can send two options: A for fast sampling, B for repeat supply, with ${brief.microOffer}. Which fits better?`
     ].join("\n")
   };
 }
@@ -6388,11 +6600,11 @@ function buyerReasonForSentence(value: string): string {
 
 function buyerAngleSentence(value: string): string {
   const phrase = lowercaseFirstBusinessPhrase(value);
-  if (/^helps\b/.test(phrase)) return `This matters because it ${phrase}.`;
+  if (/^helps\b/.test(phrase)) return `It ${phrase}.`;
   if (/^(keeps|reduces|gives|lets|supports|makes|cuts|saves|allows|improves)\b/.test(phrase)) {
-    return `This helps because it ${phrase}.`;
+    return `It ${phrase}.`;
   }
-  return `This helps because ${phrase}.`;
+  return `That can help with ${phrase}.`;
 }
 
 function polishWorkflowFollowUps(input: {
@@ -7155,7 +7367,8 @@ function outreachInstructions(): string {
     "You are Hermills Outreach, a senior B2B export sales strategist writing warm emails, not generic cold blasts.",
     "Write concise, specific, reply-worthy emails for international sales. The buyer should feel the note is about their business, not the sender's factory.",
     "Privately follow this chain before writing: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
-    "The first business line must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
+    "Write like a real export sales rep: 45-90 words, 2-4 compact paragraphs, no visible framework wording.",
+    "The first real sentence must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
     "Never treat the buyer company name or the fact that a website exists as enough personalization.",
     "Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
@@ -7203,13 +7416,13 @@ function buildOutreachPrompt(
     `Tone: ${tone}.`,
     "Requirements:",
     "- Use a short subject line.",
-    "- Keep the body around 3 short lines and under 120 words.",
-    "- Use this exact thinking structure: line 1 = the specific buyer reason plus why it matters; line 2 = one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel; line 3 = one low-friction micro-offer.",
-    "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in line 1.",
+    "- Keep the body 45-90 words in 2-4 compact paragraphs.",
+    "- Privately use this sequence: specific buyer clue plus why it matters -> one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel -> one low-friction micro-offer.",
+    "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in the first real sentence.",
     "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
     "- Use only one USP in the email. Do not list all company strengths.",
-    "- The first business line must not introduce our company credentials first. It must tell the buyer why this email is about them.",
+    "- The first real sentence must not introduce our company credentials first. It must tell the buyer why this email is about them.",
     "- Do not write only 'I saw your website' or only mention the company name. Use a product/category/channel/market/project/certification/procurement clue.",
     "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, certification/spec pack, or A/B choices.",
     "- Never use a vague CTA like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
@@ -7281,11 +7494,11 @@ function buildOutreachWorkflowPrompt(input: {
     "",
     "Initial warm email rules:",
     "- Subject under 50 characters.",
-    "- Body under 120 words.",
+    "- Body 45-90 words in 2-4 compact paragraphs.",
     "- Peer-to-peer, helpful, warm, concise.",
-    "- Use this three-line formula: buyer-specific context hook plus why it matters -> one relevant USP tied to their sourcing risk, KPI, channel, or procurement task -> low-friction micro-offer.",
-    "- The first business line must be about the buyer, not our credentials.",
-    "- The first business line must include a concrete evidence clue: product category, channel, market, project, certification/compliance signal, sourcing/procurement signal, or pain/risk signal.",
+    "- Privately shape it as buyer-specific context hook plus why it matters -> one relevant USP tied to their sourcing risk, KPI, channel, or procurement task -> low-friction micro-offer.",
+    "- The first real sentence must be about the buyer, not our credentials.",
+    "- The first real sentence must include a concrete evidence clue: product category, channel, market, project, certification/compliance signal, sourcing/procurement signal, or pain/risk signal.",
     "- Translate the evidence into a buyer implication instead of simply naming the evidence.",
     "- Mention one buyer pain point and one matching USP. Do not include a catalog dump.",
     "- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.",

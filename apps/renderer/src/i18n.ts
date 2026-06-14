@@ -440,7 +440,7 @@ export type UiCopy = {
       reviewHint: string
       researchDepthTitle: string
       researchDepthHint: string
-      researchDepth: Record<'quick' | 'standard' | 'deep', { label: string; description: string }>
+      researchDepth: Record<'adaptive', { label: string; description: string }>
       agentQueueHint: (depth: string) => string
       researchScore: (score: number, angle: string) => string
       selectedCount: (count: number) => string
@@ -1206,14 +1206,12 @@ const en: UiCopy = {
       chooseHint: 'Pick customers with a website and email. Missing customers stay disabled.',
       reviewTitle: 'Check emails',
       reviewHint: 'Generate drafts, open each customer, then approve only the emails you want to send.',
-      researchDepthTitle: 'Research depth',
-      researchDepthHint: 'Standard is the default. Use deep only for important customers.',
+      researchDepthTitle: 'Adaptive research',
+      researchDepthHint: 'Hermes tries deep website research first, then falls back automatically if the site blocks it.',
       researchDepth: {
-        quick: { label: 'Save tokens', description: 'Fast website scan' },
-        standard: { label: 'Standard', description: 'Balanced research' },
-        deep: { label: 'Deep', description: 'Slower, richer buyer logic' },
+        adaptive: { label: 'Adaptive', description: 'Deep research first, lightweight fallback when needed' },
       },
-      agentQueueHint: (depth) => `${depth} research · hidden agents run in the background`,
+      agentQueueHint: () => `Adaptive research · hidden agents run in the background`,
       researchScore: (score, angle) => `${score}/100 · ${angle}`,
       selectedCount: (count) => `${count} selected`,
       noCampaign: 'Choose customers on the left, then prepare this batch.',
@@ -1755,14 +1753,12 @@ const zhCN = withOverrides(en, {
       chooseHint: '选择有官网和邮箱的客户。资料不完整的客户先不会加入。',
       reviewTitle: '检查邮件',
       reviewHint: '先生成草稿，再点客户名字检查。确认没问题后点“通过”。',
-      researchDepthTitle: '背调强度',
-      researchDepthHint: '标准最省心。重点客户再用深度，能省 token。',
+      researchDepthTitle: '自适应背调',
+      researchDepthHint: 'Hermes 会优先深度分析官网，遇到失败会自动轻量兜底，不需要用户选择模式。',
       researchDepth: {
-        quick: { label: '省钱', description: '快速扫官网' },
-        standard: { label: '标准', description: '默认最合适' },
-        deep: { label: '深度', description: '更慢更细' },
+        adaptive: { label: '自适应', description: '先深度背调，失败自动兜底' },
       },
-      agentQueueHint: (depth) => `${depth}背调 · 后台 Agent 自动处理`,
+      agentQueueHint: () => `自适应背调 · 后台 Agent 自动处理`,
       researchScore: (score, angle) => `${score}分 · ${angle}`,
       selectedCount: (count) => `已选 ${count} 个客户`,
       noCampaign: '先在左边选择客户，再点“准备这批邮件”。',

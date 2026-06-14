@@ -687,7 +687,7 @@ export type OutreachEmailSignature = {
   updatedAt?: string;
 };
 
-export type OutreachResearchDepth = "quick" | "standard" | "deep";
+export type OutreachResearchDepth = "adaptive" | "quick" | "standard" | "deep";
 
 export type CustomerResearchSummary = {
   depth: OutreachResearchDepth;

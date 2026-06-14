@@ -3388,6 +3388,28 @@ textarea,
   background: #ccfbf1;
 }
 
+.letter-depth-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.letter-depth-flow span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #115e59;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
 .campaign-lead-list,
 .campaign-recipient-list {
   display: grid;
@@ -8815,6 +8837,10 @@ button.letter-stat-card { cursor: pointer; }
   .letter-provider-grid,
   .sender-channel-grid {
     grid-template-columns: 1fr;
+  }
+
+  .letter-depth-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sender-subsection-heading,

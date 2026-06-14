@@ -453,12 +453,20 @@ describe("Hermills local API", () => {
     });
     expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
 
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/products")
+        ? "<html><body><h1>Industrial lighting products</h1><p>Bright LLC reviews LED work lights for contractor and warehouse channels.</p></body></html>"
+        : "<html><head><title>Bright LLC - Industrial Lighting Distributor</title><meta name=\"description\" content=\"Bright LLC distributes industrial lighting and work lights.\"></head><body><a href=\"/products\">Products</a><p>We import work lights and compare supplier proof before repeat supply.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+
     const importResponse = await server.inject({
       method: "POST",
       url: "/api/outreach/leads/import",
       headers,
       payload: {
-        csvText: "公司,email,联系人,国家,需求\nBright LLC,taylor@example.com,Taylor,US,industrial lighting\n,missing@example.com,,,"
+        csvText: "公司,email,联系人,国家,网站,需求\nBright LLC,taylor@example.com,Taylor,US,https://bright.example,industrial lighting\n,missing@example.com,,,,"
       }
     });
     expect(importResponse.statusCode).toBe(200);
@@ -489,7 +497,7 @@ describe("Hermills local API", () => {
       subject: "LED work light options",
       status: "draft",
       qualityReview: { passed: true },
-      generationMode: "lite",
+      generationMode: "deep",
       strategyMatch: {
         personaId: personaResponse.json().id,
         uspId: uspResponse.json().id,
@@ -498,12 +506,16 @@ describe("Hermills local API", () => {
       sendRiskReview: { passed: true, level: "warning" }
     });
     expect(draftResponse.json().evidenceMap.verifiedFacts.map((item: { label: string }) => item.label)).toContain("Lead company");
+    expect(draftResponse.json().evidenceMap.verifiedFacts.some((item: { source: string }) => item.source === "website")).toBe(true);
     expect(draftResponse.json().sendRiskReview.issues.map((issue: { id: string }) => issue.id)).toContain("unsubscribe_missing");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("Bright LLC");
     expect(runtimeContent).toContain("Eckes Export");
     expect(runtimeContent).toContain("Return JSON only");
     expect(runtimeContent).toContain("--- Outreach OS evidence and asset map ---");
+    expect(runtimeContent).toContain("--- Customer website research ---");
+    expect(runtimeContent).toContain("Research depth: adaptive");
+    expect(runtimeContent).toContain("Bright LLC distributes industrial lighting and work lights");
     expect(runtimeContent).toContain("Backed by asset: MOQ and lead-time comparison");
 
     const draftedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
@@ -875,11 +887,17 @@ describe("Hermills local API", () => {
     });
 
     expect(draftResponse.statusCode).toBe(200);
-    expect(draftResponse.json()).toMatchObject({ subject: "Work light options", status: "draft", qualityReview: { passed: true } });
+    expect(draftResponse.json()).toMatchObject({
+      subject: "Work light options",
+      status: "draft",
+      generationMode: "deep",
+      qualityReview: { passed: true }
+    });
     expect(draftResponse.json().body).toContain("A for fast sampling");
     expect(runtime.requests.at(-1)?.messages.at(-1)?.content).toContain("Would you like details?");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("--- Customer website research ---");
+    expect(runtimeContent).toContain("Research depth: adaptive");
     expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
     expect(runtimeContent).toContain("industrial lighting distributor");
     const leadsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads?q=Preview", headers });
@@ -887,6 +905,11 @@ describe("Hermills local API", () => {
       email: "buyer@preview-buyer.example",
       website: "https://preview-buyer.example/",
       tags: ["auto-researched"]
+    });
+    const workflowsResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Preview", headers });
+    expect(workflowsResponse.json()[0]).toMatchObject({
+      draftId: draftResponse.json().id,
+      research: { depth: "adaptive" }
     });
   });
 
