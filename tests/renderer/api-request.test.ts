@@ -34,7 +34,7 @@ describe("renderer API request wrapper", () => {
         id: "provider-missing-key",
         displayName: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
-        defaultModel: "gpt-4o-mini",
+        defaultModel: "gpt-5.5",
         enabled: true
       },
       {

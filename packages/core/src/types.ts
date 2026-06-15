@@ -38,6 +38,7 @@ import type {
   OutreachDraftSchema,
   OutreachFeedbackSchema,
   OutreachFollowUpJobSchema,
+  OutreachGoldenExampleSchema,
   OutreachLeadSchema,
   OutreachSenderAccountSchema,
   OutreachUspCandidateSchema,
@@ -71,6 +72,7 @@ export type OutreachEvidenceMap = z.infer<typeof OutreachEvidenceMapSchema>;
 export type OutreachBuyerPersona = z.infer<typeof OutreachBuyerPersonaSchema>;
 export type OutreachUspCandidate = z.infer<typeof OutreachUspCandidateSchema>;
 export type OutreachCtaAsset = z.infer<typeof OutreachCtaAssetSchema>;
+export type OutreachGoldenExample = z.infer<typeof OutreachGoldenExampleSchema>;
 export type OutreachStrategyMatch = z.infer<typeof OutreachStrategyMatchSchema>;
 export type OutreachSendRiskReview = z.infer<typeof OutreachSendRiskReviewSchema>;
 export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;

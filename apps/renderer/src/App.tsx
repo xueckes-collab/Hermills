@@ -36,6 +36,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Star,
   Trash2,
   Upload,
   UserRound,
@@ -55,7 +56,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -102,7 +103,7 @@ const providerPresets = [
     kind: 'openai',
     displayName: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
+    defaultModel: 'gpt-5.5',
     keyPlaceholder: 'sk-...',
   },
   {
@@ -2091,12 +2092,20 @@ function LetterQualitySummary({
   review,
   strategy,
   riskReview,
+  evidenceUsed,
+  generationSummary,
+  matchedExampleCount,
+  modelUsed,
   stale,
   copy,
 }: {
   review?: OutreachEmailQualityReview
   strategy?: OutreachStrategyMatch
   riskReview?: OutreachSendRiskReview
+  evidenceUsed?: OutreachEvidenceItem[]
+  generationSummary?: string
+  matchedExampleCount?: number
+  modelUsed?: string
   stale?: boolean
   copy: UiCopy
 }) {
@@ -2133,6 +2142,33 @@ function LetterQualitySummary({
           <span><strong>匹配 USP</strong>{strategy.selectedUsp || '未记录'}</span>
           <span><strong>CTA 资产</strong>{strategy.microOffer || '未记录'}</span>
         </div>
+      ) : null}
+      {generationSummary || matchedExampleCount || modelUsed ? (
+        <details className="letter-harness-summary">
+          <summary>为什么这样写</summary>
+          {generationSummary ? <p>{generationSummary}</p> : null}
+          <div className="letter-harness-meta">
+            {modelUsed ? <span>模型：{modelUsed}</span> : null}
+            {matchedExampleCount ? <span>参考好样例：{matchedExampleCount} 个</span> : <span>还没有参考好样例</span>}
+          </div>
+        </details>
+      ) : null}
+      {evidenceUsed?.length ? (
+        <details className="letter-evidence-summary">
+          <summary>证据来源</summary>
+          <div className="letter-evidence-list">
+            {evidenceUsed.slice(0, 8).map((item) => (
+              <article className="letter-evidence-item" key={item.id}>
+                <div>
+                  <strong>{item.label}</strong>
+                  <span>{item.value}</span>
+                </div>
+                <em>{item.source}{item.sourceUrl ? ` · ${item.sourceUrl}` : ''}</em>
+                {item.snippet ? <p>{item.snippet}</p> : null}
+              </article>
+            ))}
+          </div>
+        </details>
       ) : null}
       {riskReview ? (
         <div className={`letter-risk-summary ${riskReview.level}`}>
@@ -2222,9 +2258,11 @@ function DevelopmentLetterPage({
   const [buyerPersonas, setBuyerPersonas] = useState<OutreachBuyerPersona[]>([])
   const [uspAssets, setUspAssets] = useState<OutreachUspCandidate[]>([])
   const [ctaAssets, setCtaAssets] = useState<OutreachCtaAsset[]>([])
+  const [goldenExamples, setGoldenExamples] = useState<OutreachGoldenExample[]>([])
   const [personaDraft, setPersonaDraft] = useState({ name: '', companyType: '', buyerRoles: '', painPoints: '' })
   const [uspDraft, setUspDraft] = useState({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
   const [ctaDraft, setCtaDraft] = useState({ name: '', type: 'sample_options' as OutreachCtaAsset['type'], description: '', assetText: '' })
+  const [goldenDraft, setGoldenDraft] = useState({ title: '', industry: '', buyerType: '', productLine: '', market: '', subject: '', body: '', tags: '' })
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2274,12 +2312,20 @@ function DevelopmentLetterPage({
   const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
   const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
   const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
+  const activeEvidenceUsed = draft?.evidenceUsed ?? selectedWorkflowEmail?.evidenceMap?.verifiedFacts?.filter((item) => item.usedInEmail) ?? []
+  const activeGenerationSummary = draft?.generationSummary
+  const activeMatchedExampleCount = draft?.matchedExampleIds?.length ?? 0
+  const activeModelUsed = draft?.modelUsed ?? draft?.model
   const singleDraftChanged = selectedWorkflowEmail
     ? selectedWorkflowEmail.subject !== draftSubject || selectedWorkflowEmail.body !== draftBody
     : Boolean(draft && (draft.subject !== draftSubject || draft.body !== draftBody))
   const campaignQualityReview = selectedCampaignRecipient?.draft?.qualityReview
   const campaignStrategyMatch = selectedCampaignRecipient?.draft?.strategyMatch
   const campaignRiskReview = selectedCampaignRecipient?.draft?.sendRiskReview
+  const campaignEvidenceUsed = selectedCampaignRecipient?.draft?.evidenceUsed ?? []
+  const campaignGenerationSummary = selectedCampaignRecipient?.draft?.generationSummary
+  const campaignMatchedExampleCount = selectedCampaignRecipient?.draft?.matchedExampleIds?.length ?? 0
+  const campaignModelUsed = selectedCampaignRecipient?.draft?.modelUsed ?? selectedCampaignRecipient?.draft?.model
   const campaignDraftChanged = Boolean(selectedCampaignRecipient?.draft && (
     selectedCampaignRecipient.draft.subject !== campaignDraftSubject ||
     selectedCampaignRecipient.draft.body !== campaignDraftBody
@@ -2410,18 +2456,20 @@ function DevelopmentLetterPage({
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([api.outreachBuyerPersonas(), api.outreachUsps(), api.outreachCtaAssets()])
-      .then(([personas, usps, ctas]) => {
+    Promise.all([api.outreachBuyerPersonas(), api.outreachUsps(), api.outreachCtaAssets(), api.outreachGoldenExamples()])
+      .then(([personas, usps, ctas, examples]) => {
         if (cancelled) return
         setBuyerPersonas(personas)
         setUspAssets(usps)
         setCtaAssets(ctas)
+        setGoldenExamples(examples)
       })
       .catch(() => {
         if (cancelled) return
         setBuyerPersonas([])
         setUspAssets([])
         setCtaAssets([])
+        setGoldenExamples([])
       })
     return () => {
       cancelled = true
@@ -2664,6 +2712,69 @@ function DevelopmentLetterPage({
     } finally {
       setBusy('')
     }
+  }
+
+  async function saveGoldenExampleAsset(input?: Partial<Omit<typeof goldenDraft, 'tags'>> & { tags?: string | string[]; sourceDraftId?: string; qualityScore?: number }) {
+    const source = { ...goldenDraft, ...input }
+    if (!source.subject.trim() || !source.body.trim()) {
+      setError('请先填写邮件主题和正文。')
+      return
+    }
+    setBusy(input?.sourceDraftId ? 'assetGoldenFromDraft' : 'assetGolden')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachGoldenExample({
+        title: source.title.trim() || source.subject.trim(),
+        industry: source.industry.trim(),
+        buyerType: source.buyerType.trim(),
+        productLine: source.productLine.trim(),
+        market: source.market.trim(),
+        subject: source.subject.trim(),
+        body: source.body.trim(),
+        tags: Array.isArray(source.tags) ? source.tags : splitAssetLines(source.tags),
+        sourceDraftId: input?.sourceDraftId,
+        qualityScore: input?.qualityScore,
+        enabled: true,
+      })
+      setGoldenExamples([saved, ...goldenExamples])
+      if (!input?.sourceDraftId) setGoldenDraft({ title: '', industry: '', buyerType: '', productLine: '', market: '', subject: '', body: '', tags: '' })
+      setNotice('黄金邮件样例已保存。以后写信会参考它的质量和表达方式。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveCurrentDraftAsGoldenExample() {
+    const sourceDraftId = activeDraftId
+    await saveGoldenExampleAsset({
+      title: draftSubject.trim() ? `${draftSubject.trim()} 样例` : '开发信好样例',
+      industry: selectedLead?.industry || workflow?.research.industry || '',
+      buyerType: workflow?.research.buyerType || '',
+      productLine: activeStrategyMatch?.selectedUsp || '',
+      subject: draftSubject,
+      body: draftBody,
+      tags: ['golden', 'single'],
+      sourceDraftId,
+      qualityScore: activeQualityReview?.score,
+    })
+  }
+
+  async function saveCampaignDraftAsGoldenExample() {
+    if (!selectedCampaignRecipient?.draft) return
+    await saveGoldenExampleAsset({
+      title: campaignDraftSubject.trim() ? `${campaignDraftSubject.trim()} 样例` : `${selectedCampaignRecipient.companyName} 好样例`,
+      industry: selectedCampaignRecipient.draft.strategyMatch?.buyerPain || '',
+      buyerType: selectedCampaignRecipient.companyName,
+      productLine: selectedCampaignRecipient.draft.strategyMatch?.selectedUsp || '',
+      subject: campaignDraftSubject,
+      body: campaignDraftBody,
+      tags: ['golden', 'campaign'],
+      sourceDraftId: selectedCampaignRecipient.draft.id,
+      qualityScore: selectedCampaignRecipient.draft.qualityReview?.score,
+    })
   }
 
   function toggleCampaignLead(leadId: string) {
@@ -3917,11 +4028,22 @@ function DevelopmentLetterPage({
                       <>
                         <label className="letter-field">邮件主题<input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></label>
                         <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></label>
-                        <LetterQualitySummary review={activeQualityReview} strategy={activeStrategyMatch} riskReview={activeRiskReview} stale={singleDraftChanged} copy={copy} />
+                        <LetterQualitySummary
+                          review={activeQualityReview}
+                          strategy={activeStrategyMatch}
+                          riskReview={activeRiskReview}
+                          evidenceUsed={activeEvidenceUsed}
+                          generationSummary={activeGenerationSummary}
+                          matchedExampleCount={activeMatchedExampleCount}
+                          modelUsed={activeModelUsed}
+                          stale={singleDraftChanged}
+                          copy={copy}
+                        />
                         <div className="letter-action-row wrap letter-sticky-actions">
                           <button className="letter-primary" type="button" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</button>
                           <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
                           <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
+                          <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'assetGoldenFromDraft'} onClick={saveCurrentDraftAsGoldenExample}>保存为好样例</button>
                           <button className="letter-secondary" type="button" disabled={!draftSubject.trim() || !draftBody.trim()} onClick={copyDraft}>复制草稿</button>
                           <button className="letter-secondary" type="button" disabled={!canSendSingleDraft} title={singleSendBlocker} onClick={sendDraft}>确认发送</button>
                         </div>
@@ -4069,11 +4191,22 @@ function DevelopmentLetterPage({
                           </div>
                           <label className="letter-field">邮件主题<input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></label>
                           <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></label>
-                          <LetterQualitySummary review={campaignQualityReview} strategy={campaignStrategyMatch} riskReview={campaignRiskReview} stale={campaignDraftChanged} copy={copy} />
+                          <LetterQualitySummary
+                            review={campaignQualityReview}
+                            strategy={campaignStrategyMatch}
+                            riskReview={campaignRiskReview}
+                            evidenceUsed={campaignEvidenceUsed}
+                            generationSummary={campaignGenerationSummary}
+                            matchedExampleCount={campaignMatchedExampleCount}
+                            modelUsed={campaignModelUsed}
+                            stale={campaignDraftChanged}
+                            copy={copy}
+                          />
                           <div className="letter-action-row wrap">
                             <button className="letter-secondary" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>{busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
                             <button className="letter-secondary" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>{busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
                             <button className="letter-primary" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>{copy.devLetter.batch.actions.approve}</button>
+                            <button className="letter-secondary" type="button" disabled={busy === 'assetGoldenFromDraft'} onClick={saveCampaignDraftAsGoldenExample}>保存为好样例</button>
                             <button className="letter-secondary" type="button" disabled={!campaignDraftSubject.trim() || !campaignDraftBody.trim()} onClick={() => copyEmailDraft(campaignDraftSubject, campaignDraftBody)}>复制草稿</button>
                             <button className="letter-secondary" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>{copy.devLetter.batch.actions.skip}</button>
                           </div>
@@ -4100,6 +4233,7 @@ function DevelopmentLetterPage({
                 { label: '买家画像', value: buyerPersonas.length, icon: Users, tone: 'blue' },
                 { label: 'USP 库', value: uspAssets.length, icon: ShieldCheck, tone: 'green' },
                 { label: 'CTA 资产', value: ctaAssets.length, icon: FileText, tone: 'amber' },
+                { label: '黄金样例', value: goldenExamples.length, icon: Star, tone: 'rose' },
                 { label: '公司资料', value: companyMaterials.length, icon: FolderOpen, tone: 'violet' },
               ].map((stat) => {
                 const Icon = stat.icon
@@ -4189,6 +4323,32 @@ function DevelopmentLetterPage({
                       <span>{asset.type.replace(/_/g, ' ')} · {asset.description || '未补充描述'}</span>
                     </article>
                   )) : <div className="letter-empty small">还没有 CTA 资产。没有资产时，风控会阻止虚假的资料包承诺。</div>}
+                </div>
+              </div>
+
+              <div className="letter-panel letter-assets-wide">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Star size={18} /> 黄金邮件样例</h2>
+                    <p>保存你认可的好邮件。以后 AI 写信会参考它的表达方式，但不会照抄客户信息。</p>
+                  </div>
+                </div>
+                <div className="letter-form-grid">
+                  <label>样例标题<input value={goldenDraft.title} onChange={(event) => setGoldenDraft({ ...goldenDraft, title: event.target.value })} placeholder="SPC importer first email" /></label>
+                  <label>行业 / 买家类型<input value={goldenDraft.industry} onChange={(event) => setGoldenDraft({ ...goldenDraft, industry: event.target.value })} placeholder="flooring importer / distributor" /></label>
+                  <label>产品线<input value={goldenDraft.productLine} onChange={(event) => setGoldenDraft({ ...goldenDraft, productLine: event.target.value })} placeholder="SPC / LVT / vinyl plank" /></label>
+                  <label>标签<input value={goldenDraft.tags} onChange={(event) => setGoldenDraft({ ...goldenDraft, tags: event.target.value })} placeholder="warm, sample options, proof pack" /></label>
+                  <label className="letter-form-span">邮件主题<input value={goldenDraft.subject} onChange={(event) => setGoldenDraft({ ...goldenDraft, subject: event.target.value })} placeholder="Short subject line" /></label>
+                  <label className="letter-form-span">邮件正文<textarea value={goldenDraft.body} onChange={(event) => setGoldenDraft({ ...goldenDraft, body: event.target.value })} placeholder="Paste a strong email example here." /></label>
+                </div>
+                <button className="letter-primary full" type="button" disabled={busy === 'assetGolden'} onClick={() => saveGoldenExampleAsset()}>保存黄金样例</button>
+                <div className="letter-asset-list columns">
+                  {goldenExamples.length ? goldenExamples.slice(0, 8).map((example) => (
+                    <article className="letter-asset-row" key={example.id}>
+                      <strong>{example.title}</strong>
+                      <span>{example.subject} · {example.qualityScore ? `${example.qualityScore}/100` : '未评分'}</span>
+                    </article>
+                  )) : <div className="letter-empty small">还没有黄金样例。可以从生成好的邮件里点击“保存为好样例”。</div>}
                 </div>
               </div>
             </section>

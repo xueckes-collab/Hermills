@@ -52,7 +52,7 @@ describe("chat provider defaults", () => {
     name: "OpenAI",
     status: "connected",
     baseUrl: "https://api.openai.com/v1",
-    defaultModel: "gpt-4o-mini",
+    defaultModel: "gpt-5.5",
     maskedKey: "sk-..."
   };
 
@@ -61,7 +61,7 @@ describe("chat provider defaults", () => {
     expect(getDefaultChatProvider([{ ...provider, status: "missing" }])).toBeUndefined();
     expect(getChatSessionDefaults(undefined, provider)).toEqual({
       providerId: "provider-1",
-      model: "gpt-4o-mini"
+      model: "gpt-5.5"
     });
   });
 

@@ -1293,6 +1293,55 @@ export declare const OutreachUspCandidateSchema: z.ZodObject<{
     proofLevel?: "verified" | "profile-derived" | "needs-proof" | undefined;
     assetIds?: string[] | undefined;
 }>;
+export declare const OutreachGoldenExampleSchema: z.ZodObject<{
+    id: z.ZodString;
+    profileId: z.ZodOptional<z.ZodString>;
+    title: z.ZodString;
+    industry: z.ZodDefault<z.ZodString>;
+    buyerType: z.ZodDefault<z.ZodString>;
+    productLine: z.ZodDefault<z.ZodString>;
+    market: z.ZodDefault<z.ZodString>;
+    subject: z.ZodString;
+    body: z.ZodString;
+    tags: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    sourceDraftId: z.ZodOptional<z.ZodString>;
+    qualityScore: z.ZodOptional<z.ZodNumber>;
+    enabled: z.ZodDefault<z.ZodBoolean>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, "strict", z.ZodTypeAny, {
+    id: string;
+    tags: string[];
+    createdAt: string;
+    updatedAt: string;
+    enabled: boolean;
+    title: string;
+    industry: string;
+    buyerType: string;
+    productLine: string;
+    market: string;
+    subject: string;
+    body: string;
+    profileId?: string | undefined;
+    sourceDraftId?: string | undefined;
+    qualityScore?: number | undefined;
+}, {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    title: string;
+    subject: string;
+    body: string;
+    tags?: string[] | undefined;
+    enabled?: boolean | undefined;
+    profileId?: string | undefined;
+    industry?: string | undefined;
+    buyerType?: string | undefined;
+    productLine?: string | undefined;
+    market?: string | undefined;
+    sourceDraftId?: string | undefined;
+    qualityScore?: number | undefined;
+}>;
 export declare const OutreachStrategyMatchSchema: z.ZodObject<{
     personaId: z.ZodOptional<z.ZodString>;
     uspId: z.ZodOptional<z.ZodString>;
@@ -1843,6 +1892,39 @@ export declare const OutreachDraftSchema: z.ZodObject<{
             blocking?: boolean | undefined;
         }[] | undefined;
     }>>;
+    writingEngine: z.ZodDefault<z.ZodEnum<["legacy-chat", "harness-v2"]>>;
+    modelUsed: z.ZodOptional<z.ZodString>;
+    rewriteAttempts: z.ZodDefault<z.ZodNumber>;
+    evidenceUsed: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        level: z.ZodEnum<["verified", "inferred", "generic", "prohibited"]>;
+        label: z.ZodString;
+        value: z.ZodString;
+        source: z.ZodDefault<z.ZodEnum<["lead", "website", "company-profile", "material", "model", "user"]>>;
+        sourceUrl: z.ZodOptional<z.ZodString>;
+        snippet: z.ZodDefault<z.ZodString>;
+        usedInEmail: z.ZodDefault<z.ZodBoolean>;
+    }, "strict", z.ZodTypeAny, {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }, {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }>, "many">>;
+    matchedExampleIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    generationSummary: z.ZodDefault<z.ZodString>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
@@ -1858,6 +1940,20 @@ export declare const OutreachDraftSchema: z.ZodObject<{
     tone: string;
     generationMode: "lite" | "deep";
     promptSnapshot: string;
+    writingEngine: "legacy-chat" | "harness-v2";
+    rewriteAttempts: number;
+    evidenceUsed: {
+        label: string;
+        value: string;
+        id: string;
+        source: "company-profile" | "model" | "website" | "user" | "lead" | "material";
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        snippet: string;
+        usedInEmail: boolean;
+        sourceUrl?: string | undefined;
+    }[];
+    matchedExampleIds: string[];
+    generationSummary: string;
     providerId?: string | undefined;
     model?: string | undefined;
     usage?: {
@@ -1955,6 +2051,7 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         passed: boolean;
         checkedAt: string;
     } | undefined;
+    modelUsed?: string | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }, {
@@ -2065,6 +2162,21 @@ export declare const OutreachDraftSchema: z.ZodObject<{
             blocking?: boolean | undefined;
         }[] | undefined;
     } | undefined;
+    writingEngine?: "legacy-chat" | "harness-v2" | undefined;
+    modelUsed?: string | undefined;
+    rewriteAttempts?: number | undefined;
+    evidenceUsed?: {
+        label: string;
+        value: string;
+        id: string;
+        level: "verified" | "inferred" | "generic" | "prohibited";
+        source?: "company-profile" | "model" | "website" | "user" | "lead" | "material" | undefined;
+        sourceUrl?: string | undefined;
+        snippet?: string | undefined;
+        usedInEmail?: boolean | undefined;
+    }[] | undefined;
+    matchedExampleIds?: string[] | undefined;
+    generationSummary?: string | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }>;
@@ -2369,17 +2481,17 @@ export declare const CustomerResearchSummarySchema: z.ZodObject<{
     riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     checkedPages: z.ZodDefault<z.ZodNumber>;
 }, "strict", z.ZodTypeAny, {
+    buyerType: string;
     confidenceScore: number;
     depth: "deep" | "adaptive" | "quick" | "standard";
-    buyerType: string;
     likelyNeed: string;
     primaryAngle: string;
     riskNotes: string[];
     checkedPages: number;
 }, {
+    buyerType?: string | undefined;
     confidenceScore?: number | undefined;
     depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-    buyerType?: string | undefined;
     likelyNeed?: string | undefined;
     primaryAngle?: string | undefined;
     riskNotes?: string[] | undefined;
@@ -2443,9 +2555,9 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     title: string;
     companyName: string;
     industry: string;
+    buyerType: string;
     confidenceScore: number;
     depth: "deep" | "adaptive" | "quick" | "standard";
-    buyerType: string;
     productSignals: string[];
     buyingSignals: string[];
     painSignals: string[];
@@ -2467,9 +2579,9 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     textPreview?: string | undefined;
     title?: string | undefined;
     industry?: string | undefined;
+    buyerType?: string | undefined;
     confidenceScore?: number | undefined;
     depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-    buyerType?: string | undefined;
     productSignals?: string[] | undefined;
     buyingSignals?: string[] | undefined;
     painSignals?: string[] | undefined;
@@ -3142,9 +3254,9 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
+        buyerType: string;
         confidenceScore: number;
         depth: "deep" | "adaptive" | "quick" | "standard";
-        buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
         painSignals: string[];
@@ -3166,9 +3278,9 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
+        buyerType?: string | undefined;
         confidenceScore?: number | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-        buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
         painSignals?: string[] | undefined;
@@ -4384,9 +4496,9 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         title: string;
         companyName: string;
         industry: string;
+        buyerType: string;
         confidenceScore: number;
         depth: "deep" | "adaptive" | "quick" | "standard";
-        buyerType: string;
         productSignals: string[];
         buyingSignals: string[];
         painSignals: string[];
@@ -4642,9 +4754,9 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         textPreview?: string | undefined;
         title?: string | undefined;
         industry?: string | undefined;
+        buyerType?: string | undefined;
         confidenceScore?: number | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-        buyerType?: string | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
         painSignals?: string[] | undefined;
@@ -5126,17 +5238,17 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
         riskNotes: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         checkedPages: z.ZodDefault<z.ZodNumber>;
     }, "strict", z.ZodTypeAny, {
+        buyerType: string;
         confidenceScore: number;
         depth: "deep" | "adaptive" | "quick" | "standard";
-        buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
         riskNotes: string[];
         checkedPages: number;
     }, {
+        buyerType?: string | undefined;
         confidenceScore?: number | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-        buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;
         riskNotes?: string[] | undefined;
@@ -5174,9 +5286,9 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
     researchSummary?: {
+        buyerType: string;
         confidenceScore: number;
         depth: "deep" | "adaptive" | "quick" | "standard";
-        buyerType: string;
         likelyNeed: string;
         primaryAngle: string;
         riskNotes: string[];
@@ -5209,9 +5321,9 @@ export declare const OutreachCampaignRecipientSchema: z.ZodObject<{
     workflowId?: string | undefined;
     initialDraftId?: string | undefined;
     researchSummary?: {
+        buyerType?: string | undefined;
         confidenceScore?: number | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
-        buyerType?: string | undefined;
         likelyNeed?: string | undefined;
         primaryAngle?: string | undefined;
         riskNotes?: string[] | undefined;
@@ -5260,9 +5372,9 @@ export declare const OutreachFollowUpJobSchema: z.ZodObject<{
     profileId: string;
     companyName: string;
     email: string;
-    leadId: string;
     subject: string;
     body: string;
+    leadId: string;
     draftId: string;
     step: number;
     senderAccountId: string;
@@ -5283,9 +5395,9 @@ export declare const OutreachFollowUpJobSchema: z.ZodObject<{
     profileId: string;
     companyName: string;
     email: string;
-    leadId: string;
     subject: string;
     body: string;
+    leadId: string;
     draftId: string;
     step: number;
     senderAccountId: string;

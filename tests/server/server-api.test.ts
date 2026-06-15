@@ -452,6 +452,22 @@ describe("Hermills local API", () => {
       }
     });
     expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
+    const goldenResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/golden-examples",
+      headers,
+      payload: {
+        title: "Industrial lighting importer first email",
+        industry: "industrial lighting",
+        buyerType: "distributor",
+        productLine: "LED work light",
+        subject: "Work light comparison",
+        body: "Hi Taylor, your contractor-channel lighting range suggests proof and replenishment timing may matter before trialing another work-light supplier.\nWe can share two CE-backed LED work light options with MOQ and lead time side by side.\nWould a fast-sample option or repeat-supply comparison be easier first?",
+        tags: ["industrial lighting", "lead time"],
+        qualityScore: 95
+      }
+    });
+    expect(goldenResponse.statusCode, goldenResponse.body).toBe(200);
 
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
@@ -498,6 +514,10 @@ describe("Hermills local API", () => {
       status: "draft",
       qualityReview: { passed: true },
       generationMode: "deep",
+      writingEngine: "harness-v2",
+      model: "hermes-agent",
+      modelUsed: "hermes-agent",
+      matchedExampleIds: [goldenResponse.json().id],
       strategyMatch: {
         personaId: personaResponse.json().id,
         uspId: uspResponse.json().id,
@@ -513,6 +533,8 @@ describe("Hermills local API", () => {
     expect(runtimeContent).toContain("Eckes Export");
     expect(runtimeContent).toContain("Return JSON only");
     expect(runtimeContent).toContain("--- Outreach OS evidence and asset map ---");
+    expect(runtimeContent).toContain("--- Golden email examples ---");
+    expect(runtimeContent).toContain("Industrial lighting importer first email");
     expect(runtimeContent).toContain("--- Customer website research ---");
     expect(runtimeContent).toContain("Research depth: adaptive");
     expect(runtimeContent).toContain("Bright LLC distributes industrial lighting and work lights");
@@ -561,7 +583,7 @@ describe("Hermills local API", () => {
     expect(deletedStatsResponse.json()).toMatchObject({ total: 0 });
   });
 
-  it("manages local Outreach OS persona, USP, and CTA assets", async () => {
+  it("manages local Outreach OS persona, USP, CTA, and golden email assets", async () => {
     const personaResponse = await server.inject({
       method: "POST",
       url: "/api/outreach/personas",
@@ -613,6 +635,29 @@ describe("Hermills local API", () => {
     });
     expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
 
+    const goldenResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/golden-examples",
+      headers,
+      payload: {
+        title: "SPC importer first email",
+        industry: "flooring",
+        buyerType: "importer",
+        productLine: "SPC flooring",
+        market: "US",
+        subject: "SPC sample options",
+        body: "Hi Taylor, your SPC/LVT catalog suggests buyers may compare proof, samples, and lead time before adding a backup supplier.\nWe can send two sample-ready SPC options with certification notes and MOQ side by side.\nWould a small spec pack or an MOQ/lead-time table be easier first?",
+        tags: ["warm", "proof pack"],
+        qualityScore: 94
+      }
+    });
+    expect(goldenResponse.statusCode, goldenResponse.body).toBe(200);
+    expect(goldenResponse.json()).toMatchObject({ title: "SPC importer first email", enabled: true, qualityScore: 94 });
+
+    const goldenListResponse = await server.inject({ method: "GET", url: "/api/outreach/golden-examples", headers });
+    expect(goldenListResponse.statusCode, goldenListResponse.body).toBe(200);
+    expect(goldenListResponse.json()).toEqual([expect.objectContaining({ subject: "SPC sample options" })]);
+
     const listResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
     expect(listResponse.statusCode, listResponse.body).toBe(200);
     expect(listResponse.json()).toEqual([expect.objectContaining({ name: "Certification pack", type: "certification_pack" })]);
@@ -621,6 +666,11 @@ describe("Hermills local API", () => {
     expect(deleteResponse.statusCode).toBe(204);
     const deletedListResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
     expect(deletedListResponse.json()).toEqual([]);
+
+    const deleteGoldenResponse = await server.inject({ method: "DELETE", url: `/api/outreach/golden-examples/${goldenResponse.json().id}`, headers });
+    expect(deleteGoldenResponse.statusCode).toBe(204);
+    const deletedGoldenListResponse = await server.inject({ method: "GET", url: "/api/outreach/golden-examples", headers });
+    expect(deletedGoldenListResponse.json()).toEqual([]);
   });
 
   it("defaults normal Tencent and Alibaba sender accounts to authorization-code SMTP settings", async () => {
@@ -1113,8 +1163,8 @@ describe("Hermills local API", () => {
       const prompt = request.messages.map((message) => message.content).join("\n");
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
-          subject: "Fortika SPC backup options",
-          body: "Hi, I noticed Europine runs TruckLoad and Container Direct programs alongside Fortika SPC ranges, so supplier backup has to protect both quick-ship inventory and container timing.\nAnyway Flooring can be a backup SPC source for 5mm or 7.5mm-style ranges while keeping OEM packaging discussion separate from a full catalog.\nWould a short A/B sheet be more useful: A for matched specs, or B for MOQ and lead-time checks?"
+          subject: "Fortika SPC option sheet",
+          body: "Hi, Europine's TruckLoad and Container Direct programs for Fortika SPC suggest quick-ship inventory and container timing both matter.\nAnyway Flooring can map 5mm and 7.5mm SPC alternates with proof notes, MOQ, and lead time side by side.\nWould a 2-3 option sheet for matched specs be useful this week?"
         });
       }
       return JSON.stringify({
@@ -1146,10 +1196,10 @@ describe("Hermills local API", () => {
     });
 
     expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
-    expect(runtime.requests).toHaveLength(2);
-    expect(runtime.requests[1]?.messages[0]?.content).toContain("Reply 'SPC table'");
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(runtime.requests.slice(1).some((request) => request.messages[0]?.content.includes("Reply 'SPC table'"))).toBe(true);
     expect(workflowResponse.json().initialEmail).toMatchObject({
-      subject: "Fortika SPC backup options",
+      subject: "Fortika SPC option sheet",
       qualityReview: { passed: true }
     });
     expect(workflowResponse.json().initialEmail.body).not.toContain("No samples needed");
@@ -1170,8 +1220,8 @@ describe("Hermills local API", () => {
       const prompt = request.messages.map((message) => message.content).join("\n");
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
-          subject: "Fortika SPC backup options",
-          body: "Hi, I noticed Europine runs TruckLoad and Container Direct programs for Fortika SPC ranges, so lead time and matched specs likely matter before adding another supplier.\nI can prepare a short backup option sheet with MOQ, lead time, and proof notes instead of a full catalog.\nWould A) matched specs or B) MOQ and lead-time checks be more useful first?"
+          subject: "Fortika SPC option sheet",
+          body: "Hi, Europine's TruckLoad and Container Direct programs for Fortika SPC suggest quick-ship inventory and container timing both matter.\nAnyway Flooring can map 5mm and 7.5mm SPC alternates with proof notes, MOQ, and lead time side by side.\nWould a 2-3 option sheet for matched specs be useful this week?"
         });
       }
       return JSON.stringify({
@@ -1203,11 +1253,11 @@ describe("Hermills local API", () => {
     });
 
     expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
-    expect(runtime.requests).toHaveLength(2);
-    expect(runtime.requests[1]?.messages[0]?.content).toContain("works around europine.Com");
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(runtime.requests.slice(1).some((request) => request.messages[0]?.content.includes("works around europine.Com"))).toBe(true);
     const email = workflowResponse.json().initialEmail;
     expect(email).toMatchObject({
-      subject: "Fortika SPC backup options",
+      subject: "Fortika SPC option sheet",
       qualityReview: { passed: true }
     });
     expect(email.body).toContain("TruckLoad");

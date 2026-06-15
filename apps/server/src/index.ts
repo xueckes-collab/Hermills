@@ -50,6 +50,7 @@ import {
   OutreachFeedbackSchema,
   OutreachFollowUpJobSchema,
   OutreachGenerationModeSchema,
+  OutreachGoldenExampleSchema,
   OutreachLeadSchema,
   OutreachSendRiskReviewSchema,
   OutreachSenderAccountSchema,
@@ -87,6 +88,7 @@ import {
   type OutreachFeedback,
   type OutreachFollowUpJob,
   type OutreachGenerationMode,
+  type OutreachGoldenExample,
   type OutreachLead,
   type OutreachResearchDepth,
   type OutreachSendRiskReview,
@@ -467,6 +469,17 @@ const UpsertOutreachCtaAssetBody = OutreachCtaAssetSchema.omit({
 }).strict();
 
 const UpdateOutreachCtaAssetBody = UpsertOutreachCtaAssetBody.partial().strict();
+
+const UpsertOutreachGoldenExampleBody = OutreachGoldenExampleSchema.omit({
+  id: true,
+  profileId: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  profileId: z.string().min(1).optional()
+}).strict();
+
+const UpdateOutreachGoldenExampleBody = UpsertOutreachGoldenExampleBody.partial().strict();
 
 const GenerateOutreachDraftBody = z.object({
   profileId: z.string().min(1).optional(),
@@ -1097,6 +1110,25 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const { id } = request.params as { id: string };
     const query = OutreachLeadListQuery.parse(request.query ?? {});
     await outreachAssets.deleteCtaAsset(id, await resolveProfileId(query.profileId));
+    return reply.code(204).send();
+  });
+  server.get("/api/outreach/golden-examples", async (request) => {
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    return outreachAssets.listGoldenExamples(await resolveProfileId(query.profileId));
+  });
+  server.post("/api/outreach/golden-examples", async (request) => {
+    const body = UpsertOutreachGoldenExampleBody.parse(request.body ?? {});
+    return outreachAssets.createGoldenExample({ ...body, profileId: await resolveProfileId(body.profileId) });
+  });
+  server.put("/api/outreach/golden-examples/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = UpdateOutreachGoldenExampleBody.parse(request.body ?? {});
+    return outreachAssets.updateGoldenExample(id, await resolveProfileId(body.profileId), body);
+  });
+  server.delete("/api/outreach/golden-examples/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const query = OutreachLeadListQuery.parse(request.query ?? {});
+    await outreachAssets.deleteGoldenExample(id, await resolveProfileId(query.profileId));
     return reply.code(204).send();
   });
   server.get("/api/outreach/drafts", async (request) => {
@@ -2528,6 +2560,7 @@ interface OutreachAssetStoreDocument {
   personas: OutreachBuyerPersona[];
   usps: OutreachUspCandidate[];
   ctaAssets: OutreachCtaAsset[];
+  goldenExamples: OutreachGoldenExample[];
 }
 
 interface OutreachDraftStoreDocument {
@@ -2700,16 +2733,53 @@ class OutreachAssetRepository {
     });
   }
 
+  async listGoldenExamples(profileId: string): Promise<OutreachGoldenExample[]> {
+    return (await this.read()).goldenExamples.filter((item) => item.profileId === profileId && item.enabled);
+  }
+
+  async createGoldenExample(input: z.infer<typeof UpsertOutreachGoldenExampleBody> & { profileId: string }): Promise<OutreachGoldenExample> {
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const example = OutreachGoldenExampleSchema.parse({ ...input, id: randomUUID(), createdAt: now, updatedAt: now });
+      const document = await this.read();
+      document.goldenExamples.unshift(example);
+      await this.write(document);
+      return example;
+    });
+  }
+
+  async updateGoldenExample(id: string, profileId: string, input: z.infer<typeof UpdateOutreachGoldenExampleBody>): Promise<OutreachGoldenExample> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.goldenExamples.findIndex((item) => item.id === id && item.profileId === profileId);
+      if (index === -1) throw new ClientInputError(`Golden email example not found: ${id}`);
+      const next = OutreachGoldenExampleSchema.parse({ ...document.goldenExamples[index], ...input, profileId, updatedAt: new Date().toISOString() });
+      document.goldenExamples[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  async deleteGoldenExample(id: string, profileId: string): Promise<void> {
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const next = document.goldenExamples.filter((item) => item.id !== id || item.profileId !== profileId);
+      if (next.length === document.goldenExamples.length) throw new ClientInputError(`Golden email example not found: ${id}`);
+      await this.write({ ...document, goldenExamples: next });
+    });
+  }
+
   private async read(): Promise<OutreachAssetStoreDocument> {
     try {
       const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as Partial<OutreachAssetStoreDocument>;
       return {
         personas: Array.isArray(parsed.personas) ? parsed.personas.map((item) => OutreachBuyerPersonaSchema.parse(item)) : [],
         usps: Array.isArray(parsed.usps) ? parsed.usps.map((item) => OutreachUspCandidateSchema.parse(item)) : [],
-        ctaAssets: Array.isArray(parsed.ctaAssets) ? parsed.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item)) : []
+        ctaAssets: Array.isArray(parsed.ctaAssets) ? parsed.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item)) : [],
+        goldenExamples: Array.isArray(parsed.goldenExamples) ? parsed.goldenExamples.map((item) => OutreachGoldenExampleSchema.parse(item)) : []
       };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { personas: [], usps: [], ctaAssets: [] };
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { personas: [], usps: [], ctaAssets: [], goldenExamples: [] };
       throw error;
     }
   }
@@ -2718,7 +2788,8 @@ class OutreachAssetRepository {
     await writePrivateJson(this.filePath, {
       personas: document.personas.map((item) => OutreachBuyerPersonaSchema.parse(item)),
       usps: document.usps.map((item) => OutreachUspCandidateSchema.parse(item)),
-      ctaAssets: document.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item))
+      ctaAssets: document.ctaAssets.map((item) => OutreachCtaAssetSchema.parse(item)),
+      goldenExamples: document.goldenExamples.map((item) => OutreachGoldenExampleSchema.parse(item))
     });
   }
 }
@@ -2921,7 +2992,7 @@ class OutreachDraftRepository {
     });
   }
 
-  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview" | "evidenceMap" | "strategyMatch" | "sendRiskReview">>): Promise<OutreachDraft> {
+  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview" | "evidenceMap" | "strategyMatch" | "sendRiskReview" | "writingEngine" | "model" | "modelUsed" | "rewriteAttempts" | "evidenceUsed" | "matchedExampleIds" | "generationSummary">>): Promise<OutreachDraft> {
     return this.withWriteLock(async () => {
       const document = await this.read();
       const index = document.drafts.findIndex((draft) => draft.id === id);
@@ -4014,6 +4085,13 @@ interface PolishedOutreachDraft {
   body: string;
   qualityReview: OutreachEmailQualityReview;
   repairAttempts: number;
+}
+
+interface OutreachHarnessContext {
+  model: string | undefined;
+  goldenExamples: OutreachGoldenExample[];
+  goldenExamplesContext: string;
+  evidenceUsed: OutreachEvidenceItem[];
 }
 
 interface WebsitePageResult {
@@ -5698,6 +5776,7 @@ function reviewOutreachEmail(input: {
   const domainOnlyOpening = /\b(?:[a-z0-9-]+\.)+(?:com|net|org|co|io|cn|de|fr|it|es|nl|pl|uk)\b/i.test(opening) && openingEvidenceHits < 2;
   const badPseudoPersonalization = /\bworks around\b|\bsimpler way to compare fit\b|\bcompare fit\b/i.test(opening) || /\bfit check gives\b/i.test(normalized);
   const stiffAiOpening = /^(?:i\s+)?(?:saw|noticed)\s+[a-z0-9 .'-]{2,70}(?:'s)?\s+focus\s+on\b/i.test(opening);
+  const localSkeleton = looksLikeLocalOutreachSkeleton(subject, body);
   const hasBuyerImplication = containsAny(normalized, outreachBuyerImplicationPhrases);
   const hasMicroOffer = containsAny(normalized, outreachMicroOfferPhrases);
   const vagueCta = /\b(would you like details|are you interested|can we talk|can we have a call|can we schedule a call|please send (?:me )?your requirements|do you have any need|can i send samples|would you like samples|let me know if interested)\b/i.test(normalized);
@@ -5716,7 +5795,7 @@ function reviewOutreachEmail(input: {
   const strongEvidenceHits = evidenceTokenHitCount(normalized, strongEvidenceTerms);
   const openingStrongEvidenceHits = evidenceTokenHitCount(opening, strongEvidenceTerms);
   const hasEnoughConcreteEvidence = !strongEvidenceTerms.length || (strongEvidenceHits >= 2 && openingStrongEvidenceHits >= 1);
-  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
+  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !localSkeleton && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
   const personalizedPassed = containsAny(normalized, activePersonalizationTokens)
     && hasBuyerImplication
     && hasEnoughConcreteEvidence
@@ -5728,7 +5807,7 @@ function reviewOutreachEmail(input: {
   const nextStepPassed = hasLowFrictionAsk;
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
-  const tooFormulaic = /\b(line 1|line 2|line 3|buyer implication|procurement trigger|micro-offer|evidence chain|selected usp)\b/i.test(normalized);
+  const tooFormulaic = localSkeleton || /\b(line 1|line 2|line 3|buyer implication|procurement trigger|micro-offer|evidence chain|selected usp)\b/i.test(normalized);
   const twoSecondPassed = words >= 35 && words <= 110 && countWords(opening) <= 32 && subject.length <= 50 && paragraphCount >= 1 && paragraphCount <= 4 && !genericSubject && !tooFormulaic;
   const twoSecondScore = twoSecondPassed ? 20 : Math.max(0,
     20
@@ -5743,7 +5822,7 @@ function reviewOutreachEmail(input: {
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
-    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? (stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`),
+    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0) - (localSkeleton ? 6 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? (localSkeleton ? "fixed outreach skeleton" : stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`),
     qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs 2 concrete buyer clues plus a business implication, not just a name or category."),
     qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table."),
     qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
@@ -5791,6 +5870,16 @@ function normalizeOpeningLine(line: string): string {
   return normalizeQualityText(line
     .replace(/^(hi|hello)[,，]\s*/i, "")
     .replace(/^(hi|hello|dear)\s+[^,，.!?]{1,40}[,，]\s*/i, ""));
+}
+
+function looksLikeLocalOutreachSkeleton(subject: string, body: string): boolean {
+  const text = normalizeQualityText(`${subject}\n${body}`);
+  const opening = normalizeOpeningLine(firstBusinessLine(body));
+  const noticedSo = /\bi noticed\b.{0,120}\bso\b/.test(opening);
+  const fullCatalog = /\binstead of (?:sending )?(?:a )?(?:full|broad) catalog\b/.test(text);
+  const abUseful = /\bwould\s+[ab]\)|\bwould\s+a\)|\bwould\s+option\s+a\b|\bbe more useful first\b/.test(text);
+  const supplierFit = /\bsupplier[- ]fit check\b|\bbackup options\b/.test(text) && /\bmatched specs\b|\bmoq\b|\blead[- ]time\b/.test(text);
+  return (noticedSo && (fullCatalog || abUseful)) || (fullCatalog && abUseful) || supplierFit;
 }
 
 function buyerContextTokens(lead?: OutreachLead, research?: OutreachQualityResearchContext): string[] {
@@ -6092,6 +6181,7 @@ async function generateOutreachDraft(input: {
     apiKey,
     defaultModel: providerRecord.defaultModel
   } : undefined;
+  const model = resolveOutreachModel(input.body.model, providerRecord);
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
   const customerResearchContext = input.research ? formatCustomerResearchContext(input.research) : "";
   const generationBrief = buildOutreachGenerationBrief({
@@ -6099,10 +6189,11 @@ async function generateOutreachDraft(input: {
     research: input.research,
     companyKnowledgeContext
   });
-  const [personas, usps, ctaAssets] = await Promise.all([
+  const [personas, usps, ctaAssets, goldenExamples] = await Promise.all([
     input.assets.listPersonas(input.profileId),
     input.assets.listUsps(input.profileId),
-    input.assets.listCtaAssets(input.profileId)
+    input.assets.listCtaAssets(input.profileId),
+    input.assets.listGoldenExamples(input.profileId)
   ]);
   const outreachOs = buildOutreachOsContext({
     mode: input.body.generationMode ?? "deep",
@@ -6116,15 +6207,19 @@ async function generateOutreachDraft(input: {
   });
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
+  const harness = buildOutreachHarnessContext({ model, goldenExamples, lead: input.lead, research: input.research, outreachOs, strategicBrief });
   const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, strategicBrief, [
     customerResearchContext,
-    outreachOsContext
+    outreachOsContext,
+    harness.goldenExamplesContext
   ].filter(Boolean).join("\n\n"));
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
-    model: input.body.model ?? providerRecord?.defaultModel,
+    model,
     instructions: outreachInstructions(),
-    provider
+    provider,
+    reasoningEffort: "medium",
+    maxOutputTokens: 4096
   });
   const parsed = parseGeneratedOutreachDraft(replyText);
   const polished = await polishOutreachDraft({
@@ -6135,9 +6230,19 @@ async function generateOutreachDraft(input: {
     language: input.body.language,
     tone: input.body.tone,
     companyKnowledgeContext,
+    goldenExamplesContext: harness.goldenExamplesContext,
     runtime: input.runtime,
     provider,
-    model: input.body.model ?? providerRecord?.defaultModel
+    model
+  });
+  const sendRiskReview = reviewOutreachSendRisk({
+    subject: polished.subject,
+    body: polished.body,
+    qualityReview: polished.qualityReview,
+    lead: input.lead,
+    research: input.research,
+    ctaAssets,
+    companyKnowledgeContext
   });
   return input.drafts.create({
     profileId: input.profileId,
@@ -6149,19 +6254,23 @@ async function generateOutreachDraft(input: {
     generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
-    model: input.body.model ?? providerRecord?.defaultModel,
+    model,
+    modelUsed: model,
     usage: estimateMessageUsage(prompt, `${polished.subject}\n${polished.body}`),
     qualityReview: polished.qualityReview,
     evidenceMap: outreachOs.evidenceMap,
     strategyMatch: outreachOs.strategyMatch,
-    sendRiskReview: reviewOutreachSendRisk({
-      subject: polished.subject,
-      body: polished.body,
-      qualityReview: polished.qualityReview,
-      lead: input.lead,
+    sendRiskReview,
+    writingEngine: "harness-v2",
+    rewriteAttempts: polished.repairAttempts,
+    evidenceUsed: harness.evidenceUsed,
+    matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+    generationSummary: summarizeHarnessGeneration({
       research: input.research,
-      ctaAssets,
-      companyKnowledgeContext
+      strategy: outreachOs.strategyMatch,
+      matchedExamples: harness.goldenExamples,
+      qualityReview: polished.qualityReview,
+      repairAttempts: polished.repairAttempts
     })
   });
 }
@@ -6209,6 +6318,7 @@ async function generateOutreachWorkflow(input: {
     apiKey,
     defaultModel: providerRecord.defaultModel
   } : undefined;
+  const model = resolveOutreachModel(input.body.model, providerRecord);
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
   const customerResearchContext = formatCustomerResearchContext(research);
   const generationBrief = buildOutreachGenerationBrief({
@@ -6216,10 +6326,11 @@ async function generateOutreachWorkflow(input: {
     research,
     companyKnowledgeContext
   });
-  const [personas, usps, ctaAssets] = await Promise.all([
+  const [personas, usps, ctaAssets, goldenExamples] = await Promise.all([
     input.assets.listPersonas(input.profileId),
     input.assets.listUsps(input.profileId),
-    input.assets.listCtaAssets(input.profileId)
+    input.assets.listCtaAssets(input.profileId),
+    input.assets.listGoldenExamples(input.profileId)
   ]);
   const outreachOs = buildOutreachOsContext({
     mode: input.body.generationMode ?? "deep",
@@ -6233,20 +6344,23 @@ async function generateOutreachWorkflow(input: {
   });
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
+  const harness = buildOutreachHarnessContext({ model, goldenExamples, lead, research, outreachOs, strategicBrief });
   const prompt = buildOutreachWorkflowPrompt({
     lead,
     research,
     generationBrief: strategicBrief,
-    outreachOsContext,
+    outreachOsContext: [outreachOsContext, harness.goldenExamplesContext].filter(Boolean).join("\n\n"),
     companyKnowledgeContext,
     language: input.body.language,
     tone: input.body.tone
   });
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
-    model: input.body.model ?? providerRecord?.defaultModel,
+    model,
     instructions: outreachWorkflowInstructions(),
-    provider
+    provider,
+    reasoningEffort: "medium",
+    maxOutputTokens: 8192
   });
   const generated = parseGeneratedOutreachWorkflow(replyText, lead, input.body.language, input.body.tone);
   const polishedInitial = await polishOutreachDraft({
@@ -6260,9 +6374,10 @@ async function generateOutreachWorkflow(input: {
     language: input.body.language,
     tone: input.body.tone,
     companyKnowledgeContext,
+    goldenExamplesContext: harness.goldenExamplesContext,
     runtime: input.runtime,
     provider,
-    model: input.body.model ?? providerRecord?.defaultModel
+    model
   });
   const initialQualityReview = polishedInitial.qualityReview;
   const polishedFollowUps = polishWorkflowFollowUps({
@@ -6290,19 +6405,32 @@ async function generateOutreachWorkflow(input: {
     generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
     providerId: providerRecord?.id,
-    model: input.body.model ?? providerRecord?.defaultModel,
+    model,
+    modelUsed: model,
     usage: estimateMessageUsage(prompt, `${polishedInitial.subject}\n${polishedInitial.body}`),
     qualityReview: initialQualityReview,
     evidenceMap: outreachOs.evidenceMap,
     strategyMatch: outreachOs.strategyMatch,
-    sendRiskReview: initialSendRiskReview
+    sendRiskReview: initialSendRiskReview,
+    writingEngine: "harness-v2",
+    rewriteAttempts: polishedInitial.repairAttempts,
+    evidenceUsed: harness.evidenceUsed,
+    matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+    generationSummary: summarizeHarnessGeneration({
+      research,
+      strategy: outreachOs.strategyMatch,
+      matchedExamples: harness.goldenExamples,
+      qualityReview: initialQualityReview,
+      repairAttempts: polishedInitial.repairAttempts
+    })
   });
   const followUps = [];
   for (const email of polishedFollowUps.slice(0, 9)) {
+    const followUpQualityReview = email.qualityReview ?? reviewOutreachEmail({ subject: email.subject, body: email.body, lead, research });
     const sendRiskReview = reviewOutreachSendRisk({
       subject: email.subject,
       body: email.body,
-      qualityReview: email.qualityReview,
+      qualityReview: followUpQualityReview,
       lead,
       ctaAssets,
       companyKnowledgeContext
@@ -6317,14 +6445,26 @@ async function generateOutreachWorkflow(input: {
       generationMode: outreachOs.mode,
       promptSnapshot: truncateForContext(prompt, 30_000),
       providerId: providerRecord?.id,
-      model: input.body.model ?? providerRecord?.defaultModel,
+      model,
+      modelUsed: model,
       usage: estimateMessageUsage(prompt, `${email.subject}\n${email.body}`),
-      qualityReview: email.qualityReview,
+      qualityReview: followUpQualityReview,
       evidenceMap: outreachOs.evidenceMap,
       strategyMatch: outreachOs.strategyMatch,
-      sendRiskReview
+      sendRiskReview,
+      writingEngine: "harness-v2",
+      rewriteAttempts: 0,
+      evidenceUsed: harness.evidenceUsed,
+      matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+      generationSummary: summarizeHarnessGeneration({
+        research,
+        strategy: outreachOs.strategyMatch,
+        matchedExamples: harness.goldenExamples,
+        qualityReview: followUpQualityReview,
+        repairAttempts: 0
+      })
     });
-    followUps.push({ ...email, draftId: draft.id, evidenceMap: outreachOs.evidenceMap, strategyMatch: outreachOs.strategyMatch, sendRiskReview });
+    followUps.push({ ...email, draftId: draft.id, qualityReview: followUpQualityReview, evidenceMap: outreachOs.evidenceMap, strategyMatch: outreachOs.strategyMatch, sendRiskReview });
   }
   const now = new Date().toISOString();
   return input.workflows.create({
@@ -6352,7 +6492,7 @@ async function generateOutreachWorkflow(input: {
     followUps,
     promptSnapshot: truncateForContext(`${prompt}\n\n--- Customer context ---\n${customerResearchContext}\n\n${outreachOsContext}`, 30_000),
     providerId: providerRecord?.id,
-    model: input.body.model ?? providerRecord?.defaultModel,
+    model,
     usage: estimateMessageUsage(prompt, replyText)
   });
 }
@@ -6632,19 +6772,63 @@ async function rewriteOutreachDraft(input: {
     apiKey,
     defaultModel: providerRecord.defaultModel
   } : undefined;
+  const model = resolveOutreachModel(input.body.model ?? input.draft.model, providerRecord);
   const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
+  const goldenExamples = await input.assets.listGoldenExamples(input.draft.profileId ?? "");
+  const matchedExamples = selectOutreachGoldenExamples(goldenExamples, {
+    lead: input.lead ?? {
+      id: "draft-lead",
+      profileId: input.draft.profileId,
+      companyName: input.workflow?.research.companyName ?? "",
+      website: input.workflow?.research.website ?? "",
+      email: input.workflow?.email ?? "",
+      country: "",
+      industry: input.workflow?.research.industry ?? "",
+      contactName: "",
+      contactTitle: "",
+      need: input.workflow?.research.inferredNeed ?? "",
+      notes: "",
+      tags: [],
+      source: "draft",
+      status: "new",
+      currentState: "input_ready",
+      replyStatus: "not_checked",
+      statusColor: "slate",
+      currentRound: 0,
+      createdAt: input.draft.createdAt,
+      updatedAt: input.draft.updatedAt
+    },
+    research: input.workflow?.research,
+    brief: {
+      buyerReason: input.draft.strategyMatch?.buyerPain ?? input.workflow?.research.recommendedAngle ?? "",
+      buyerSegment: input.workflow?.research.buyerType ?? "",
+      likelyPain: input.draft.strategyMatch?.buyerImplication ?? input.workflow?.research.inferredNeed ?? "",
+      procurementTrigger: input.workflow?.research.recommendedAngle ?? "",
+      selectedUsp: {
+        headline: input.draft.strategyMatch?.selectedUsp ?? "",
+        buyerAngle: input.draft.strategyMatch?.buyerImplication ?? "",
+        proof: ""
+      },
+      microOffer: input.draft.strategyMatch?.microOffer ?? "",
+      missingEvidence: []
+    },
+    strategy: input.draft.strategyMatch ?? OutreachStrategyMatchSchema.parse({})
+  });
   const prompt = buildOutreachRewritePrompt({
     draft: input.draft,
     lead: input.lead,
     workflow: input.workflow,
     currentReview,
-    companyKnowledgeContext
+    companyKnowledgeContext,
+    goldenExamplesContext: formatOutreachGoldenExamplesContext(matchedExamples)
   });
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
-    model: input.body.model ?? input.draft.model ?? providerRecord?.defaultModel,
+    model,
     instructions: outreachInstructions(),
-    provider
+    provider,
+    reasoningEffort: "medium",
+    maxOutputTokens: 4096
   });
   const parsed = parseGeneratedOutreachDraft(replyText);
   const review = reviewOutreachEmail({
@@ -6666,7 +6850,19 @@ async function rewriteOutreachDraft(input: {
     subject: parsed.subject,
     body: parsed.body,
     qualityReview: review,
-    sendRiskReview
+    sendRiskReview,
+    model,
+    modelUsed: model,
+    writingEngine: "harness-v2",
+    rewriteAttempts: Math.min(5, (input.draft.rewriteAttempts ?? 0) + 1),
+    matchedExampleIds: matchedExamples.map((example) => example.id),
+    generationSummary: summarizeHarnessGeneration({
+      research: input.workflow?.research,
+      strategy: input.draft.strategyMatch ?? OutreachStrategyMatchSchema.parse({}),
+      matchedExamples,
+      qualityReview: review,
+      repairAttempts: Math.min(5, (input.draft.rewriteAttempts ?? 0) + 1)
+    })
   });
 }
 
@@ -6676,6 +6872,7 @@ function buildOutreachRewritePrompt(input: {
   workflow?: OutreachWorkflow;
   currentReview: OutreachEmailQualityReview;
   companyKnowledgeContext: string;
+  goldenExamplesContext?: string;
 }): string {
   return [
     "Rewrite this B2B cold email so it passes the buyer 2-second quality gate.",
@@ -6720,6 +6917,8 @@ function buildOutreachRewritePrompt(input: {
       input.workflow.research.buyingSignals.length ? `Buying signals: ${input.workflow.research.buyingSignals.join("; ")}` : ""
     ].filter(Boolean).join("\n") : "No workflow research available.",
     "",
+    input.goldenExamplesContext ?? "",
+    "",
     "--- Our company knowledge ---",
     input.companyKnowledgeContext || "No company knowledge has been added yet; stay conservative and offer a low-friction next step."
   ].join("\n");
@@ -6733,6 +6932,7 @@ async function polishOutreachDraft(input: {
   language: string;
   tone: string;
   companyKnowledgeContext: string;
+  goldenExamplesContext?: string;
   runtime: RuntimeAdapter;
   provider?: HermesReplyRequest["provider"];
   model?: string;
@@ -6757,13 +6957,16 @@ async function polishOutreachDraft(input: {
       brief: input.brief,
       language: input.language,
       tone: input.tone,
-      companyKnowledgeContext: input.companyKnowledgeContext
+      companyKnowledgeContext: input.companyKnowledgeContext,
+      goldenExamplesContext: input.goldenExamplesContext
     });
     const replyText = await input.runtime.createHermesReply({
       messages: [{ id: randomUUID(), role: "user", content: repairPrompt, createdAt: new Date().toISOString() }],
       model: input.model,
       instructions: outreachInstructions(),
-      provider: input.provider
+      provider: input.provider,
+      reasoningEffort: "medium",
+      maxOutputTokens: 4096
     });
     const parsed = parseGeneratedOutreachDraft(replyText);
     const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead, research: input.research });
@@ -6774,7 +6977,7 @@ async function polishOutreachDraft(input: {
 
   const fallback = fallbackOutreachDraftFromBrief(input.lead, input.brief);
   const fallbackReview = reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead, research: input.research });
-  if (fallbackReview.score >= best.qualityReview.score) {
+  if (fallbackReview.score >= best.qualityReview.score && fallbackReview.passed && !looksLikeLocalOutreachSkeleton(fallback.subject, fallback.body)) {
     return {
       subject: fallback.subject,
       body: fallback.body,
@@ -6795,6 +6998,7 @@ function buildOutreachRepairPrompt(input: {
   language: string;
   tone: string;
   companyKnowledgeContext: string;
+  goldenExamplesContext?: string;
 }): string {
   return [
     "Rewrite this B2B cold email so it passes the buyer 2-second quality gate.",
@@ -6837,6 +7041,8 @@ function buildOutreachRepairPrompt(input: {
     ].filter(Boolean).join("\n"),
     "",
     input.research ? formatCustomerResearchContext(input.research) : "--- Customer website research ---\nNo website research was available.",
+    "",
+    input.goldenExamplesContext ?? "",
     "",
     "--- Company knowledge ---",
     input.companyKnowledgeContext || "No company knowledge has been added yet; stay conservative."
@@ -7686,6 +7892,129 @@ async function resolveGenerationProvider(providerId: string | undefined, provide
   return (await providers.list()).find((provider) => provider.enabled && (provider.kind === "local" || Boolean(provider.credentialRef)));
 }
 
+function resolveOutreachModel(requestedModel: string | undefined, provider?: ProviderCredential): string | undefined {
+  const explicit = requestedModel?.trim();
+  if (explicit) return explicit;
+  const defaultModel = provider?.defaultModel?.trim();
+  if (provider?.kind === "openai" && (!defaultModel || isWeakOutreachModel(defaultModel))) return "gpt-5.5";
+  return defaultModel || "hermes-agent";
+}
+
+function isWeakOutreachModel(model: string): boolean {
+  return /\b(mini|nano|flash|lite)\b/i.test(model) || /^gpt-4o-mini$/i.test(model.trim()) || /^gpt-4\.1-mini$/i.test(model.trim());
+}
+
+function buildOutreachHarnessContext(input: {
+  model?: string;
+  goldenExamples: OutreachGoldenExample[];
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  outreachOs: OutreachOsContext;
+  strategicBrief: OutreachGenerationBrief;
+}): OutreachHarnessContext {
+  const selectedExamples = selectOutreachGoldenExamples(input.goldenExamples, {
+    lead: input.lead,
+    research: input.research,
+    brief: input.strategicBrief,
+    strategy: input.outreachOs.strategyMatch
+  });
+  return {
+    model: input.model,
+    goldenExamples: selectedExamples,
+    goldenExamplesContext: formatOutreachGoldenExamplesContext(selectedExamples),
+    evidenceUsed: selectEvidenceUsed(input.outreachOs)
+  };
+}
+
+function selectOutreachGoldenExamples(
+  examples: OutreachGoldenExample[],
+  input: {
+    lead: OutreachLead;
+    research?: CustomerResearchResult;
+    brief: OutreachGenerationBrief;
+    strategy: OutreachStrategyMatch;
+  },
+  limit = 3
+): OutreachGoldenExample[] {
+  const target = normalizeQualityText([
+    input.lead.companyName,
+    input.lead.industry,
+    input.lead.need,
+    input.research?.industry,
+    input.research?.buyerType,
+    input.research?.inferredNeed,
+    input.research?.recommendedAngle,
+    input.brief.buyerSegment,
+    input.brief.buyerReason,
+    input.brief.likelyPain,
+    input.strategy.selectedUsp,
+    input.strategy.microOffer
+  ].filter(Boolean).join(" "));
+  return examples
+    .filter((example) => example.enabled)
+    .map((example) => {
+      const haystack = normalizeQualityText([
+        example.title,
+        example.industry,
+        example.buyerType,
+        example.productLine,
+        example.market,
+        example.subject,
+        example.tags.join(" ")
+      ].join(" "));
+      const tokens = Array.from(new Set(haystack.split(/\s+/).filter((token) => token.length >= 4 && !commonQualityTokens.has(token))));
+      const overlap = tokens.filter((token) => target.includes(token)).length;
+      const qualityBonus = Math.round((example.qualityScore ?? 75) / 20);
+      return { example, score: overlap * 10 + qualityBonus + (haystack.includes("spc") && target.includes("spc") ? 20 : 0) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((item) => item.example);
+}
+
+function formatOutreachGoldenExamplesContext(examples: OutreachGoldenExample[]): string {
+  if (!examples.length) return "--- Golden email examples ---\nNo approved golden examples are saved yet.";
+  return [
+    "--- Golden email examples ---",
+    "Use these as style and quality references. Do not copy names, facts, or claims unless they also appear in the current buyer/company evidence.",
+    ...examples.map((example, index) => [
+      `Example ${index + 1}: ${example.title}`,
+      example.industry ? `Industry: ${example.industry}` : "",
+      example.buyerType ? `Buyer type: ${example.buyerType}` : "",
+      example.productLine ? `Product line: ${example.productLine}` : "",
+      example.market ? `Market: ${example.market}` : "",
+      `Subject: ${example.subject}`,
+      truncateForContext(example.body, 1800)
+    ].filter(Boolean).join("\n"))
+  ].join("\n\n");
+}
+
+function selectEvidenceUsed(outreachOs: OutreachOsContext): OutreachEvidenceItem[] {
+  const wanted = new Set(outreachOs.strategyMatch.evidenceIds);
+  const all = [
+    ...outreachOs.evidenceMap.verifiedFacts,
+    ...outreachOs.evidenceMap.inferredInsights,
+    ...outreachOs.evidenceMap.genericContext
+  ];
+  const selected = all.filter((item) => wanted.has(item.id)).slice(0, 8);
+  return (selected.length ? selected : all.slice(0, 6)).map((item) => ({ ...item, usedInEmail: wanted.has(item.id) || item.usedInEmail }));
+}
+
+function summarizeHarnessGeneration(input: {
+  research?: CustomerResearchResult;
+  strategy: OutreachStrategyMatch;
+  matchedExamples: OutreachGoldenExample[];
+  qualityReview: OutreachEmailQualityReview;
+  repairAttempts: number;
+}): string {
+  const evidenceSource = input.research?.depth ? `${input.research.depth} research` : "lead notes";
+  const examples = input.matchedExamples.length ? `${input.matchedExamples.length} golden example(s)` : "no saved golden examples";
+  return [
+    `Used ${evidenceSource}, matched angle "${truncatePlain(input.strategy.selectedUsp || input.strategy.buyerPain || "buyer-specific angle", 90)}", referenced ${examples}.`,
+    `QA score ${input.qualityReview.score}/100 after ${input.repairAttempts} rewrite attempt(s).`
+  ].join(" ");
+}
+
 function outreachInstructions(): string {
   return [
     "You are Hermills Outreach, a senior B2B export sales strategist writing warm emails, not generic cold blasts.",
@@ -7698,6 +8027,7 @@ function outreachInstructions(): string {
     "Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.",
     "Do not use robotic keyword CTAs like Reply 'SPC table'. Ask naturally, as a real salesperson would.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
+    "Avoid fixed skeletons such as 'I noticed [company]..., so...', 'Instead of sending a full catalog...', or 'Would A) ... or B) ... be more useful first?'. Vary the opening and CTA like a human.",
     "If evidence is missing, write conservatively and focus on a low-friction next step.",
     "Return only valid JSON with keys subject and body."
   ].join("\n");
@@ -7755,6 +8085,7 @@ function buildOutreachPrompt(
     "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, certification/spec pack, or A/B choices.",
     "- Never use a vague CTA like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
     "- Never use robotic keyword CTAs like Reply 'SPC table'. Write a natural question or A/B choice.",
+    "- Never use the fixed skeleton 'I noticed [company]..., so...', 'Instead of sending a full catalog...', or 'Would A) ... or B) ... be more useful first?'.",
     "- Sound like a human business note, not translated English or a mass template.",
     "- Never use reaching out, just following up, hope you are doing well, Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, best price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
     "- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.",
@@ -7834,6 +8165,7 @@ function buildOutreachWorkflowPrompt(input: {
     "- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.",
     "- Do not write vague CTAs like 'Would you like details?', 'Are you interested?', or 'Can we schedule a call?'.",
     "- Do not ask the buyer to reply with a keyword such as Reply 'SPC table'. That sounds automated. Use a natural question or A/B choice.",
+    "- Do not use the same visible skeleton each time. Avoid 'I noticed [company]..., so...', 'Instead of sending a full catalog...', and 'Would A) ... or B) ... be more useful first?'.",
     "- Sound like a warm human business note, not translated English or a mass blast. Do not fake prior familiarity.",
     "",
     "Never use these phrases:",
@@ -8105,7 +8437,7 @@ async function sendOutreachDraft(input: {
   if (input.draft.status === "sent") throw new ClientInputError("Outreach draft has already been sent.");
   const to = input.to ?? input.lead?.email;
   if (!to) throw new ClientInputError("Lead email is missing.");
-  const qualityReview = input.draft.qualityReview ?? reviewOutreachEmail({ subject: input.draft.subject, body: input.draft.body, lead: input.lead });
+  const qualityReview = reviewOutreachEmail({ subject: input.draft.subject, body: input.draft.body, lead: input.lead });
   const sendRiskReview = reviewOutreachSendRisk({
     subject: input.draft.subject,
     body: input.draft.body,
@@ -8116,7 +8448,7 @@ async function sendOutreachDraft(input: {
     companyKnowledgeContext: input.companyKnowledgeContext
   });
   await input.drafts.update(input.draft.id, {
-    ...(!input.draft.qualityReview ? { qualityReview } : {}),
+    qualityReview,
     sendRiskReview
   });
   assertOutreachQualityPassed(qualityReview);

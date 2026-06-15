@@ -600,8 +600,32 @@ export type OutreachDraft = {
   evidenceMap?: OutreachEvidenceMap;
   strategyMatch?: OutreachStrategyMatch;
   sendRiskReview?: OutreachSendRiskReview;
+  writingEngine?: "legacy-chat" | "harness-v2";
+  modelUsed?: string;
+  rewriteAttempts?: number;
+  evidenceUsed?: OutreachEvidenceItem[];
+  matchedExampleIds?: string[];
+  generationSummary?: string;
   sentAt?: string;
   sendError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachGoldenExample = {
+  id: string;
+  profileId?: string;
+  title: string;
+  industry: string;
+  buyerType: string;
+  productLine: string;
+  market: string;
+  subject: string;
+  body: string;
+  tags: string[];
+  sourceDraftId?: string;
+  qualityScore?: number;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -1476,6 +1500,19 @@ export const api = {
   },
   async deleteOutreachCtaAsset(id: string): Promise<void> {
     await request<void>(`/api/outreach/cta-assets/${id}`, { method: "DELETE" });
+  },
+  async outreachGoldenExamples(): Promise<OutreachGoldenExample[]> {
+    return request<OutreachGoldenExample[]>("/api/outreach/golden-examples");
+  },
+  async saveOutreachGoldenExample(input: Omit<Partial<OutreachGoldenExample>, "createdAt" | "updatedAt"> & { title: string; subject: string; body: string; id?: string }): Promise<OutreachGoldenExample> {
+    const { id, ...payload } = input;
+    return request<OutreachGoldenExample>(id ? `/api/outreach/golden-examples/${id}` : "/api/outreach/golden-examples", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachGoldenExample(id: string): Promise<void> {
+    await request<void>(`/api/outreach/golden-examples/${id}`, { method: "DELETE" });
   },
   async outreachEmailSignature(): Promise<OutreachEmailSignature> {
     return request<OutreachEmailSignature>("/api/outreach/email-signature");

@@ -74,6 +74,9 @@ export interface HermesReplyRequest {
   model?: string;
   instructions?: string;
   provider?: HermesReplyProvider;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  maxOutputTokens?: number;
+  responseMode?: "auto" | "responses" | "chat";
 }
 
 export interface GatewayStatus {
@@ -605,6 +608,9 @@ export class RuntimeService {
     if (isAnthropicProvider(replyRequest.provider)) {
       return this.createAnthropicReply(replyRequest, target);
     }
+    if (shouldUseOpenAIResponses(replyRequest, target.baseUrl)) {
+      return this.createOpenAIResponseReply(replyRequest, target);
+    }
 
     const response = await this.fetchImpl(chatCompletionsUrl(target.baseUrl), {
       method: "POST",
@@ -621,6 +627,29 @@ export class RuntimeService {
     }
     const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
     return payload.choices?.[0]?.message?.content ?? "Hermes returned an empty response.";
+  }
+
+  private async createOpenAIResponseReply(replyRequest: HermesReplyRequest, target: { baseUrl: string; apiKey: string }): Promise<string> {
+    const model = resolveCompletionModel(replyRequest);
+    const response = await this.fetchImpl(responsesUrl(target.baseUrl), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${target.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        input: buildResponsesInput(replyRequest),
+        ...buildResponsesInstructions(replyRequest),
+        ...(replyRequest.maxOutputTokens ? { max_output_tokens: replyRequest.maxOutputTokens } : {}),
+        ...(supportsResponsesReasoning(model) ? { reasoning: { effort: replyRequest.reasoningEffort ?? "medium" } } : {}),
+        stream: false,
+        store: false
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Hermes API returned ${response.status}: ${redactSecrets(text)}`);
+    }
+    const payload = await response.json();
+    return extractOpenAIResponseText(payload) || "Hermes returned an empty response.";
   }
 
   private async createAnthropicReply(replyRequest: HermesReplyRequest, target: { baseUrl: string; apiKey: string }): Promise<string> {
@@ -1367,8 +1396,75 @@ export function buildAnthropicMessages(request: HermesReplyRequest): { system?: 
   };
 }
 
+export function buildResponsesInput(request: HermesReplyRequest): Array<{ role: "user" | "assistant"; content: string }> {
+  const messages = request.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({ role: message.role === "assistant" ? "assistant" as const : "user" as const, content: message.content }));
+  return messages.length ? messages : [{ role: "user", content: "" }];
+}
+
+export function buildResponsesInstructions(request: HermesReplyRequest): { instructions?: string } {
+  const parts = [
+    request.instructions?.trim(),
+    ...request.messages.filter((message) => message.role === "system").map((message) => message.content.trim())
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? { instructions: parts.join("\n\n") } : {};
+}
+
 function isAnthropicProvider(provider?: HermesReplyProvider): boolean {
   return provider?.kind === "anthropic";
+}
+
+function shouldUseOpenAIResponses(request: HermesReplyRequest, resolvedBaseUrl: string): boolean {
+  if (request.responseMode === "chat") return false;
+  if (request.responseMode === "responses") return true;
+  if (request.provider?.kind !== "openai") return false;
+  return isOfficialOpenAIBaseUrl(resolvedBaseUrl);
+}
+
+function isOfficialOpenAIBaseUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return url.hostname.toLowerCase() === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
+function supportsResponsesReasoning(model: string): boolean {
+  return /^(gpt-5|gpt-4\.1|o[1-9]|o\d)/i.test(model.trim());
+}
+
+function extractOpenAIResponseText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const record = payload as { output_text?: unknown; output?: unknown };
+  if (typeof record.output_text === "string" && record.output_text.trim()) return record.output_text.trim();
+  if (!Array.isArray(record.output)) return "";
+  const parts: string[] = [];
+  for (const item of record.output) {
+    if (!item || typeof item !== "object") continue;
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const typed = block as { type?: unknown; text?: unknown };
+      if ((typed.type === "output_text" || typed.type === "text") && typeof typed.text === "string") {
+        parts.push(typed.text);
+      }
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+export function responsesUrl(baseUrl: string): string {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  if (/\/v1\/responses$/i.test(normalized)) return normalized;
+  if (/\/responses$/i.test(normalized)) return normalized;
+  if (/\/v1\/chat\/completions$/i.test(normalized)) return normalized.replace(/\/chat\/completions$/i, "/responses");
+  if (/\/chat\/completions$/i.test(normalized)) return normalized.replace(/\/chat\/completions$/i, "/responses");
+  if (/\/v1$/i.test(normalized)) return `${normalized}/responses`;
+  if (baseUrlHasPath(normalized)) return `${normalized}/responses`;
+  return `${normalized}/v1/responses`;
 }
 
 export function chatCompletionsUrl(baseUrl: string): string {

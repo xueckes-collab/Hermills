@@ -300,6 +300,23 @@ export const OutreachUspCandidateSchema = z.object({
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
 }).strict();
+export const OutreachGoldenExampleSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    title: z.string().trim().min(1).max(180),
+    industry: z.string().trim().max(160).default(""),
+    buyerType: z.string().trim().max(160).default(""),
+    productLine: z.string().trim().max(180).default(""),
+    market: z.string().trim().max(120).default(""),
+    subject: z.string().trim().min(1).max(240),
+    body: z.string().trim().min(1).max(12000),
+    tags: z.array(z.string().trim().min(1).max(80)).max(16).default([]),
+    sourceDraftId: z.string().min(1).optional(),
+    qualityScore: z.number().int().min(0).max(100).optional(),
+    enabled: z.boolean().default(true),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+}).strict();
 export const OutreachStrategyMatchSchema = z.object({
     personaId: z.string().min(1).optional(),
     uspId: z.string().min(1).optional(),
@@ -361,6 +378,12 @@ export const OutreachDraftSchema = z.object({
     evidenceMap: OutreachEvidenceMapSchema.optional(),
     strategyMatch: OutreachStrategyMatchSchema.optional(),
     sendRiskReview: OutreachSendRiskReviewSchema.optional(),
+    writingEngine: z.enum(["legacy-chat", "harness-v2"]).default("legacy-chat"),
+    modelUsed: z.string().trim().min(1).max(120).optional(),
+    rewriteAttempts: z.number().int().min(0).max(5).default(0),
+    evidenceUsed: z.array(OutreachEvidenceItemSchema).max(12).default([]),
+    matchedExampleIds: z.array(z.string().min(1)).max(8).default([]),
+    generationSummary: z.string().trim().max(2000).default(""),
     sentAt: z.string().datetime().optional(),
     sendError: z.string().max(1000).optional(),
     createdAt: z.string().datetime(),

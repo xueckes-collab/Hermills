@@ -154,7 +154,7 @@ describe("onboarding state contract", () => {
           kind: "openai-compatible",
           displayName: "OpenAI",
           baseUrl: "https://api.openai.com/v1",
-          defaultModel: "gpt-4o-mini",
+          defaultModel: "gpt-5.5",
           apiKey: "sk-onboarding-test"
         }
       }
@@ -164,7 +164,7 @@ describe("onboarding state contract", () => {
       provider: {
         displayName: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
-        defaultModel: "gpt-4o-mini"
+        defaultModel: "gpt-5.5"
       }
     });
     expect(completeResponse.json().provider.keyPreview).toMatch(/^sk-o.*test$/);

@@ -3748,6 +3748,88 @@ textarea,
   text-transform: uppercase;
 }
 
+.letter-harness-summary,
+.letter-evidence-summary {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  background: rgba(239, 246, 255, 0.72);
+  overflow: hidden;
+}
+
+.letter-harness-summary summary,
+.letter-evidence-summary summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.letter-harness-summary p {
+  padding: 0 10px 8px;
+}
+
+.letter-harness-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.letter-harness-meta span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #1e3a8a;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.letter-evidence-list {
+  display: grid;
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.letter-evidence-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  min-width: 0;
+}
+
+.letter-evidence-item div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.letter-evidence-item strong,
+.letter-evidence-item span,
+.letter-evidence-item em,
+.letter-evidence-item p {
+  overflow-wrap: anywhere;
+}
+
+.letter-evidence-item strong {
+  color: #0f172a;
+  font-size: 12px;
+}
+
+.letter-evidence-item span {
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.letter-evidence-item em {
+  color: #64748b;
+  font-style: normal;
+  font-size: 11px;
+}
+
 .letter-risk-summary {
   display: grid;
   gap: 7px;
