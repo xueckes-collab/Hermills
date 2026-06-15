@@ -1,0 +1,1099 @@
+Hermills Outreach Prompt Engine - Full Prompt and Rule Document
+Generated: 2026-06-15
+Source repo: work/Hermills
+
+IMPORTANT
+This document contains the prompt templates and hard-coded rule logic used by the Hermills outreach engine.
+It does not include API keys, provider secrets, mailbox tokens, or private credential values.
+
+Runtime model note:
+- The prompt engine does not itself decide writing quality. It builds prompts and rules.
+- The final writing model is selected from Hermills Providers.
+- At the time this document was created, the local DeepSeek provider default model had been changed to: deepseekpro.
+
+
+============================================================
+1. OUTREACH ENGINE RUNTIME CHAIN
+============================================================
+
+The full outreach generation flow is:
+
+1. Customer website research
+   - Quick / balanced / deep / adaptive research.
+   - Uses local Node fallback and, when available, deep research sidecar with Scrapling/Playwright.
+   - Produces CustomerResearchResult:
+     website, companyName, title, description, buyerType, industry, inferredNeed,
+     productSignals, buyingSignals, painSignals, recommendedAngle, fetchedUrls,
+     evidence, textPreview, error.
+
+2. Company knowledge loading
+   - Reads saved company profile and materials.
+   - Extracts seller facts:
+     Main products
+     Certifications
+     Payment terms
+     Shipping terms
+     Brand voice
+
+3. Evidence and strategy map
+   - Builds Outreach OS evidence map:
+     VERIFIED facts
+     INFERRED insights
+     GENERIC context
+     PROHIBITED claims
+     Missing fields
+   - Selects buyer reason, buyer segment, likely pain, procurement trigger,
+     one USP, and one low-friction CTA.
+
+4. Prompt generation
+   Depending on the UI action:
+   - Single draft: outreachInstructions + buildOutreachPrompt
+   - Full workflow: outreachWorkflowInstructions + buildOutreachWorkflowPrompt
+   - Manual rewrite: outreachInstructions + buildOutreachRewritePrompt
+   - Automatic QA repair: outreachInstructions + buildOutreachRepairPrompt
+
+5. LLM generation
+   - Calls runtime.createHermesReply(...)
+   - For OpenAI-compatible providers, calls:
+     POST {baseUrl}/v1/chat/completions
+   - The model is:
+     request.model OR provider.defaultModel OR hermes-agent
+
+6. JSON parsing
+   - Single email output must parse as:
+     {"subject":"...","body":"..."}
+   - Workflow output must parse as:
+     {
+       "icps": [...],
+       "usps": [...],
+       "initialEmail": {"subject":"...","body":"..."},
+       "followUps": [...]
+     }
+
+7. Critic / quality gate
+   - Runs code-based checks.
+   - If failed, automatic repair runs up to 2 times.
+   - If still failed, fallback draft may be used if it scores better.
+
+8. Send risk review
+   - Blocks or warns before sending based on quality, claims, sender status,
+     compliance, CTA asset availability, and unsubscribe presence.
+
+
+============================================================
+2. SYSTEM PROMPT: SINGLE EMAIL GENERATION / REWRITE / REPAIR
+Source: outreachInstructions()
+============================================================
+
+You are Hermills Outreach, a senior B2B export sales strategist writing warm emails, not generic cold blasts.
+Write concise, specific, reply-worthy emails for international sales. The buyer should feel the note is about their business, not the sender's factory.
+Privately follow this chain before writing: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.
+Write like a real export sales rep: 45-90 words, 2-4 compact paragraphs, no visible framework wording.
+The first real sentence must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.
+Use at least two concrete clues from buyer research across the email; one must appear in the first real sentence.
+Never treat the buyer company name or the fact that a website exists as enough personalization.
+Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.
+Do not use robotic keyword CTAs like Reply 'SPC table'. Ask naturally, as a real salesperson would.
+Do not invent company strengths, certifications, prices, cases, or shipping terms.
+If evidence is missing, write conservatively and focus on a low-friction next step.
+Return only valid JSON with keys subject and body.
+
+
+============================================================
+3. USER PROMPT TEMPLATE: SINGLE EMAIL DRAFT
+Source: buildOutreachPrompt(...)
+============================================================
+
+Write one B2B cold outreach email draft.
+Target language: {language}.
+Tone: {tone}.
+Requirements:
+- Use a short subject line.
+- Keep the body 45-90 words in 2-4 compact paragraphs.
+- Privately use this sequence: specific buyer clue plus why it matters -> one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel -> one low-friction micro-offer.
+- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in the first real sentence.
+- Use at least two concrete buyer clues from the research across the email. These should be real product, channel, collection, market, certification, spec, or procurement clues, not only the buyer's name.
+- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.
+- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.
+- Use only one USP in the email. Do not list all company strengths.
+- The first real sentence must not introduce our company credentials first. It must tell the buyer why this email is about them.
+- Do not write only 'I saw your website' or only mention the company name. Use a product/category/channel/market/project/certification/procurement clue.
+- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, certification/spec pack, or A/B choices.
+- Never use a vague CTA like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.
+- Never use robotic keyword CTAs like Reply 'SPC table'. Write a natural question or A/B choice.
+- Sound like a human business note, not translated English or a mass template.
+- Never use reaching out, just following up, hope you are doing well, Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, best price, one-stop solution, factory direct, win-win cooperation, or please kindly.
+- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.
+- Return JSON only: {"subject":"...","body":"..."}.
+
+{PRIVATE_OUTREACH_BRIEF}
+
+--- Lead ---
+Company: {lead.companyName}
+Website: {lead.website}
+Country/market: {lead.country}
+Industry: {lead.industry}
+Contact name: {lead.contactName}
+Contact title: {lead.contactTitle}
+Email: {lead.email}
+Need/pain point: {lead.need}
+Notes: {lead.notes}
+Tags: {lead.tags}
+
+{CUSTOMER_RESEARCH_CONTEXT or "--- Customer website research ---\nNo website research was available."}
+
+--- Company knowledge ---
+{COMPANY_KNOWLEDGE_CONTEXT or "No company knowledge has been added yet. Keep the message general and ask the user to add company details for a stronger draft."}
+
+
+============================================================
+4. SYSTEM PROMPT: FULL LETTER APP WORKFLOW
+Source: outreachWorkflowInstructions()
+============================================================
+
+You are Hermills Letter App, a senior B2B export sales strategist building Snov-style outreach workflows.
+Internally act as a coordinated agent queue: Website Reader -> Buyer Psychology Analyst -> ICP/USP Matcher -> Email Writer -> QA Reviewer.
+Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.
+Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.
+For every initial email, privately follow this chain: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.
+Use at least two concrete buyer clues in the initial email and keep the CTA conversational, not keyword-based.
+Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.
+Do not write generic supplier copy, empty benefits, cold-email cliches, filler, vague CTAs, or claims without buyer logic and proof.
+Return only valid JSON that matches the requested schema. Do not add fields, markdown, or commentary.
+
+
+============================================================
+5. USER PROMPT TEMPLATE: FULL LETTER APP WORKFLOW
+Source: buildOutreachWorkflowPrompt(...)
+============================================================
+
+Build a complete Letter App style B2B outreach workflow for a China-based export/trading company.
+Target language: {language}.
+Tone: {tone}.
+Research depth: {research.depth}. {researchDepthPromptGuidance(research.depth)}
+
+Return JSON only with this shape:
+{
+  "icps": [{"name":"...","industrySegment":"...","companyCharacteristics":["..."],"buyerRoles":["..."],"buyingBehavior":["..."],"painPoints":["..."],"triggerEvents":["..."],"salesAngles":["..."]}],
+  "usps": [{"category":"Product-level|Operational|Trust-building|Strategic value","headline":"...","buyerAngle":"...","proof":"..."}],
+  "initialEmail": {"subject":"...","body":"..."},
+  "followUps": [{"step":1,"delayDays":2,"strategy":"Friendly reminder","subject":"...","body":"..."}]
+}
+Do not add, remove, rename, or nest fields outside this schema.
+
+Private operating mode:
+- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.
+- Treat the private outreach brief below as the locked angle for the first email.
+{OUTREACH_OS_CONTEXT}
+- For the initial email, choose exactly one concrete website evidence item and turn it into a buyer implication before mentioning our USP.
+- Use at least two concrete buyer clues across the initial email. Good clues include named programs, collections, specs, SKUs, channels, markets, certifications, warehouse/quick-ship/container/truckload signals, or procurement signals.
+- Do not treat the buyer company name or 'I saw your website' as personalization.
+- Do not expose research steps, agent names, or internal reasoning in any email.
+- If evidence is thin, write a low-risk micro-offer instead of a broad supplier pitch.
+- A passing initial email must include a real reply trigger: A/B options, a small comparison, an MOQ/lead-time table, a spec/certification pack, or 2-3 matched options. 'Would you like details?' is a failing CTA.
+
+ICP rules:
+- Generate 2-3 ICPs likely to buy in the next 3-6 months.
+- For each ICP, model buyer psychology: what the buyer is paid to protect, personal risk, success metrics, objections, urgency, and emotional blockers.
+- Fill the existing arrays with concrete evidence-backed details: companyCharacteristics, buyerRoles, buyingBehavior, painPoints, triggerEvents, and salesAngles.
+- Trigger events must be procurement triggers, such as category expansion, seasonal stock planning, supplier replacement, compliance review, tender/RFQ, new channel launch, failed delivery, or margin pressure.
+- Prioritize purchase-intent signals over generic industry fit.
+
+USP rules:
+- Generate 4-6 buyer-relevant USPs.
+- Use the categories Product-level, Operational, Trust-building, or Strategic value.
+- Make each USP differentiated: explain why this buyer would see less risk, faster evaluation, easier reorder, clearer compliance, better channel fit, or stronger market advantage.
+- Use proof only from company knowledge. If proof is missing, write a conservative proof note such as Proof needed: add certification/sample/MOQ/lead-time evidence.
+- Avoid generic claims like best quality, competitive price, professional supplier, one-stop solution, factory direct, superior service, or trusted partner.
+- Tie each USP to buyer pain, risk reduction, speed, compliance, reorder ease, or market advantage.
+
+Initial warm email rules:
+- Subject under 50 characters.
+- Body 45-90 words in 2-4 compact paragraphs.
+- Peer-to-peer, helpful, warm, concise.
+- Privately shape it as buyer-specific context hook plus why it matters -> one relevant USP tied to their sourcing risk, KPI, channel, or procurement task -> low-friction micro-offer.
+- The first real sentence must be about the buyer, not our credentials.
+- The first real sentence must include a concrete evidence clue: product category, channel, market, project, certification/compliance signal, sourcing/procurement signal, or pain/risk signal.
+- Translate the evidence into a buyer implication instead of simply naming the evidence.
+- Mention one buyer pain point and one matching USP. Do not include a catalog dump.
+- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.
+- Do not write vague CTAs like 'Would you like details?', 'Are you interested?', or 'Can we schedule a call?'.
+- Do not ask the buyer to reply with a keyword such as Reply 'SPC table'. That sounds automated. Use a natural question or A/B choice.
+- Sound like a warm human business note, not translated English or a mass blast. Do not fake prior familiarity.
+
+Never use these phrases:
+reaching out, just following up, touching base, hope you are doing well, leading manufacturer, high quality and competitive price, one-stop solution, factory direct, superior service, trusted partner, any update, kind reminder, gentle reminder, circling back, can you share your requirements, do you have any need, Dear Sir/Madam, best price, win-win cooperation, please kindly.
+
+No-empty-talk quality bar:
+- Every important sentence must answer at least one of: why this buyer, why now, why us, what proof, or what next step.
+- If a sentence could be sent unchanged to any importer, replace it with buyer context, a procurement trigger, a role-specific pain, a differentiated USP, or a concrete offer.
+- If evidence is not available, stay conservative instead of filling the gap with hype.
+
+Follow-up sequence rules:
+- Generate exactly 9 follow-up emails.
+- Use Snov-style drip discipline: each follow-up should add a new reason to reply, not repeat the first email.
+- Use these strategies in order with matching intent: Friendly reminder (delayDays 2, restate the micro-offer), Additional value (delayDays 4, add a checklist/comparison/market note), Quick yes/no (delayDays 7, route to the right person or confirm fit), Social proof (delayDays 7, use only provided proof or a non-fabricated process example), Limited incentive (delayDays 10, small sample/review slot without fake scarcity), Feedback request (delayDays 10, ask what blocked fit), Prior interaction (delayDays 14, reference only this email thread), Breakup email (delayDays 21, ask permission to close the loop), New angle (delayDays 28, try a different ICP/use case/category angle).
+- Keep every follow-up concise, useful, and permission-based. Do not pressure the buyer.
+- Any positive reply, unsubscribe, refusal, bounce, or out-of-office handoff should stop automation; reflect this by avoiding language that assumes continued automated sending.
+
+{PRIVATE_OUTREACH_BRIEF}
+
+--- Lead ---
+Company: {lead.companyName}
+Website: {lead.website or research.website}
+Email: {lead.email}
+Industry: {lead.industry}
+Need: {lead.need}
+
+--- Customer website research ---
+{formatCustomerResearchContext(research)}
+
+--- Our company knowledge ---
+{companyKnowledgeContext or "No company knowledge has been added yet. Use conservative wording and suggest adding company docs for stronger emails."}
+
+
+============================================================
+6. PRIVATE OUTREACH BRIEF TEMPLATE
+Source: formatOutreachGenerationBrief(...)
+============================================================
+
+--- Private outreach brief ---
+Use this brief internally to write the email. Do not expose this section or mention that a workflow exists.
+Required evidence chain: use Buyer reason as the visible line-1 clue -> connect Likely pain/risk or Procurement trigger -> use Single USP -> ask for Low-friction next step.
+Buyer reason: {brief.buyerReason}
+Buyer segment: {brief.buyerSegment}
+Likely pain/risk: {brief.likelyPain}
+Procurement trigger: {brief.procurementTrigger}
+Single USP to use: {brief.selectedUsp.headline}
+Why it matters to buyer: {brief.selectedUsp.buyerAngle}
+Allowed proof: {brief.selectedUsp.proof}
+Low-friction next step: {brief.microOffer}
+Missing evidence to avoid inventing: {brief.missingEvidence or "none obvious"}
+
+
+============================================================
+7. OUTREACH OS EVIDENCE AND ASSET MAP TEMPLATE
+Source: formatOutreachOsContext(...)
+============================================================
+
+--- Outreach OS evidence and asset map ---
+Generation mode: {mode}
+Use this section as private strategy. Do not expose framework names or reasoning.
+Verified facts:
+{VERIFIED evidence lines}
+Inferred insights:
+{INFERRED evidence lines}
+Generic context:
+{GENERIC evidence lines}
+Do not claim:
+{PROHIBITED evidence lines}
+Missing data: {missingFields}
+Selected persona: {persona.name / persona.industrySegment / persona.salesAngles}
+Selected buyer pain: {strategyMatch.buyerPain}
+Selected buyer implication: {strategyMatch.buyerImplication}
+Selected USP: {strategyMatch.selectedUsp}
+Selected CTA: {strategyMatch.microOffer} | {CTA asset info or no saved CTA warning}
+Warnings: {warnings}
+Rules:
+- VERIFIED facts may be stated directly.
+- INFERRED insights must be phrased as likely buyer patterns, not as known facts.
+- GENERIC context is only allowed when evidence is thin.
+- PROHIBITED claims must never appear in the email.
+- The CTA must map to the selected CTA asset or to visible company-profile proof.
+
+
+============================================================
+8. CUSTOMER WEBSITE RESEARCH CONTEXT TEMPLATE
+Source: formatCustomerResearchContext(...)
+============================================================
+
+--- Customer website research ---
+Website: {research.website}
+Research depth: {research.depth}
+Research confidence: {research.confidenceScore}/100
+Page title: {research.title}
+Meta description: {research.description}
+Buyer type: {research.buyerType}
+Likely industry: {research.industry}
+Possible customer concern: {research.inferredNeed}
+Product signals: {research.productSignals}
+Buying/procurement signals: {research.buyingSignals}
+Risk/pain signals: {research.painSignals}
+Recommended outreach angle: {research.recommendedAngle}
+Checked pages: {research.fetchedUrls}
+Evidence: {research.evidence}
+Website text preview:
+{research.textPreview}
+Research limitation: {research.error}
+
+
+============================================================
+9. RESEARCH DEPTH PROMPT GUIDANCE
+Source: researchDepthPromptGuidance(...)
+============================================================
+
+adaptive:
+Use self-adaptive depth: prefer deep website evidence from high-value pages, but stay conservative if the crawler had to fall back.
+
+quick:
+Keep analysis conservative and compact; use only the strongest website clues.
+
+deep:
+Use the full buyer-risk, procurement-trigger, and objection model, but still avoid unsupported claims.
+
+balanced/default:
+Use a balanced buyer profile and practical procurement-trigger reasoning.
+
+
+============================================================
+10. MANUAL REWRITE PROMPT TEMPLATE
+Source: buildOutreachRewritePrompt(...)
+============================================================
+
+System prompt used with this template:
+See section 2: outreachInstructions().
+
+User prompt:
+
+Rewrite this B2B cold email so it passes the buyer 2-second quality gate.
+Return JSON only: {"subject":"...","body":"..."}.
+
+Hard rules:
+- Use 45-90 words in 2-4 compact paragraphs.
+- The first real sentence must tell this buyer the specific reason they are being contacted and why that clue matters.
+- The first real sentence must include a concrete buyer evidence clue from the website, lead notes, or research summary; company name alone does not count.
+- Translate the evidence into a buyer implication before saying what we sell.
+- Mention one supplier USP and why it is relevant to this buyer's sourcing risk, KPI, channel, procurement task, or timing.
+- End with one low-friction micro-offer, such as 2-3 matched options, a small comparison, an MOQ/lead-time table, a certification/spec pack, or A/B choices.
+- Do not start with our company credentials.
+- Do not use vague CTAs like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.
+- Do not use translated-template phrases, reaching out, hope you are doing well, Dear Sir/Madam, esteemed company, long-term cooperation, high quality and competitive price, best price, one-stop solution, win-win cooperation, or please kindly.
+- Do not invent proof, certifications, prices, cases, or fake familiarity.
+
+--- Current draft ---
+Subject: {draft.subject}
+{draft.body}
+
+--- Quality issues to fix ---
+{currentReview.issues or "Make the email shorter, more buyer-specific, and easier to answer."}
+
+--- Lead ---
+Company: {lead.companyName}
+Website: {lead.website}
+Industry: {lead.industry}
+Need: {lead.need}
+Notes: {lead.notes}
+
+--- Customer research ---
+Company: {workflow.research.companyName}
+Website: {workflow.research.website}
+Industry: {workflow.research.industry}
+Likely concern: {workflow.research.inferredNeed}
+Recommended angle: {workflow.research.recommendedAngle}
+Product signals: {workflow.research.productSignals}
+Buying signals: {workflow.research.buyingSignals}
+
+--- Our company knowledge ---
+{companyKnowledgeContext or "No company knowledge has been added yet; stay conservative and offer a low-friction next step."}
+
+
+============================================================
+11. AUTOMATIC REPAIR PROMPT TEMPLATE
+Source: buildOutreachRepairPrompt(...)
+============================================================
+
+System prompt used with this template:
+See section 2: outreachInstructions().
+
+User prompt:
+
+Rewrite this B2B cold email so it passes the buyer 2-second quality gate.
+This is an internal repair step after automated QA failed. Do not explain the repair.
+Target language: {language}.
+Tone: {tone}.
+Return JSON only: {"subject":"...","body":"..."}.
+
+Repair rules:
+- Keep the body 45-90 words in 2-4 compact paragraphs.
+- First real sentence must say why this specific buyer should care and what the business implication is.
+- First real sentence must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.
+- Use at least two concrete buyer clues from the research across the repaired email.
+- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.
+- Use exactly one buyer-relevant USP from the private brief.
+- End with one low-friction micro-offer: 2-3 matched options, MOQ/lead-time table, spec/certification pack, short comparison, or A/B choices.
+- Never end with only 'Would you like details?', 'Are you interested?', or 'Can we have a call?'.
+- Never use robotic keyword CTAs like Reply 'SPC table'. Ask as a human salesperson would.
+- Remove generic supplier phrases, translated English, and company-first bragging.
+- Do not invent proof, pricing, certifications, cases, delivery promises, or fake familiarity.
+
+--- Failed draft ---
+Subject: {subject}
+{body}
+
+--- QA failures ---
+{review.issues or review.summary}
+{review.rewriteHints}
+
+{PRIVATE_OUTREACH_BRIEF}
+
+--- Lead ---
+Company: {lead.companyName}
+Website: {lead.website}
+Email: {lead.email}
+Industry: {lead.industry}
+Need: {lead.need}
+Notes: {lead.notes}
+
+{CUSTOMER_RESEARCH_CONTEXT or "--- Customer website research ---\nNo website research was available."}
+
+--- Company knowledge ---
+{companyKnowledgeContext or "No company knowledge has been added yet; stay conservative."}
+
+
+============================================================
+12. FALLBACK INITIAL EMAIL TEMPLATE
+Source: fallbackOutreachDraftFromBrief(...)
+============================================================
+
+Used when model output and repair attempts are still poor and fallback scores better.
+
+Subject:
+{cleanFallbackSubject(brief.selectedUsp.headline, brief)}
+
+Body:
+Hi, I noticed {company} {openingReason}, so {implication}.
+I can prepare a short {offer} instead of a full catalog.
+Would A) matched specs or B) MOQ and lead-time checks be more useful first?
+
+Fallback subject cleanup:
+- Replaces "fit check" with "backup options".
+- Replaces "proof pack" with "proof".
+- If subject is still generic, tries to infer product from buyer reason/procurement trigger:
+  Fortika SPC, SPC, LVT, luxury vinyl, vinyl plank, rigid core, etc.
+
+Fallback implication logic:
+- If source includes lead time, delivery, quick-ship, inventory, stock, replenishment, container, truckload:
+  "lead time and matched specs likely matter before adding another supplier"
+- If source includes certification, proof, compliance, testing, warranty:
+  "proof and spec clarity likely matter before sampling"
+- If source includes category, SKU, range, collection, catalog, assortment:
+  "a narrow option list is probably easier to judge than a broad catalog"
+- Default:
+  "a small proof-backed comparison is safer than a generic supplier pitch"
+
+
+============================================================
+13. FOLLOW-UP STRATEGY PROMPT RULES AND FALLBACKS
+Sources: buildOutreachWorkflowPrompt(...), defaultFollowUpStrategies, fallbackFollowUpFromBrief(...)
+============================================================
+
+The workflow prompt asks the model to generate exactly 9 follow-up emails.
+
+Required follow-up strategies:
+1. delayDays 2  - Friendly reminder
+2. delayDays 4  - Additional value
+3. delayDays 7  - Quick yes/no
+4. delayDays 7  - Social proof
+5. delayDays 10 - Limited incentive
+6. delayDays 10 - Feedback request
+7. delayDays 14 - Prior interaction
+8. delayDays 21 - Breakup email
+9. delayDays 28 - New angle
+
+Follow-up sequence rules from prompt:
+- Generate exactly 9 follow-up emails.
+- Use Snov-style drip discipline: each follow-up should add a new reason to reply, not repeat the first email.
+- Use these strategies in order with matching intent:
+  Friendly reminder: restate the micro-offer.
+  Additional value: add a checklist/comparison/market note.
+  Quick yes/no: route to the right person or confirm fit.
+  Social proof: use only provided proof or a non-fabricated process example.
+  Limited incentive: small sample/review slot without fake scarcity.
+  Feedback request: ask what blocked fit.
+  Prior interaction: reference only this email thread.
+  Breakup email: ask permission to close the loop.
+  New angle: try a different ICP/use case/category angle.
+- Keep every follow-up concise, useful, and permission-based. Do not pressure the buyer.
+- Any positive reply, unsubscribe, refusal, bounce, or out-of-office handoff should stop automation.
+
+Fallback follow-up body:
+Hi, quick note on {company} and {brief.procurementTrigger}.
+{brief.selectedUsp.headline} may be worth a quick look because {brief.likelyPain}.
+Would it help if I sent an A/B option pack with {brief.microOffer}?
+
+Fallback follow-up special cases:
+- Step 3:
+  Should I send an A/B option pack with {brief.microOffer}, or is someone else better for this?
+- Breakup email:
+  If this is not relevant, I can close the loop here.
+
+Older generic workflow fallback body:
+Hi, quick note on {lead.companyName}.
+
+{strategy}: I can share a small, practical option list instead of a full catalog, so your team can quickly see whether this category is worth reviewing.
+
+If useful, reply with A for specs or B for a short comparison.
+
+
+============================================================
+14. EVIDENCE SELECTION AND STRATEGY LOGIC
+Sources: strongestResearchSignal, bestCustomerResearchClues, selectOutreachUsp, selectMicroOffer
+============================================================
+
+Buyer reason selection order:
+1. Use bestCustomerResearchClues(research, 2) when possible.
+2. Use strongest non-inferred ranked website evidence.
+3. Fall back through:
+   buyingSignals[0]
+   painSignals[0]
+   inferredNeed
+   recommendedAngle
+   combinedResearchSignal
+   productSignals[0]
+   description
+4. If all missing:
+   lead.need OR lead.notes OR "appears to be reviewing {product}"
+
+Concrete clue scoring rewards:
+- program, range, collection, series, line, catalog, dealer, distributor,
+  retailer, showroom, inventory, stock, quick-ship, truckload, container,
+  direct, import, wholesale, contractor, commercial, residential.
+- SPC, LVT, luxury vinyl, vinyl plank, rigid core, flooring, Fortika, OEM,
+  private label.
+- Specs such as mm, mil, inch, cm, wear layer, attached pad, waterproof,
+  warranty, certification, specs.
+- Proper-name phrases.
+
+Concrete clue scoring penalizes:
+- page title, meta description, lead website, generic sourcing context.
+- appears, seems, likely, may, might, probably, inferred.
+- skip to content, trusted manufacturer, flooring excellence, all rights reserved,
+  privacy policy, terms of service.
+- plain domains like example.com.
+
+USP selection:
+- If seller certifications exist and likely pain mentions proof/certification/quality/compliance/testing:
+  headline: "{product} proof pack"
+  buyerAngle: "Reduces buyer risk before sampling by putting certification or inspection evidence in the first review."
+  proof: saved certifications
+
+- If seller shipping terms exist and likely pain mentions lead time/delivery/logistics/supply/repeat/replenishment:
+  headline: "Clear supply and delivery comparison"
+  buyerAngle: "Helps the buyer compare lead time, MOQ, and shipment terms before committing to a long supplier conversation."
+  proof: saved shipping terms
+
+- If buyer segment is retail/ecommerce/brand/category:
+  headline: "Category-fit {product} options"
+  buyerAngle: "Gives the buyer a small set of options matched to their channel instead of a broad catalog."
+  proof: available product line or proof-needed note
+
+- Default:
+  headline: "{product} backup options" or "Matched backup options"
+  buyerAngle: "Lets the buyer compare specs, MOQ, lead time, and proof notes before adding a backup supplier."
+  proof: saved product/certification info or proof-needed note
+
+Micro-offer selection:
+- Certification/proof pain:
+  "a short certification/spec pack plus 2 matched options"
+- Lead time/delivery/logistics/replenishment pain:
+  "a small MOQ and lead-time comparison for 2-3 options"
+- Catalog/range/SKU/category pain:
+  "2-3 {product} options matched to their channel"
+- Default:
+  "2-3 matched options with MOQ, lead time, and proof notes"
+
+Missing evidence list:
+- certifications or compliance proof
+- lead-time or shipping terms
+- payment terms
+- specific product list
+
+
+============================================================
+15. CODE CRITIC: EMAIL QUALITY GATE
+Source: reviewOutreachEmail(...)
+============================================================
+
+The critic has 5 checks, each worth up to 20 points:
+
+1. buyerReason
+   Label: Buyer-specific first line
+   Pass message: The opening explains why this buyer is being contacted.
+   Fail message: The first line does not clearly say why this buyer should care.
+
+2. humanTone
+   Label: Human English
+   Pass message: The wording avoids obvious translated-template phrases.
+   Fail message: Template phrase found: {template hit / stiff AI opening / translated sales wording}
+
+3. personalized
+   Label: Evidence-backed personalization
+   Pass message: The message links a concrete buyer signal to a likely sourcing implication.
+   Fail message: The message needs 2 concrete buyer clues plus a business implication, not just a name or category.
+
+4. nextStep
+   Label: Clear next step
+   Pass message: The buyer can answer a low-friction micro-offer.
+   Fail message: The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table.
+
+5. twoSecondRead
+   Label: 2-second scan
+   Pass message: The email is short enough to scan quickly.
+   Fail message: Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.
+
+Hard pass conditions:
+- score >= 90
+- no hard failure among:
+  buyerReasonPassed
+  humanTonePassed
+  personalizedPassed
+  nextStepPassed
+  twoSecondPassed
+
+Core buyer reason logic:
+- Opening must exist.
+- Opening must not start with supplier intro:
+  we, our company, i am, this is
+  unless it contains buyer observation terms.
+- Opening must contain enough evidence tokens or, if evidence tokens are unavailable,
+  buyer observation plus context tokens.
+- Opening must not be domain-only evidence.
+- Opening must not contain pseudo-personalization such as "works around" or "compare fit".
+
+Human tone fails if:
+- Template phrase is found.
+- Stiff AI opening pattern is found.
+- Bad pseudo-personalization is found.
+- Contains "cooperation with us".
+- Contains "kindly {word}".
+
+Personalization requires:
+- Contains active personalization tokens.
+- Contains a buyer implication phrase.
+- Has enough concrete evidence:
+  at least 2 strong evidence terms in full text and at least 1 in opening.
+- Does not look like a mass template.
+- Not generic website opening.
+- Not domain-only opening.
+- Not bad pseudo-personalization.
+- Subject is not generic.
+
+Next step requires:
+- Question mark OR next-step phrase.
+- Concrete CTA signal.
+- Micro-offer phrase OR "reply with A/B/C".
+- Not vague CTA.
+- Not robotic keyword CTA.
+
+2-second read requires:
+- 35-110 words.
+- Opening <= 32 words.
+- Subject <= 50 characters.
+- 1-4 compact paragraphs.
+- Not generic subject.
+- No visible framework wording like:
+  line 1, line 2, line 3, buyer implication, procurement trigger,
+  micro-offer, evidence chain, selected USP.
+
+Rewrite hints generated by critic:
+- Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not use only a domain, page title, or phrase like 'works around'.
+- Remove translated-template phrases and write like a short human business note.
+- Add at least two customer-specific clues from the buyer website and explain the buyer implication.
+- End with one natural low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice. Avoid keyword-reply CTAs like Reply 'SPC table'.
+- Rewrite as a 45-90 word human sales note, not a visible three-line formula.
+
+
+============================================================
+16. BLOCKED / DISCOURAGED PHRASES
+Source: outreachTemplatePhrases, genericOutreachSubjects, vague CTA regexes
+============================================================
+
+Template phrases blocked or penalized:
+- i am reaching out
+- i'm reaching out
+- reaching out to
+- just following up
+- touching base
+- hope you are doing well
+- hope this email finds you well
+- wanted to check in
+- dear sir/madam
+- dear sir or madam
+- esteemed company
+- sincerely hope to establish
+- long term cooperation
+- long-term cooperation
+- high quality and competitive price
+- leading manufacturer
+- one-stop solution
+- factory direct
+- superior service
+- trusted partner
+- win-win cooperation
+- please kindly
+- best price
+- do not hesitate to contact
+- do you have any need
+- can you share your requirements
+- we are a manufacturing service
+- we are manufacturer
+- we are a manufacturer
+- supplier-fit check
+- quick look
+- worth reviewing
+- may be relevant here
+- this matters because
+- this helps because
+- no samples needed
+- works around
+- gives your team a simpler way to compare fit
+- simpler way to compare fit
+- compare fit
+
+Generic subjects:
+- quick question
+- just checking in
+- checking in
+- follow up
+- following up
+- hello
+- cooperation
+- business cooperation
+- supply
+- supplier fit
+- supplier-fit check
+- fit check
+- spc fit check
+
+Weak generic subject logic:
+- Any subject containing "fit check" is generic.
+- Weak generic phrases include:
+  supply
+  supplier fit
+  supplier-fit check
+  fit check
+  quick question
+  These are generic when they do not include evidence tokens.
+
+Vague CTAs blocked:
+- would you like details
+- are you interested
+- can we talk
+- can we have a call
+- can we schedule a call
+- please send your requirements
+- do you have any need
+- can i send samples
+- would you like samples
+- let me know if interested
+
+Robotic keyword CTA blocked:
+- Reply 'SPC table'
+- Any "reply 'keyword phrase'" where phrase is not simple A/B/C.
+
+Concrete CTA signals accepted:
+- 2-3
+- two / three
+- A/B
+- option A / option B
+- matched options
+- MOQ
+- lead time / lead-time
+- spec pack
+- certification pack
+- proof pack
+- short comparison
+- side by side
+- table
+
+Next step phrases:
+- can i send
+- could i send
+- would it help
+- would it be useful
+- would you like
+- which would be
+- which option
+- reply with
+- open to
+- should i send
+- i can send
+- i can share
+- want me to send
+
+Micro-offer phrases:
+- 2-3
+- two
+- three
+- A/B
+- option A
+- option B
+- options
+- matched options
+- sample
+- samples
+- spec
+- specs
+- certification
+- proof pack
+- MOQ
+- lead time
+- lead-time
+- comparison
+- side by side
+- table
+- fit sheet
+- checklist
+- short pack
+- small pack
+
+Buyer implication phrases:
+- compare
+- review
+- source
+- sourcing
+- stock
+- reorder
+- replenish
+- replacement
+- launch
+- deadline
+- seasonal
+- compliance
+- certification
+- proof
+- risk
+- delay
+- lead time
+- lead-time
+- MOQ
+- margin
+- channel
+- contractor
+- distributor
+- importer
+- retail
+- assortment
+- category
+- sampling
+- sample-ready
+
+Mass-template detector flags when 2 or more are present:
+- we specialize in
+- we provide
+- our products are
+- our company has
+- many years of experience
+- wide range of products
+- looking forward to your reply
+
+
+============================================================
+17. SEND RISK REVIEW
+Source: reviewOutreachSendRisk(...)
+============================================================
+
+This runs before sending.
+
+Blocking issues:
+- quality_gate:
+  Email quality review did not pass.
+
+- misleading_subject:
+  Subject looks like a fake reply, order, invoice, or payment thread.
+  Triggered by subject starting with Re/FW/Fwd or terms:
+  invoice, payment overdue, urgent order, purchase order, PO attached.
+
+- unsupported_claim:
+  Email contains unsupported proof or guarantee language.
+  Triggered by:
+  guaranteed profit/result/ranking/delivery
+  exclusive supplier
+  official partner
+  #1
+
+- unsupported certification/compliance proof:
+  If email mentions CE, ISO, FSC, SGS, UL, RoHS, REACH, certified, certification,
+  compliant, etc. but saved company evidence does not support it.
+
+- sender_disabled:
+  Sender account is disabled.
+
+- mailbox_not_confirmed:
+  Sender mailbox must be tested and delivery-confirmed before sending.
+
+- sender_identity:
+  Sender email is invalid.
+
+- lead_unsubscribed:
+  This lead is marked unsubscribed.
+
+Warnings:
+- domain_alignment:
+  Sender domain alignment could not be verified locally. Keep volume low and confirm SPF/DKIM/DMARC with the mailbox provider.
+
+- cta_asset_missing:
+  CTA mentions a concrete asset but no matching saved asset/profile proof was found.
+  Blocks for certification_pack or quote_range.
+  Warns for other CTA asset types.
+
+- unsubscribe_missing:
+  No unsubscribe or opt-out sentence was found. Add one for cold outreach compliance where required.
+
+Info:
+- sender_not_checked:
+  Sender account was not supplied for this draft risk check.
+
+Score:
+- Starts at 100.
+- Each blocking issue subtracts 45.
+- Each warning subtracts 10.
+- Passed only when no blocking issues exist.
+
+
+============================================================
+18. MODEL OUTPUT PARSING AND FALLBACKS
+Sources: parseGeneratedOutreachDraft, parseGeneratedOutreachWorkflow
+============================================================
+
+Single email parse order:
+1. Trim markdown fences.
+2. Parse full JSON.
+3. Parse first JSON object found in text.
+4. Try text parsing:
+   Subject: ...
+   Body: ...
+5. Fallback:
+   subject = first non-empty line or "Quick question"
+   body = remaining text or:
+   "Hello, I would like to learn whether your team handles this product category."
+
+Workflow parse order:
+1. Trim markdown fences.
+2. Parse full JSON.
+3. Parse first JSON object found in text.
+4. If no initialEmail but subject/body exist, treat as single draft.
+5. Normalize ICPs, USPs, initialEmail, followUps.
+6. If followUps are not exactly 9, use fallback follow-ups.
+7. If parsing fails, use fallback workflow.
+
+
+============================================================
+19. RECENT REAL PROMPT SNAPSHOT EXAMPLE
+============================================================
+
+This is a shortened example of the real promptSnapshot stored for the recent Europine generation.
+The full stored prompt was about 24,916 characters because it included the scraped website text preview.
+
+Build a complete Letter App style B2B outreach workflow for a China-based export/trading company.
+Target language: English.
+Tone: warm, concise, practical.
+Research depth: adaptive. Use self-adaptive depth: prefer deep website evidence from high-value pages, but stay conservative if the crawler had to fall back.
+Return JSON only with this shape:
+{
+  "icps": [{"name":"...","industrySegment":"...","companyCharacteristics":["..."],"buyerRoles":["..."],"buyingBehavior":["..."],"painPoints":["..."],"triggerEvents":["..."],"salesAngles":["..."]}],
+  "usps": [{"category":"Product-level|Operational|Trust-building|Strategic value","headline":"...","buyerAngle":"...","proof":"..."}],
+  "initialEmail": {"subject":"...","body":"..."},
+  "followUps": [{"step":1,"delayDays":2,"strategy":"Friendly reminder","subject":"...","body":"..."}]
+}
+Do not add, remove, rename, or nest fields outside this schema.
+Private operating mode:
+- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.
+- Treat the private outreach brief below as the locked angle for the first email.
+
+--- Outreach OS evidence and asset map ---
+Generation mode: deep
+Use this section as private strategy. Do not expose framework names or reasoning.
+Verified facts:
+VERIFIED Page title: Luxury Vinyl Plank Flooring | Europine.Com (https://www.europine.com/)
+VERIFIED Lead need: May care about reliable supply, pricing, lead time, and product fit for their market. (https://www.europine.com/)
+VERIFIED Lead industry: Import / distribution (https://www.europine.com/)
+VERIFIED Seller product: SPC
+VERIFIED Seller product: LVT
+VERIFIED Seller product: PVC FLOORING
+Inferred insights:
+INFERRED Product signal: Catalog / product range (https://www.europine.com/)
+INFERRED Product signal: Private label / OEM (https://www.europine.com/)
+INFERRED Product signal: Certification sensitive (https://www.europine.com/)
+INFERRED Product signal: Bulk or wholesale buying (https://www.europine.com/)
+INFERRED Buying signal: Supplier comparison likely (https://www.europine.com/)
+INFERRED Buying signal: Repeat replenishment (https://www.europine.com/)
+Missing data: seller proof assets
+Selected buyer pain: Needs stable lead time
+Selected buyer implication: runs ARCHITECTS AND DESIGNERS RETAILER PROGRAM TRUCK LOADS CONTAINER DIRECT PRODUCTS RIGID CORE SPC 5 mm alongside Bulk or wholesale buying; that points to supplier comparison likely
+Selected USP: SPC backup options
+Selected CTA: a small MOQ and lead-time comparison for 2-3 options | No saved CTA asset; keep the offer conservative and profile-derived.
+Warnings: No saved USP bank item; using company profile fallback.; No saved moq leadtime sheet CTA asset; CTA must stay conservative or use profile-derived proof.; Proof still thin: certifications or compliance proof, lead-time or shipping terms, payment terms
+
+--- Private outreach brief ---
+Buyer reason: runs ARCHITECTS AND DESIGNERS RETAILER PROGRAM TRUCK LOADS CONTAINER DIRECT PRODUCTS RIGID CORE SPC 5 mm alongside Bulk or wholesale buying
+Buyer segment: Importer / distributor
+Likely pain/risk: Needs stable lead time
+Procurement trigger: Supplier comparison likely
+Single USP to use: SPC backup options
+Why it matters to buyer: Lets the buyer compare specs, MOQ, lead time, and proof notes before adding a backup supplier.
+Allowed proof: Products: SPC, LVT, PVC FLOORING
+Low-friction next step: a small MOQ and lead-time comparison for 2-3 options
+Missing evidence to avoid inventing: certifications or compliance proof, lead-time or shipping terms, payment terms
+
+--- Lead ---
+Company: Europine
+Website: https://www.europine.com/
+Email: info@europine.com
+Industry: Import / distribution
+Need: May care about reliable supply, pricing, lead time, and product fit for their market.
+
+--- Customer website research ---
+Website: https://www.europine.com/
+Research depth: adaptive
+Research confidence: 100/100
+Page title: Luxury Vinyl Plank Flooring | Europine.Com
+Meta description: Work with a reliable vinyl flooring wholesale supplier to access premium materials that meet the highest industry standards.
+Buyer type: Importer / distributor
+Likely industry: Import / distribution
+Product signals: Catalog / product range; Private label / OEM; Certification sensitive; Bulk or wholesale buying
+Buying/procurement signals: Supplier comparison likely; Repeat replenishment
+Risk/pain signals: Needs stable lead time; Needs proof before samples; Needs easier category selection; Needs margin support; Needs packaging or brand fit
+Checked pages: https://www.europine.com/, https://www.europine.com/about/, https://www.europine.com/products/, ...
+Website text preview:
+{long scraped website text inserted here}
+
+--- Our company knowledge ---
+{saved company profile and materials inserted here}
+
+
+============================================================
+20. SOURCE FILE REFERENCES
+============================================================
+
+Main source file:
+apps/server/src/index.ts
+
+Key functions:
+- generateOutreachDraft
+- generateOutreachWorkflow
+- buildOutreachPrompt
+- buildOutreachWorkflowPrompt
+- outreachInstructions
+- outreachWorkflowInstructions
+- buildOutreachRewritePrompt
+- buildOutreachRepairPrompt
+- polishOutreachDraft
+- reviewOutreachEmail
+- reviewOutreachSendRisk
+- fallbackOutreachDraftFromBrief
+- fallbackFollowUpFromBrief
+- formatOutreachGenerationBrief
+- formatOutreachOsContext
+- formatCustomerResearchContext
+- strongestResearchSignal
+- bestCustomerResearchClues
+- selectOutreachUsp
+- selectMicroOffer
+
+Runtime model call:
+packages/runtime/src/runtime-service.ts
+- createHermesReply
+- resolveCompletionModel
+- chatCompletionsUrl
+

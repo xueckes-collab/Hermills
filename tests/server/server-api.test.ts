@@ -1099,6 +1099,123 @@ describe("Hermills local API", () => {
     expect(workflowResponse.json().initialEmail.body).not.toContain("high quality and competitive price");
   });
 
+  it("blocks robotic keyword CTAs and shallow SPC emails before storing them", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      [
+        "<html><head><title>Europine - SPC Flooring Distributor</title>",
+        "<meta name=\"description\" content=\"Europine runs quick-ship, TruckLoad, and Container Direct programs for Fortika SPC flooring.\"></head>",
+        "<body><p>Fortika SPC 5mm and 7.5mm ranges support flooring distributors, retailers, and container-direct orders.</p></body></html>"
+      ].join(""),
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Fortika SPC backup options",
+          body: "Hi, I noticed Europine runs TruckLoad and Container Direct programs alongside Fortika SPC ranges, so supplier backup has to protect both quick-ship inventory and container timing.\nAnyway Flooring can be a backup SPC source for 5mm or 7.5mm-style ranges while keeping OEM packaging discussion separate from a full catalog.\nWould a short A/B sheet be more useful: A for matched specs, or B for MOQ and lead-time checks?"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "SPC fit check for your quick-ship model",
+          body: "Saw Europine's focus on quick-ship and reliable supply for SPC luxury vinyl. That's exactly where lead time consistency makes or breaks a distributor's margin.\n\nIf you're comparing SPC suppliers, I can send a simple table with MOQ and lead times for 2-3 options matching your Fortika 5mm or 7.5mm specs. No samples needed—just data to see if we align.\n\nReply 'SPC table' and I'll email it within 24 hours."
+        },
+        followUps: []
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Anyway Flooring",
+      website: "https://anywayflooring.com",
+      mainProducts: ["SPC", "LVT"]
+    } });
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "europine.example",
+        email: "info@europine.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
+    expect(runtime.requests).toHaveLength(2);
+    expect(runtime.requests[1]?.messages[0]?.content).toContain("Reply 'SPC table'");
+    expect(workflowResponse.json().initialEmail).toMatchObject({
+      subject: "Fortika SPC backup options",
+      qualityReview: { passed: true }
+    });
+    expect(workflowResponse.json().initialEmail.body).not.toContain("No samples needed");
+    expect(workflowResponse.json().initialEmail.body).not.toContain("Reply 'SPC table'");
+  });
+
+  it("rejects domain-as-evidence wording and compare-fit fallback copy", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      [
+        "<html><head><title>Luxury Vinyl Plank Flooring | Europine.Com</title>",
+        "<meta name=\"description\" content=\"Europine runs quick-ship, TruckLoad, and Container Direct programs for Fortika SPC flooring.\"></head>",
+        "<body><p>Fortika SPC 5mm and 7.5mm ranges support flooring distributors, retailers, and container-direct orders.</p></body></html>"
+      ].join(""),
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Fortika SPC backup options",
+          body: "Hi, I noticed Europine runs TruckLoad and Container Direct programs for Fortika SPC ranges, so lead time and matched specs likely matter before adding another supplier.\nI can prepare a short backup option sheet with MOQ, lead time, and proof notes instead of a full catalog.\nWould A) matched specs or B) MOQ and lead-time checks be more useful first?"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "SPC fit check",
+          body: "Hi, I noticed Luxury Vinyl Plank Flooring works around europine.Com, so proof and timing may matter before adding another option.\nSPC fit check gives your team a simpler way to compare fit. It keeps the first step low-risk by offering only the few details needed to judge supplier fit.\nI can send two options: A for fast sampling, B for repeat supply, with a small MOQ and lead-time comparison for 2-3 options. Which fits better?"
+        },
+        followUps: []
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Anyway Flooring",
+      website: "https://anywayflooring.com",
+      mainProducts: ["SPC", "LVT"]
+    } });
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "europine.example",
+        email: "info@europine.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
+    expect(runtime.requests).toHaveLength(2);
+    expect(runtime.requests[1]?.messages[0]?.content).toContain("works around europine.Com");
+    const email = workflowResponse.json().initialEmail;
+    expect(email).toMatchObject({
+      subject: "Fortika SPC backup options",
+      qualityReview: { passed: true }
+    });
+    expect(email.body).toContain("TruckLoad");
+    expect(email.body).toContain("Container Direct");
+    expect(email.body).not.toContain("works around");
+    expect(email.body).not.toContain("compare fit");
+  });
+
   it("builds a full outreach workflow with ICPs, USPs, and nine follow-ups", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);

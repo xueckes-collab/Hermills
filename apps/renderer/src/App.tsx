@@ -1757,7 +1757,7 @@ function InspectorPanel({
               <strong>{formatNumber(outreachLeads.length)}</strong>
             </div>
             <div className="crm-assistant-metric">
-              <span>进行中的批量任务</span>
+              <span>进行中的批量写信</span>
               <strong>{formatNumber(outreachPipelineCount)}</strong>
             </div>
             <div className="crm-assistant-metric">
@@ -2216,6 +2216,7 @@ function DevelopmentLetterPage({
   const [senderChannelId, setSenderChannelId] = useState<SenderChannelId>('smtp')
   const [selectedSenderId, setSelectedSenderId] = useState('')
   const [senderTestRecipient, setSenderTestRecipient] = useState('')
+  const [mailAdvancedOpen, setMailAdvancedOpen] = useState(false)
   const [emailSignature, setEmailSignature] = useState<OutreachEmailSignature>()
   const [signatureDraft, setSignatureDraft] = useState<SignatureFormDraft>(() => emptySignatureDraft(companyProfile))
   const [buyerPersonas, setBuyerPersonas] = useState<OutreachBuyerPersona[]>([])
@@ -3346,12 +3347,14 @@ function DevelopmentLetterPage({
   }
 
   async function saveSender() {
-    if (!senderDraft.label.trim() || !senderDraft.email.trim() || (!senderApiChannelSelected && !senderDraft.host.trim())) {
+    const effectiveSenderChannelId = mailAdvancedOpen ? senderChannelId : 'smtp'
+    const effectiveApiChannelSelected = effectiveSenderChannelId !== 'smtp'
+    if (!senderDraft.label.trim() || !senderDraft.email.trim() || (!effectiveApiChannelSelected && !senderDraft.host.trim())) {
       setError(copy.devLetter.warnings.senderRequired)
       return undefined
     }
-    const sendChannel = sendChannelFromSenderChannel(senderChannelId)
-    const provider = providerFromSenderChannel(senderChannelId, senderProviderId)
+    const sendChannel = sendChannelFromSenderChannel(effectiveSenderChannelId)
+    const provider = providerFromSenderChannel(effectiveSenderChannelId, senderProviderId)
     const apiCredential = senderDraft.apiCredential.trim()
     const apiAccountId = senderDraft.apiAccountId.trim()
     const apiBaseUrl = senderDraft.apiBaseUrl.trim()
@@ -3395,21 +3398,23 @@ function DevelopmentLetterPage({
   }
 
   async function saveSignature() {
+    const text = signatureDraft.text.trim()
+    const hasLogo = Boolean(emailSignature?.logo)
     setBusy('signature')
     setError('')
     setNotice('')
     try {
       const saved = await api.saveOutreachEmailSignature({
-        enabled: signatureDraft.enabled,
-        text: signatureDraft.text.trim(),
-        html: signatureDraft.html.trim(),
-        logoEnabled: signatureDraft.logoEnabled,
-        logoAlt: signatureDraft.logoAlt.trim() || 'Company logo',
-        logoWidth: Number(signatureDraft.logoWidth || 120),
+        enabled: Boolean(text || hasLogo),
+        text,
+        html: '',
+        logoEnabled: hasLogo,
+        logoAlt: `${companyProfile.name || 'Company'} logo`,
+        logoWidth: 120,
       })
       setEmailSignature(saved)
       setSignatureDraft(signatureFormFromSettings(saved, companyProfile))
-      setNotice('邮件签名和 Logo 设置已保存。')
+      setNotice('邮件签名和 Logo 已保存。之后发送开发信会自动带上。')
       return saved
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -3483,6 +3488,44 @@ function DevelopmentLetterPage({
       replaceSenderAccount(result.sender)
       if (result.ok) setNotice(copy.devLetter.status.testEmailSent)
       else setError(formatSenderDeliveryError(result.message))
+    } catch (err) {
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  function openSenderAuthGuide() {
+    const url = senderAuthGuide.url
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setNotice(`已打开 ${senderProvider.label} 授权码页面。复制授权码后粘贴到这里，再点击“保存并测试邮箱”。`)
+      return
+    }
+    setMailAdvancedOpen(true)
+    setNotice('这个邮箱服务商无法自动打开授权码页面，请在高级设置里填写 SMTP 主机、端口和授权码。')
+  }
+
+  async function saveAndTestSender() {
+    const sender = await saveSender()
+    if (!sender) return
+    setBusy('mailSetup')
+    setError('')
+    setNotice('')
+    try {
+      const tested = await api.testOutreachSenderAccount(sender.id)
+      replaceSenderAccount(tested.sender)
+      if (!tested.ok) {
+        setError(formatSenderDeliveryError(tested.message))
+        return
+      }
+      const emailed = await api.sendOutreachSenderTestEmail(sender.id)
+      replaceSenderAccount(emailed.sender)
+      if (emailed.ok) {
+        setNotice(`邮箱可用。已发送测试邮件到 ${sender.email}，收到后点击“确认已收到”。`)
+      } else {
+        setError(formatSenderDeliveryError(emailed.message))
+      }
     } catch (err) {
       setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
     } finally {
@@ -3573,8 +3616,8 @@ function DevelopmentLetterPage({
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
     { id: 'dashboard', label: '今日外联', icon: Clock },
     { id: 'leads', label: '客户', icon: Users },
-    { id: 'compose', label: '写信', icon: Pencil },
-    { id: 'automation', label: '批量任务', icon: Zap },
+    { id: 'compose', label: '单封写信', icon: Pencil },
+    { id: 'automation', label: '批量写信', icon: Zap },
     { id: 'assets', label: '销售资产', icon: ShieldCheck },
     { id: 'mail', label: '邮箱', icon: Settings },
     { id: 'signature', label: '签名Logo', icon: ImageIcon },
@@ -3586,13 +3629,13 @@ function DevelopmentLetterPage({
     : letterView === 'leads'
       ? '查看、筛选和维护所有潜在客户'
       : letterView === 'compose'
-        ? '输入客户网站和邮箱，生成可审核的开发信'
+        ? '一次只输入一个客户，生成可审核的定制开发信'
         : letterView === 'automation'
-          ? '批量生成开发信、逐封审核和跟进客户'
+          ? '导入客户名单，批量生成开发信、逐封审核和跟进'
           : letterView === 'assets'
             ? '维护买家画像、USP 和 CTA 资产，让每封邮件有证据、有卖点、有下一步'
             : letterView === 'mail'
-              ? '配置 SMTP、API 通道和外发测试'
+              ? '填写邮箱和授权码，Hermills 自动配置 SMTP 并测试可用性'
               : letterView === 'signature'
                 ? '保存邮件签名和 Logo，之后所有开发信自动使用'
                 : '维护 AI 写信时使用的公司资料'
@@ -3634,7 +3677,7 @@ function DevelopmentLetterPage({
           </div>
           {letterView === 'dashboard' ? (
             <button className="letter-primary compact" type="button" onClick={() => setLetterView('compose')}>
-              开始写信 <ChevronRight size={16} />
+              写单封开发信 <ChevronRight size={16} />
             </button>
           ) : null}
         </header>
@@ -3674,8 +3717,8 @@ function DevelopmentLetterPage({
             <section className="letter-quick-actions" aria-label="今日外联快捷入口">
               <button className="letter-action-card" type="button" onClick={() => setLetterView('compose')}>
                 <span><Mail size={18} /></span>
-                <strong>写新开发信</strong>
-                <small>输入客户网站和邮箱，生成首封邮件和跟进序列。</small>
+                <strong>写单封开发信</strong>
+                <small>输入一个客户网站和邮箱，生成首封邮件和跟进序列。</small>
               </button>
               <button className="letter-action-card" type="button" onClick={() => setLetterView('leads')}>
                 <span><Users size={18} /></span>
@@ -3684,8 +3727,8 @@ function DevelopmentLetterPage({
               </button>
               <button className="letter-action-card" type="button" onClick={() => setLetterView('automation')}>
                 <span><Zap size={18} /></span>
-                <strong>处理批量任务</strong>
-                <small>逐封审核批量草稿，安排发送、跟进和回复检查。</small>
+                <strong>批量写开发信</strong>
+                <small>导入客户名单，逐封审核批量草稿、发送和跟进。</small>
               </button>
               <button className="letter-action-card" type="button" onClick={() => setLetterView('mail')}>
                 <span><Settings size={18} /></span>
@@ -3699,11 +3742,11 @@ function DevelopmentLetterPage({
                 <div>
                   <Zap size={18} />
                   <div>
-                    <strong>自动化中心就绪</strong>
+                    <strong>批量写信中心就绪</strong>
                     <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
                   </div>
                 </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
+                <button type="button" onClick={() => setLetterView('automation')}>前往批量写信 <ChevronRight size={16} /></button>
               </section>
             ) : null}
           </div>
@@ -3711,17 +3754,42 @@ function DevelopmentLetterPage({
 
         {letterView === 'compose' ? (
           <div className="letter-view">
-            <section className="letter-two-column">
+            <section className="letter-single-compose">
               <div className="letter-panel">
                 <div className="letter-panel-heading">
                   <div>
-                    <h2><Globe2 size={18} /> 新增客户</h2>
-                    <p>输入客户网站和邮箱，AI 会自动分析并生成首封开发信。</p>
+                    <h2><Globe2 size={18} /> 单个客户</h2>
+                    <p>输入一个客户的网站和邮箱，AI 会自动背调官网并生成首封开发信。</p>
                   </div>
                 </div>
-                <div className="letter-form-grid">
-                  <label>客户邮箱<input value={quickEmail} onChange={(event) => setQuickEmail(event.target.value)} placeholder="buyer@company.com" /></label>
-                  <label>客户网站<input value={quickWebsite} onChange={(event) => setQuickWebsite(event.target.value)} placeholder="https://company.com" /></label>
+                <div className="letter-form-grid quick-lead-form" aria-label="新增客户输入">
+                  <div className="letter-form-field">
+                    <label htmlFor="letter-quick-email">客户邮箱</label>
+                    <input
+                      id="letter-quick-email"
+                      name="quickCustomerEmail"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={quickEmail}
+                      onChange={(event) => setQuickEmail(event.currentTarget.value)}
+                      placeholder="buyer@company.com"
+                    />
+                  </div>
+                  <div className="letter-form-field">
+                    <label htmlFor="letter-quick-website">客户网站</label>
+                    <input
+                      ref={quickWebsiteRef}
+                      id="letter-quick-website"
+                      name="quickCustomerWebsite"
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      value={quickWebsite}
+                      onChange={(event) => setQuickWebsite(event.currentTarget.value)}
+                      placeholder="https://company.com"
+                    />
+                  </div>
                 </div>
                 <div className="campaign-depth-picker letter-depth-picker">
                   <div>
@@ -3739,48 +3807,12 @@ function DevelopmentLetterPage({
                   {busy === 'auto' ? '正在分析客户官网并生成开发信...' : '分析客户官网并生成开发信'} <ChevronRight size={16} />
                 </button>
               </div>
-
-              <div className="letter-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Upload size={18} /> 批量导入</h2>
-                    <p>支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。</p>
-                  </div>
-                </div>
-                <label className="letter-drop-zone">
-                  <FileText size={24} />
-                  <span>点击选择 Excel / CSV 文件</span>
-                  <small>支持 .xlsx、.xls、.csv、.txt</small>
-                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
-                </label>
-                <label className="letter-drop-zone letter-drop-zone-primary">
-                  <Zap size={24} />
-                  <span>选择文件并生成开发信</span>
-                  <small>一个邮箱一个客户，每个客户单独背调和写信</small>
-                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
-                </label>
-                <textarea className="letter-import-textarea" value={bulkImportText} onChange={(event) => setBulkImportText(event.target.value)} placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com" />
-                <button className="letter-primary full" type="button" disabled={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} onClick={() => importAndGenerateLetterLeads()}>
-                  批量导入并生成开发信
-                </button>
-                <button className="letter-secondary full" type="button" disabled={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
-                  仅导入客户
-                </button>
-              </div>
+              <aside className="letter-single-note">
+                <strong>批量客户请去“批量写信”</strong>
+                <span>单封写信页只处理一个客户，批量导入、逐客户智能体生成、批量审核和跟进都集中在批量写信页。</span>
+                <button className="letter-secondary" type="button" onClick={() => setLetterView('automation')}>打开批量写信 <ChevronRight size={16} /></button>
+              </aside>
             </section>
-
-            {(letterStats.new > 0 || letterStats.drafted > 0) ? (
-              <section className="letter-automation-banner">
-                <div>
-                  <Zap size={18} />
-                  <div>
-                    <strong>自动化中心就绪</strong>
-                    <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
-              </section>
-            ) : null}
           </div>
         ) : null}
 
@@ -3828,7 +3860,7 @@ function DevelopmentLetterPage({
                   <div className="letter-empty">
                     <Globe2 size={32} />
                     <strong>暂无客户数据</strong>
-                    <span>在写信页添加客户网站和邮箱开始分析。</span>
+                    <span>在单封写信页添加客户网站和邮箱开始分析。</span>
                   </div>
                 )}
               </div>
@@ -3837,7 +3869,7 @@ function DevelopmentLetterPage({
                 <div className="letter-panel-heading">
                   <div>
                     <h2>{selectedLead ? '客户详情' : '新增客户'}</h2>
-                    <p>保存后可以生成开发信，也可以加入批量任务。</p>
+                    <p>保存后可以生成开发信，也可以加入批量写信。</p>
                   </div>
                   {selectedLead ? <span className="letter-badge">{letterLeadStatusLabel(selectedLead)}</span> : null}
                 </div>
@@ -3923,8 +3955,36 @@ function DevelopmentLetterPage({
               <div className="letter-panel">
                 <div className="letter-panel-heading">
                   <div>
+                    <h2><Upload size={18} /> 导入批量客户</h2>
+                    <p>支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。</p>
+                  </div>
+                </div>
+                <label className="letter-drop-zone">
+                  <FileText size={24} />
+                  <span>点击选择 Excel / CSV 文件</span>
+                  <small>支持 .xlsx、.xls、.csv、.txt</small>
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
+                </label>
+                <label className="letter-drop-zone letter-drop-zone-primary">
+                  <Zap size={24} />
+                  <span>选择文件并生成开发信</span>
+                  <small>一个邮箱一个客户，每个客户单独背调和写信</small>
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
+                </label>
+                <textarea className="letter-import-textarea" value={bulkImportText} onChange={(event) => setBulkImportText(event.target.value)} placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com" />
+                <button className="letter-primary full" type="button" disabled={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} onClick={() => importAndGenerateLetterLeads()}>
+                  批量导入并生成开发信
+                </button>
+                <button className="letter-secondary full" type="button" disabled={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
+                  仅导入客户
+                </button>
+              </div>
+
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
                     <h2><Zap size={18} /> 批量智能体队列</h2>
-                    <p>选择客户后创建批量任务；每个客户都会单独背调并生成一封开发信。</p>
+                    <p>选择客户后创建批量写信任务；每个客户都会单独背调并生成一封开发信。</p>
                   </div>
                 </div>
                 <div className="letter-action-row wrap">
@@ -3933,12 +3993,12 @@ function DevelopmentLetterPage({
                 </div>
                 <label className="letter-field">Campaign 名称<input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} /></label>
                 <div className="letter-action-row">
-                  <button className="letter-primary" type="button" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} onClick={createCampaign}>创建批量任务 ({selectedCampaignLeadIds.length})</button>
+                  <button className="letter-primary" type="button" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} onClick={createCampaign}>创建批量写信 ({selectedCampaignLeadIds.length})</button>
                   <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'campaignGenerate'} onClick={generateCampaign}>逐客户智能体生成</button>
                 </div>
               </div>
 
-              <div className="letter-panel">
+              <div className="letter-panel letter-wide-panel">
                 <div className="letter-panel-heading">
                   <div>
                     <h2><Send size={18} /> 发送和跟进</h2>
@@ -3951,7 +4011,7 @@ function DevelopmentLetterPage({
                     <strong>{selectedCampaign.name}</strong>
                     <span>{selectedCampaign.stats.generated} 待审核 · {selectedCampaign.stats.approved} 可发送 · {selectedCampaign.stats.sent} 已发送</span>
                   </div>
-                ) : <div className="letter-empty small">还没有批量任务。先选择客户创建批量任务。</div>}
+                ) : <div className="letter-empty small">还没有批量写信任务。先导入或选择客户，再创建批量写信任务。</div>}
                 <div className="letter-action-row wrap">
                   <button className="letter-primary" type="button" disabled={!selectedCampaign || busy === 'campaignSend'} onClick={startCampaign}>一键发送</button>
                   <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</button>
@@ -4026,7 +4086,7 @@ function DevelopmentLetterPage({
                     </div>
                   </div>
                 ) : (
-                  <div className="letter-empty small">先选择客户并创建批量任务，生成后即可逐封查看邮件。</div>
+                  <div className="letter-empty small">先导入或选择客户并创建批量写信，生成后即可逐封查看邮件。</div>
                 )}
               </section>
             ) : null}
@@ -4163,23 +4223,13 @@ function DevelopmentLetterPage({
               <div className="letter-panel-heading">
                 <div>
                   <h2><ImageIcon size={18} /> 签名与 Logo</h2>
-                  <p>保存一次，之后单封、批量和跟进开发信发送时都会自动带上。</p>
+                  <p>填写文字签名，上传公司 Logo。保存后所有开发信都会自动带上。</p>
                 </div>
-                {emailSignature?.enabled ? <span className="letter-badge success">已启用</span> : <span className="letter-badge">未启用</span>}
+                {emailSignature?.enabled ? <span className="letter-badge success">已保存</span> : <span className="letter-badge">未保存</span>}
               </div>
-              <label className="letter-toggle-row">
-                <input type="checkbox" checked={signatureDraft.enabled} onChange={(event) => updateSignature('enabled', event.target.checked)} />
-                <span>发送开发信时自动追加邮件签名</span>
-              </label>
-              <div className="letter-form-grid">
-                <label className="letter-form-span">文字签名<textarea value={signatureDraft.text} onChange={(event) => updateSignature('text', event.target.value)} placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website" /></label>
-                <label className="letter-form-span">HTML 签名（可选）<textarea value={signatureDraft.html} onChange={(event) => updateSignature('html', event.target.value)} placeholder="<strong>Your Name</strong><br />Company<br />Website" /></label>
-                <label>Logo 替代文字<input value={signatureDraft.logoAlt} onChange={(event) => updateSignature('logoAlt', event.target.value)} /></label>
-                <label>Logo 宽度<input value={signatureDraft.logoWidth} onChange={(event) => updateSignature('logoWidth', event.target.value)} /></label>
-              </div>
-              <label className="letter-toggle-row">
-                <input type="checkbox" checked={signatureDraft.logoEnabled} onChange={(event) => updateSignature('logoEnabled', event.target.checked)} />
-                <span>如果已上传 Logo，则在 HTML 邮件签名中显示 Logo</span>
+              <label className="letter-field signature-text-field">
+                文字签名
+                <textarea value={signatureDraft.text} onChange={(event) => updateSignature('text', event.target.value)} placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website" />
               </label>
               <div className="signature-logo-box">
                 <div>
@@ -4195,10 +4245,11 @@ function DevelopmentLetterPage({
               <div className="signature-preview">
                 <span>发送预览</span>
                 <p>Hi buyer, this is where the generated outreach email appears.</p>
-                {signatureDraft.enabled && signatureDraft.text.trim() ? <pre>{signatureDraft.text}</pre> : <em>未启用签名</em>}
+                {emailSignature?.logo ? <strong>{emailSignature.logo.fileName}</strong> : null}
+                {signatureDraft.text.trim() ? <pre>{signatureDraft.text}</pre> : <em>还没有文字签名</em>}
               </div>
               <div className="letter-action-row wrap">
-                <button className="letter-primary" type="button" disabled={busy === 'signature'} onClick={saveSignature}>保存签名和 Logo 设置</button>
+                <button className="letter-primary" type="button" disabled={busy === 'signature'} onClick={saveSignature}>保存签名和 Logo</button>
               </div>
             </section>
           </div>
@@ -4210,72 +4261,129 @@ function DevelopmentLetterPage({
               <div className="letter-panel-heading">
                 <div>
                   <h2><Settings size={18} /> 邮箱</h2>
-                  <p>先选择发送通道；当前 SMTP 通道可直接保存和测试。</p>
+                  <p>普通用户只需要填写自己的邮箱和邮箱授权码。发送参数会在后台自动匹配。</p>
                 </div>
                 {senderDeliveryReady ? <span className="letter-badge success">已确认</span> : <span className="letter-badge">待确认</span>}
               </div>
-              <div className="sender-channel-section">
-                <div className="sender-subsection-heading">
-                  <span>发送通道</span>
-                  <small>当前：{senderChannel.label}</small>
-                </div>
-                <div className="sender-channel-grid" aria-label="选择发送通道">
-                  {senderChannelOptions.map((channel) => {
-                    const ChannelIcon = channel.icon
-                    const active = senderChannel.id === channel.id
-                    return (
-                      <button key={channel.id} className={active ? 'sender-channel-card active' : 'sender-channel-card'} type="button" aria-pressed={active} onClick={() => chooseSenderChannel(channel.id)}>
-                        <span className="sender-channel-top">
-                          <span><ChannelIcon size={16} /> {channel.label}</span>
-                          <small>{active ? '已选择' : channel.status}</small>
-                        </span>
-                        <em>{channel.detail}</em>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className={senderApiChannelSelected ? 'sender-channel-status warning' : 'sender-channel-status ready'}>
+              <div className="mail-simple-panel">
+                <div className="mail-simple-status">
                   <div>
-                    <strong>{senderApiChannelSelected ? `${senderChannel.label} 已选` : `${senderProvider.label} SMTP 可配置`}</strong>
-                    <span>{senderApiChannelSelected ? '此通道会通过 HTTPS API 发信；请填写 API/OAuth 凭据，测试成功后再确认收件。' : `正在使用 ${senderAuthGuide.smtpLabel}。如果 SMTP 被邮箱服务商拦截，可改选 ${senderRecommendedApiChannel.label}。`}</span>
+                    <strong>自动配置：{senderProvider.label} SMTP</strong>
+                    <span>当前将使用 {senderAuthGuide.smtpLabel}。如果识别不正确，可以展开高级设置手动切换。</span>
                   </div>
-                  <small>{senderApiChannelSelected ? 'HTTPS API' : 'SMTP'}</small>
+                  <small>{senderDeliveryReady ? '可发送' : senderLoginReady ? '连接正常' : '待测试'}</small>
+                </div>
+                <div className="letter-form-grid mail-simple-grid">
+                  <div className="letter-form-field">
+                    <label htmlFor="sender-simple-email">你的发件邮箱</label>
+                    <input
+                      ref={senderEmailRef}
+                      id="sender-simple-email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={senderDraft.email}
+                      onChange={(event) => updateSenderEmail(event.currentTarget.value)}
+                      placeholder="sales@company.com"
+                    />
+                  </div>
+                  <div className="letter-form-field">
+                    <label htmlFor="sender-simple-password">邮箱授权码 / SMTP 密码</label>
+                    <input
+                      id="sender-simple-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={senderDraft.password}
+                      onChange={(event) => updateSender('password', event.currentTarget.value)}
+                      placeholder={senderDraft.id ? selectedSender?.passwordPreview || '粘贴邮箱授权码' : '粘贴邮箱授权码'}
+                    />
+                  </div>
+                  <div className="letter-form-field">
+                    <label htmlFor="sender-simple-from-name">显示名称</label>
+                    <input
+                      id="sender-simple-from-name"
+                      value={senderDraft.fromName}
+                      onChange={(event) => updateSender('fromName', event.currentTarget.value)}
+                      placeholder={companyProfile.name || 'Your company'}
+                    />
+                  </div>
+                </div>
+                <div className="mail-helper-card">
+                  <KeyRound size={18} />
+                  <div>
+                    <strong>不知道授权码在哪里？</strong>
+                    <span>点击按钮会打开邮箱服务商的授权码页面。生成后复制回来，粘贴到上面的授权码框。</span>
+                  </div>
+                  <button className="letter-secondary" type="button" onClick={openSenderAuthGuide}>获取 SMTP 授权码</button>
+                </div>
+                <div className="letter-action-row wrap sender-action-row">
+                  <button className="letter-primary" type="button" disabled={busy === 'sender' || busy === 'mailSetup'} onClick={saveAndTestSender}>
+                    {busy === 'mailSetup' || busy === 'sender' ? '正在保存并测试...' : '保存并测试邮箱'}
+                  </button>
+                  <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>确认已收到测试邮件</button>
                 </div>
               </div>
-              <div className="sender-subsection-heading smtp-heading">
-                <span>SMTP 邮箱预设</span>
-                <small>{senderAuthGuide.smtpLabel}</small>
-              </div>
-              <div className="letter-provider-grid">
-                {senderProviderPresets.map((preset) => (
-                  <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
-                    <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
-                  </button>
-                ))}
-              </div>
-              <div className="letter-form-grid">
-                <label>发件邮箱<input value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" /></label>
-                <label>{senderApiChannelSelected ? 'SMTP 备用密码' : 'SMTP 密码'}<input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || '邮箱授权码或 SMTP 密码' : '邮箱授权码或 SMTP 密码'} /></label>
-                <label>显示名称<input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></label>
-                <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
-                <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
-                <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
-                <label>外部测试收件箱<input value={senderTestRecipient} onChange={(event) => setSenderTestRecipient(event.target.value)} placeholder="建议填你自己的另一个邮箱，验证真正外发" /></label>
-                {senderApiChannelSelected ? (
-                  <>
-                    <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
-                    <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
-                    <label className="letter-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
-                  </>
-                ) : null}
-              </div>
-              <div className="letter-action-row wrap sender-action-row">
-                <button className="letter-primary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>确认已收到</button>
-              </div>
+              <details className="mail-advanced-settings" open={mailAdvancedOpen} onToggle={(event) => setMailAdvancedOpen(event.currentTarget.open)}>
+                <summary>高级设置（一般不用管）</summary>
+                <div className="sender-channel-section">
+                  <div className="sender-subsection-heading">
+                    <span>发送通道</span>
+                    <small>当前：{senderChannel.label}</small>
+                  </div>
+                  <div className="sender-channel-grid" aria-label="选择发送通道">
+                    {senderChannelOptions.map((channel) => {
+                      const ChannelIcon = channel.icon
+                      const active = senderChannel.id === channel.id
+                      return (
+                        <button key={channel.id} className={active ? 'sender-channel-card active' : 'sender-channel-card'} type="button" aria-pressed={active} onClick={() => chooseSenderChannel(channel.id)}>
+                          <span className="sender-channel-top">
+                            <span><ChannelIcon size={16} /> {channel.label}</span>
+                            <small>{active ? '已选择' : channel.status}</small>
+                          </span>
+                          <em>{channel.detail}</em>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className={senderApiChannelSelected ? 'sender-channel-status warning' : 'sender-channel-status ready'}>
+                    <div>
+                      <strong>{senderApiChannelSelected ? `${senderChannel.label} 已选` : `${senderProvider.label} SMTP 可配置`}</strong>
+                      <span>{senderApiChannelSelected ? '此通道会通过 HTTPS API 发信；请填写 API/OAuth 凭据，测试成功后再确认收件。' : `正在使用 ${senderAuthGuide.smtpLabel}。如果 SMTP 被邮箱服务商拦截，可改选 ${senderRecommendedApiChannel.label}。`}</span>
+                    </div>
+                    <small>{senderApiChannelSelected ? 'HTTPS API' : 'SMTP'}</small>
+                  </div>
+                </div>
+                <div className="sender-subsection-heading smtp-heading">
+                  <span>SMTP 邮箱预设</span>
+                  <small>{senderAuthGuide.smtpLabel}</small>
+                </div>
+                <div className="letter-provider-grid">
+                  {senderProviderPresets.map((preset) => (
+                    <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
+                      <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
+                    </button>
+                  ))}
+                </div>
+                <div className="letter-form-grid">
+                  <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
+                  <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
+                  <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
+                  <label>外部测试收件箱<input value={senderTestRecipient} onChange={(event) => setSenderTestRecipient(event.target.value)} placeholder="建议填你自己的另一个邮箱，验证真正外发" /></label>
+                  {senderApiChannelSelected ? (
+                    <>
+                      <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
+                      <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
+                      <label className="letter-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
+                    </>
+                  ) : null}
+                </div>
+                <div className="letter-action-row wrap sender-action-row">
+                  <button className="letter-secondary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
+                  <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
+                  <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
+                  <button className="letter-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
+                </div>
+              </details>
             </section>
           </div>
         ) : null}

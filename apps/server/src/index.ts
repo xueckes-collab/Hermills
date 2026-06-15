@@ -4180,11 +4180,15 @@ class DeepResearchClient {
       this.endpoint = undefined;
       this.child = undefined;
     });
-    const ready = await waitForDeepResearchHealth(this.fetchImpl, this.endpoint, this.token, 12_000);
-    if (!ready) {
+    const startupTimeoutMs = Math.min(90_000, Math.max(45_000, this.config.timeoutMs || 30_000));
+    const health = await waitForDeepResearchHealth(this.fetchImpl, this.endpoint, this.token, startupTimeoutMs);
+    if (!health.ok) {
       await this.dispose();
-      await this.logs.create({ source: "server", level: "warn", message: "Deep research engine did not become ready; using lightweight website research." });
+      await this.logs.create({ source: "server", level: "warn", message: `Deep research engine did not become ready within ${startupTimeoutMs} ms; using lightweight website research.` });
       return undefined;
+    }
+    if (health.warning) {
+      await this.logs.create({ source: "server", level: "warn", message: `Deep research engine is running with degraded fetchers: ${redactSecrets(health.warning)}` });
     }
     return this.endpoint;
   }
@@ -4362,7 +4366,7 @@ async function findOpenLocalPort(): Promise<number> {
   });
 }
 
-async function waitForDeepResearchHealth(fetchImpl: typeof fetch, endpoint: string, token: string, timeoutMs: number): Promise<boolean> {
+async function waitForDeepResearchHealth(fetchImpl: typeof fetch, endpoint: string, token: string, timeoutMs: number): Promise<{ ok: boolean; warning?: string }> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -4370,13 +4374,20 @@ async function waitForDeepResearchHealth(fetchImpl: typeof fetch, endpoint: stri
         headers: { authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(1500)
       });
-      if (response.ok) return true;
+      if (response.ok) {
+        const payload = await response.json().catch(() => undefined) as { fetcher?: { warning?: string; layers?: Array<{ warning?: string }> } } | undefined;
+        const warning = [
+          payload?.fetcher?.warning,
+          ...(payload?.fetcher?.layers ?? []).map((layer) => layer.warning)
+        ].filter(Boolean).join("; ");
+        return { ok: true, warning: warning || undefined };
+      }
     } catch {
       // Retry until deadline.
     }
     await delay(300);
   }
-  return false;
+  return { ok: false };
 }
 
 function delay(ms: number): Promise<void> {
@@ -4540,14 +4551,59 @@ function localResearchEvidence(input: {
   textPreview: string;
 }): CustomerResearchEvidence[] {
   const sourceUrl = input.fetchedUrls[0] ?? input.website;
-  const snippets = input.textPreview.split(/[.!?。]\s+/).map((part) => part.trim()).filter(Boolean);
+  const snippets = researchSnippetCandidates(input.textPreview);
+  const fallbackSnippets = input.textPreview.split(/[.!?。]\s+/).map((part) => cleanWebsiteSnippetCandidate(part)).filter(Boolean);
+  const findSnippet = (pattern: RegExp) => snippets.find((item) => pattern.test(item))
+    ?? fallbackSnippets.find((item) => pattern.test(item))
+    ?? "";
   const evidence: CustomerResearchEvidence[] = [];
   if (input.title) evidence.push({ label: "Page title", value: input.title, sourceUrl, snippet: snippets[0] ?? input.title });
   if (input.description) evidence.push({ label: "Meta description", value: input.description, sourceUrl, snippet: input.description });
-  for (const signal of input.productSignals) evidence.push({ label: "Product signal", value: signal, sourceUrl, snippet: snippets.find((item) => /product|catalog|category|range|collection|oem|custom/i.test(item)) ?? signal });
-  for (const signal of input.buyingSignals) evidence.push({ label: "Buying signal", value: signal, sourceUrl, snippet: snippets.find((item) => /supplier|sourcing|stock|launch|season|compliance|reorder/i.test(item)) ?? signal });
-  for (const signal of input.painSignals) evidence.push({ label: "Risk signal", value: signal, sourceUrl, snippet: snippets.find((item) => /delivery|quality|certification|testing|cost|margin|packaging/i.test(item)) ?? signal });
+  for (const signal of input.productSignals) evidence.push({ label: "Product signal", value: signal, sourceUrl, snippet: findSnippet(/product|catalog|category|range|collection|series|fortika|spc|lvt|oem|custom/i) || signal });
+  for (const signal of input.buyingSignals) evidence.push({ label: "Buying signal", value: signal, sourceUrl, snippet: findSnippet(/supplier|sourcing|stock|inventory|launch|season|compliance|reorder|truckload|container|quick-ship|quick ship/i) || signal });
+  for (const signal of input.painSignals) evidence.push({ label: "Risk signal", value: signal, sourceUrl, snippet: findSnippet(/delivery|ship|lead time|quality|certification|testing|cost|margin|packaging|moq|container|truckload/i) || signal });
   return evidence.slice(0, 24);
+}
+
+function researchSnippetCandidates(text: string): string[] {
+  const decoded = decodeHtmlEntities(text).replace(/\s+/g, " ").trim();
+  if (!decoded) return [];
+  const candidates: string[] = [];
+  for (const part of decoded.split(/(?<=[.!?。])\s+/)) {
+    candidates.push(part);
+  }
+  const keywordPattern = /\b(?:fortika|spc|lvt|luxury vinyl|vinyl plank|rigid core|truckload|container direct|container|quick-ship|quick ship|wholesale|distributor|retailer|collection|series|catalog|5mm|7\.5mm|wear layer|warranty|moq|lead time)\b/gi;
+  for (const match of decoded.matchAll(keywordPattern)) {
+    const index = match.index ?? 0;
+    candidates.push(decoded.slice(Math.max(0, index - 90), Math.min(decoded.length, index + 170)));
+  }
+  const seen = new Set<string>();
+  return candidates
+    .map((item) => cleanWebsiteSnippetCandidate(item))
+    .filter((item) => item && customerResearchClueScore(item, "") > 0)
+    .sort((a, b) => customerResearchClueScore(b, "") - customerResearchClueScore(a, ""))
+    .filter((item) => {
+      const key = normalizeQualityText(item).replace(/[^a-z0-9]+/g, "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 18);
+}
+
+function cleanWebsiteSnippetCandidate(value: string): string {
+  let clean = decodeHtmlEntities(value)
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, " ")
+    .replace(/\(?\+?\d[\d\s().-]{7,}\d/g, " ")
+    .replace(/&#?\w+;?/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  clean = clean.replace(/^.*\bSkip to content\b/i, "").trim();
+  clean = clean.replace(/\b(?:Menu|Home|About|Contact|Shop|Cart|Search)\b(?:\s+\b(?:Menu|Home|About|Contact|Shop|Cart|Search)\b)+/gi, " ").trim();
+  const keywordIndex = clean.search(/\b(?:Fortika|SPC|LVT|TruckLoad|Container Direct|quick-ship|quick ship|5mm|7\.5mm|wear layer|MOQ|lead time)\b/i);
+  if (keywordIndex > 70) clean = clean.slice(Math.max(0, keywordIndex - 55));
+  clean = clean.replace(/^[\s:|,，;.-]+|[\s:|,，;.-]+$/g, "").replace(/\s+/g, " ").trim();
+  return truncatePlain(clean, 170);
 }
 
 async function fetchWebsitePage(url: string): Promise<WebsitePageResult> {
@@ -4647,14 +4703,73 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'");
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]+);?/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 10)));
 }
 
 function inferCompanyName(title: string, description: string, website: string): string {
-  const fromTitle = title.split(/\s[-|–—]\s/)[0]?.trim();
-  const candidate = fromTitle || description.split(/[.。]/)[0]?.trim();
-  if (candidate && candidate.length <= 80) return candidate;
+  const domainName = companyNameFromWebsite(website);
+  const domainKey = comparableCompanyName(domainName);
+  const titleSegments = splitTitleSegments(title).map(cleanCompanyTitleSegment).filter(Boolean);
+  const matchingDomainSegment = titleSegments.find((segment) => {
+    const key = comparableCompanyName(segment);
+    return key && domainKey && (key.includes(domainKey) || domainKey.includes(key) || /\.[a-z]{2,}\b/i.test(segment));
+  });
+  if (matchingDomainSegment && matchingDomainSegment.length <= 80) return matchingDomainSegment;
+  const firstUsefulTitleSegment = titleSegments.find((segment) => !companyTitleSegmentLooksGeneric(segment, domainName));
+  if (firstUsefulTitleSegment && firstUsefulTitleSegment.length <= 80) return firstUsefulTitleSegment;
+  const descriptionCandidate = cleanCompanyTitleSegment(description.split(/[.。]/)[0]?.trim() ?? "");
+  if (descriptionCandidate && descriptionCandidate.length <= 80 && !companyTitleSegmentLooksGeneric(descriptionCandidate, domainName)) {
+    return descriptionCandidate;
+  }
   return companyNameFromWebsite(website);
+}
+
+function splitTitleSegments(title: string): string[] {
+  return title.split(/\s*(?:\||[-–—])\s*/).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function comparableCompanyName(value: string): string {
+  return value.toLowerCase().replace(/\b(?:inc|llc|ltd|co|company|corp|corporation)\b/g, "").replace(/[^a-z0-9]+/g, "");
+}
+
+function cleanCompanyTitleSegment(value: string): string {
+  return value
+    .replace(/\b([A-Za-z0-9-]+)\.(?:com|net|org|co|io|cn|com\.cn|de|fr|it|es|nl|pl|uk)\b/gi, "$1")
+    .replace(/\b(official\s+site|official\s+website|home\s+page|homepage|welcome\s+to)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:|,，-]+|[\s:|,，-]+$/g, "")
+    .trim();
+}
+
+function companyTitleSegmentLooksGeneric(segment: string, domainName: string): boolean {
+  const normalized = normalizeQualityText(segment);
+  if (!normalized) return true;
+  const segmentKey = comparableCompanyName(segment);
+  const domainKey = comparableCompanyName(domainName);
+  if (segmentKey && domainKey && (segmentKey.includes(domainKey) || domainKey.includes(segmentKey))) return false;
+  if (/^(home|about us|contact us|products?|catalog(?:ue)?|flooring|spc|lvt)$/i.test(segment.trim())) return true;
+  const seoTerms = [
+    "flooring",
+    "manufacturer",
+    "supplier",
+    "factory",
+    "wholesale",
+    "china",
+    "vinyl",
+    "plank",
+    "spc",
+    "lvt",
+    "luxury",
+    "waterproof",
+    "rigid core",
+    "products",
+    "catalog"
+  ];
+  const termHits = seoTerms.filter((term) => normalized.includes(term)).length;
+  const startsWithCategory = /^(spc|lvt|luxury vinyl|vinyl plank|waterproof|rigid core|wood flooring|flooring)\b/.test(normalized);
+  return startsWithCategory || termHits >= 2;
 }
 
 function companyNameFromWebsite(website: string): string {
@@ -5182,6 +5297,8 @@ function splitCompanyKnowledgeList(value: string): string[] {
 
 function strongestResearchSignal(research?: CustomerResearchResult): string {
   if (!research) return "";
+  const concreteClues = bestCustomerResearchClues(research, 2);
+  if (concreteClues.length) return researchCluesToBuyerReason(concreteClues, research.companyName);
   const concreteEvidence = rankCustomerResearchEvidenceForOpening(research.evidence).find((item) => !researchEvidenceLooksInferred(item));
   if (concreteEvidence) return concreteEvidence.value || concreteEvidence.snippet;
   return [
@@ -5201,8 +5318,9 @@ function rankCustomerResearchEvidenceForOpening(items: CustomerResearchEvidence[
       const text = normalizeQualityText(`${item.label} ${item.value} ${item.snippet}`);
       let value = item.sourceUrl ? 8 : 0;
       if (item.snippet && item.snippet !== item.value) value += 4;
+      value += customerResearchClueScore(`${item.value} ${item.snippet}`, item.label);
       if (/\bproduct|category|collection|dealer|showroom|download|spec|faq|certification|contact|purchasing|procurement|stock|sample|moq|lead time\b/.test(text)) value += 8;
-      if (/page title|meta description/.test(normalizeQualityText(item.label))) value -= 5;
+      if (/page title|meta description/.test(normalizeQualityText(item.label))) value -= 12;
       return value;
     };
     return score(b) - score(a);
@@ -5212,9 +5330,109 @@ function rankCustomerResearchEvidenceForOpening(items: CustomerResearchEvidence[
 function combinedResearchSignal(research: CustomerResearchResult): string {
   const product = research.productSignals[0];
   const buyer = research.buyerType || research.industry;
-  if (product && buyer) return `${buyer} appears to be working around ${product}`;
+  if (product && buyer) return `${buyer} appears to be evaluating ${product}`;
   if (product) return `their site shows interest in ${product}`;
   return "";
+}
+
+function bestCustomerResearchClues(research: CustomerResearchResult, limit: number): string[] {
+  const candidates: Array<{ value: string; score: number; secondary: boolean }> = [];
+  const addCandidate = (value: string | undefined, label = "", priority = 0) => {
+    const clean = cleanCustomerResearchClue(value ?? "", research);
+    if (!clean) return;
+    const score = customerResearchClueScore(clean, label) + priority;
+    if (score <= 0) return;
+    candidates.push({ value: clean, score, secondary: /page title|meta description/i.test(label) });
+  };
+  for (const item of rankCustomerResearchEvidenceForOpening(research.evidence)) {
+    addCandidate(item.snippet || item.value, item.label, item.sourceUrl ? 10 : 0);
+    if (item.value !== item.snippet) addCandidate(item.value, item.label, 2);
+  }
+  for (const signal of research.buyingSignals) addCandidate(signal, "Buying signal", 8);
+  for (const signal of research.productSignals) addCandidate(signal, "Product signal", 6);
+  for (const signal of research.painSignals) addCandidate(signal, "Pain signal", 4);
+  addCandidate(research.description, "Meta description", -8);
+  const seen = new Set<string>();
+  const primary = candidates.filter((item) => !item.secondary);
+  const pool = primary.length ? primary : candidates;
+  return pool
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.value)
+    .filter((value) => {
+      const key = normalizeQualityText(value).replace(/[^a-z0-9]+/g, "");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function cleanCustomerResearchClue(value: string, research: CustomerResearchResult): string {
+  let clean = decodeHtmlEntities(value)
+    .replace(/\s+/g, " ")
+    .replace(/\bhttps?:\/\/\S+/gi, " ")
+    .replace(/\bwww\.\S+/gi, " ")
+    .replace(/^[\s:|,，;.-]+|[\s:|,，;.-]+$/g, "")
+    .trim();
+  if (!clean) return "";
+  const sentences = clean.split(/(?<=[.!?。])\s+/).map((item) => item.trim()).filter(Boolean);
+  const concreteSentence = sentences.find((sentence) => customerResearchClueScore(sentence, "") >= 18);
+  if (concreteSentence) clean = concreteSentence;
+  clean = clean
+    .replace(new RegExp(`^${escapeRegExp(research.companyName)}\\s*(?:-|:|\\||,)?\\s*`, "i"), "")
+    .replace(/\b(?:learn more|read more|click here|all rights reserved)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const normalized = normalizeQualityText(clean);
+  const host = safeHostname(research.website);
+  if (!normalized || normalized.length < 8) return "";
+  if (host && normalized === host) return "";
+  if (/^(page title|meta description|lead website|home|about us|contact us)\b/.test(normalized)) return "";
+  if (/\b(appears|seems|likely|may|might|probably|inferred)\b/.test(normalized)) return "";
+  if (/^[a-z0-9.-]+\.(?:com|net|org|co|io|cn)\b/i.test(clean)) return "";
+  return truncatePlain(clean.replace(/[.。]+$/, ""), 150);
+}
+
+function customerResearchClueScore(value: string, label: string): number {
+  const text = normalizeQualityText(value);
+  if (!text) return 0;
+  if (/^(page title|meta description|lead website|generic sourcing context)\b/.test(normalizeQualityText(label))) return -12;
+  if (/\b(appears|seems|likely|may|might|probably|inferred|teams sourcing this category)\b/.test(text)) return -8;
+  if (/\b(skip to content|trusted manufacturer|flooring excellence|all rights reserved|privacy policy|terms of service)\b/.test(text)) return -10;
+  if (/^[a-z0-9.-]+\.(?:com|net|org|co|io|cn)\b/.test(text)) return -10;
+  let score = 0;
+  if (/\b(program|range|collection|series|line|catalog|dealer|distributor|retailer|showroom|inventory|stock|quick-ship|quick ship|truckload|container|direct|import|wholesale|contractor|commercial|residential)\b/i.test(value)) score += 24;
+  if (/\b(spc|lvt|luxury vinyl|vinyl plank|rigid core|flooring|fortika|oem|private label)\b/i.test(value)) score += 18;
+  if (/\b(?:\d+(?:\.\d+)?\s?(?:mm|mil|inch|in|cm|m)|wear layer|attached pad|waterproof|warranty|certification|spec(?:ification)?s?)\b/i.test(value)) score += 16;
+  if (/\b[A-Z][A-Za-z0-9&/-]*(?:\s+[A-Z0-9][A-Za-z0-9&/-]*){1,4}\b/.test(value)) score += 10;
+  if (text.length >= 24 && text.length <= 180) score += 6;
+  if (/\b(product|category|company|website|business)\b/.test(text) && score < 16) score -= 6;
+  return score;
+}
+
+function researchCluesToBuyerReason(clues: string[], companyName: string): string {
+  const first = stripLeadingCompanyName(clues[0] ?? "", companyName);
+  const second = clues[1] ? stripLeadingCompanyName(clues[1], companyName) : "";
+  const combined = second && !normalizeQualityText(first).includes(normalizeQualityText(second))
+    ? `${first} alongside ${second}`
+    : first;
+  const phrase = combined.replace(/\s+/g, " ").trim();
+  if (/^(runs|offers|stocks|carries|distributes|imports|sells|serves|lists|features|supports|uses|promotes|builds)\b/i.test(phrase)) return phrase;
+  if (/\b(program|quick-ship|quick ship|truckload|container|direct)\b/i.test(phrase)) return `runs ${phrase}`;
+  if (/\b(range|collection|series|line|catalog|sku|spc|lvt|flooring|vinyl)\b/i.test(phrase)) return `features ${phrase}`;
+  return phrase;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function safeHostname(value: string): string {
+  try {
+    return new URL(normalizeWebsiteUrl(value)).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 function triggerFromBuyerSegment(segment: string): string {
@@ -5251,9 +5469,12 @@ function selectOutreachUsp(input: {
       proof: input.facts.mainProducts.length ? `Available product line: ${input.facts.mainProducts.slice(0, 3).join(", ")}` : "Proof needed: add product catalog, sample range, MOQ, and lead-time evidence."
     };
   }
+  const backupHeadline = input.product && !/this product category/i.test(input.product)
+    ? `${input.product} backup options`
+    : "Matched backup options";
   return {
-    headline: `${input.product} fit check`,
-    buyerAngle: "Keeps the first step low-risk by offering only the few details needed to judge supplier fit.",
+    headline: backupHeadline,
+    buyerAngle: "Lets the buyer compare specs, MOQ, lead time, and proof notes before adding a backup supplier.",
     proof: [
       input.facts.mainProducts.length ? `Products: ${input.facts.mainProducts.slice(0, 3).join(", ")}` : "",
       input.facts.certifications.length ? `Certifications: ${input.facts.certifications.slice(0, 3).join(", ")}` : ""
@@ -5339,7 +5560,12 @@ const outreachTemplatePhrases = [
   "worth reviewing",
   "may be relevant here",
   "this matters because",
-  "this helps because"
+  "this helps because",
+  "no samples needed",
+  "works around",
+  "gives your team a simpler way to compare fit",
+  "simpler way to compare fit",
+  "compare fit"
 ];
 
 const outreachNextStepPhrases = [
@@ -5428,7 +5654,9 @@ const genericOutreachSubjects = [
   "business cooperation",
   "supply",
   "supplier fit",
-  "supplier-fit check"
+  "supplier-fit check",
+  "fit check",
+  "spc fit check"
 ];
 
 type OutreachQualityResearchContext = {
@@ -5467,42 +5695,68 @@ function reviewOutreachEmail(input: {
   const openingHasSpecificEvidence = openingEvidenceHits >= (activePersonalizationTokens.length >= 2 ? 2 : 1);
   const openingHasBuyerObservation = /\b(saw|noticed|looking at|checked|read|your website|your product|your category|your range|your store|your catalog|your channel|your market|your project|your customers)\b/.test(opening);
   const genericWebsiteOpening = /\b(saw|noticed|checked|read|looked at)\s+(your|the)\s+(website|site|company|business)\b/.test(opening) && !openingHasSpecificEvidence;
+  const domainOnlyOpening = /\b(?:[a-z0-9-]+\.)+(?:com|net|org|co|io|cn|de|fr|it|es|nl|pl|uk)\b/i.test(opening) && openingEvidenceHits < 2;
+  const badPseudoPersonalization = /\bworks around\b|\bsimpler way to compare fit\b|\bcompare fit\b/i.test(opening) || /\bfit check gives\b/i.test(normalized);
+  const stiffAiOpening = /^(?:i\s+)?(?:saw|noticed)\s+[a-z0-9 .'-]{2,70}(?:'s)?\s+focus\s+on\b/i.test(opening);
   const hasBuyerImplication = containsAny(normalized, outreachBuyerImplicationPhrases);
   const hasMicroOffer = containsAny(normalized, outreachMicroOfferPhrases);
   const vagueCta = /\b(would you like details|are you interested|can we talk|can we have a call|can we schedule a call|please send (?:me )?your requirements|do you have any need|can i send samples|would you like samples|let me know if interested)\b/i.test(normalized);
+  const roboticKeywordCta = /\breply\s+['"][^'"]{3,40}['"]/i.test(`${subject}\n${body}`) && !/\breply\s+['"]?[abc]['"]?\b/i.test(`${subject}\n${body}`);
   const concreteCta = /\b(2-3|two|three|a\/b|option a|option b|matched options|moq|lead time|lead-time|spec(?:ification)? pack|certification pack|proof pack|short comparison|side by side|table)\b/i.test(normalized);
   const hasLowFrictionAsk = (normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase)))
     && concreteCta
     && (hasMicroOffer || /\breply with\s+[abc]\b/.test(normalized))
-    && !vagueCta;
+    && !vagueCta
+    && !roboticKeywordCta;
   const buyerReasonPassed = Boolean(opening) && !startsWithSupplierIntro && (
     openingHasSpecificEvidence ||
     (!evidenceTokens.length && openingHasBuyerObservation && containsAny(opening, tokens))
-  );
-  const humanTonePassed = templateHits.length === 0 && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
-  const personalizedPassed = containsAny(normalized, activePersonalizationTokens) && hasBuyerImplication && !looksLikeMassTemplate(normalized) && !genericWebsiteOpening && !genericSubject;
+  ) && !domainOnlyOpening && !badPseudoPersonalization;
+  const strongEvidenceTerms = buyerStrongEvidenceTerms(input.lead, input.research);
+  const strongEvidenceHits = evidenceTokenHitCount(normalized, strongEvidenceTerms);
+  const openingStrongEvidenceHits = evidenceTokenHitCount(opening, strongEvidenceTerms);
+  const hasEnoughConcreteEvidence = !strongEvidenceTerms.length || (strongEvidenceHits >= 2 && openingStrongEvidenceHits >= 1);
+  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
+  const personalizedPassed = containsAny(normalized, activePersonalizationTokens)
+    && hasBuyerImplication
+    && hasEnoughConcreteEvidence
+    && !looksLikeMassTemplate(normalized)
+    && !genericWebsiteOpening
+    && !domainOnlyOpening
+    && !badPseudoPersonalization
+    && !genericSubject;
   const nextStepPassed = hasLowFrictionAsk;
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
   const tooFormulaic = /\b(line 1|line 2|line 3|buyer implication|procurement trigger|micro-offer|evidence chain|selected usp)\b/i.test(normalized);
   const twoSecondPassed = words >= 35 && words <= 110 && countWords(opening) <= 32 && subject.length <= 50 && paragraphCount >= 1 && paragraphCount <= 4 && !genericSubject && !tooFormulaic;
+  const twoSecondScore = twoSecondPassed ? 20 : Math.max(0,
+    20
+    - Math.ceil(Math.max(0, words - 110) / 10) * 3
+    - (words < 35 ? 10 : 0)
+    - (countWords(opening) > 32 ? 12 : 0)
+    - (subject.length > 50 ? 8 : 0)
+    - (paragraphCount < 1 || paragraphCount > 4 ? 8 : 0)
+    - (genericSubject ? 12 : 0)
+    - (tooFormulaic ? 12 : 0)
+  );
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
-    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? "translated sales wording"}.`),
-    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs a buyer signal plus a business implication, not just a name or category."),
+    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? (stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`),
+    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs 2 concrete buyer clues plus a business implication, not just a name or category."),
     qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table."),
-    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondPassed ? 20 : Math.max(0, 20 - Math.ceil(Math.max(0, words - 110) / 10) * 3), twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
+    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
   ];
   const score = Math.max(0, Math.min(100, checks.reduce((sum, check) => sum + check.score, 0)));
   const hardFailed = !buyerReasonPassed || !humanTonePassed || !personalizedPassed || !nextStepPassed || !twoSecondPassed;
   const passed = score >= 90 && !hardFailed;
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
-    buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not write only that you saw their website.",
+    buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not use only a domain, page title, or phrase like 'works around'.",
     humanTonePassed ? "" : "Remove translated-template phrases and write like a short human business note.",
-    personalizedPassed ? "" : "Add one customer-specific product, category, channel, project, certification, or procurement detail and explain the buyer implication.",
-    nextStepPassed ? "" : "End with one low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice.",
+    personalizedPassed ? "" : "Add at least two customer-specific clues from the buyer website and explain the buyer implication.",
+    nextStepPassed ? "" : "End with one natural low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice. Avoid keyword-reply CTAs like Reply 'SPC table'.",
     twoSecondPassed ? "" : "Rewrite as a 45-90 word human sales note, not a visible three-line formula."
   ].filter(Boolean);
   return OutreachEmailQualityReviewSchema.parse({
@@ -5583,6 +5837,35 @@ function buyerEvidenceTokens(lead?: OutreachLead, research?: OutreachQualityRese
   return Array.from(new Set(raw.map((token) => token.toLowerCase()).filter((token) => token.length >= 4 && !commonQualityTokens.has(token)))).slice(0, 48);
 }
 
+function buyerStrongEvidenceTerms(lead?: OutreachLead, research?: OutreachQualityResearchContext): string[] {
+  const source = [
+    lead?.industry,
+    lead?.need,
+    research?.title,
+    research?.description,
+    research?.buyerType,
+    research?.industry,
+    ...(research?.evidence ?? []).flatMap((item) => [item.value, item.snippet]),
+    ...(research?.productSignals ?? []),
+    ...(research?.buyingSignals ?? []),
+    ...(research?.painSignals ?? [])
+  ].filter(Boolean).join("\n");
+  const phrases = Array.from(source.matchAll(/\b[A-Z][A-Za-z0-9&/-]*(?:\s+[A-Z0-9][A-Za-z0-9&/-]*){0,4}\b/g))
+    .map((match) => match[0])
+    .filter((phrase) => phrase.length >= 4 && phrase.length <= 42);
+  const specs = Array.from(source.matchAll(/\b(?:\d+(?:\.\d+)?\s?(?:mm|mil|inch|in|cm|m)|[A-Z]{2,6}|[A-Za-z]+-[A-Za-z0-9-]+)\b/g)).map((match) => match[0]);
+  const signalPhrases = [
+    ...(research?.productSignals ?? []),
+    ...(research?.buyingSignals ?? []),
+    ...(research?.painSignals ?? [])
+  ].flatMap((signal) => signal.split(/[;/,]/)).map((item) => item.trim());
+  const tokenTerms = buyerEvidenceTokens(lead, research).filter((token) => token.length >= 5);
+  return Array.from(new Set([...phrases, ...specs, ...signalPhrases, ...tokenTerms]
+    .map((term) => normalizeQualityText(term).replace(/\s+/g, " "))
+    .filter((term) => term.length >= 4 && !commonQualityTokens.has(term) && !/^(page title|meta description|lead need)$/i.test(term))))
+    .slice(0, 32);
+}
+
 const commonQualityTokens = new Set([
   "http",
   "https",
@@ -5628,7 +5911,8 @@ function isGenericOutreachSubject(subject: string, tokens: string[]): boolean {
   const normalized = normalizeQualityText(subject);
   if (!normalized) return true;
   if (genericOutreachSubjects.includes(normalized)) return true;
-  const weakGenericPhrases = ["supply", "supplier fit", "supplier-fit check", "quick question"];
+  if (normalized.includes("fit check")) return true;
+  const weakGenericPhrases = ["supply", "supplier fit", "supplier-fit check", "fit check", "quick question"];
   return weakGenericPhrases.some((phrase) => normalized.includes(phrase)) && evidenceTokenHitCount(normalized, tokens) === 0;
 }
 
@@ -6523,10 +6807,12 @@ function buildOutreachRepairPrompt(input: {
     "- Keep the body 45-90 words in 2-4 compact paragraphs.",
     "- First real sentence must say why this specific buyer should care and what the business implication is.",
     "- First real sentence must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
+    "- Use at least two concrete buyer clues from the research across the repaired email.",
     "- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.",
     "- Use exactly one buyer-relevant USP from the private brief.",
     "- End with one low-friction micro-offer: 2-3 matched options, MOQ/lead-time table, spec/certification pack, short comparison, or A/B choices.",
     "- Never end with only 'Would you like details?', 'Are you interested?', or 'Can we have a call?'.",
+    "- Never use robotic keyword CTAs like Reply 'SPC table'. Ask as a human salesperson would.",
     "- Remove generic supplier phrases, translated English, and company-first bragging.",
     "- Do not invent proof, pricing, certifications, cases, delivery promises, or fake familiarity.",
     "",
@@ -6559,18 +6845,52 @@ function buildOutreachRepairPrompt(input: {
 
 function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGenerationBrief): { subject: string; body: string } {
   const company = lead.companyName || "your team";
-  const subjectBase = brief.selectedUsp.headline.replace(/\bproof pack\b/i, "proof");
+  const subjectBase = cleanFallbackSubject(brief.selectedUsp.headline, brief);
   const reason = stripLeadingCompanyName(brief.buyerReason, company);
-  const productOrAngle = truncatePlain(brief.selectedUsp.headline.replace(/\bfit check\b/i, "options"), 38);
-  const buyerAngle = buyerAngleSentence(brief.selectedUsp.buyerAngle);
+  const openingReason = buyerReasonForSentence(reason);
+  const implication = fallbackBuyerImplication(brief);
+  const offer = fallbackMicroOfferPhrase(brief);
   return {
-    subject: truncatePlain(subjectBase || `${productOrAngle} for ${company}`, 55),
+    subject: truncatePlain(subjectBase || `Backup options for ${company}`, 50),
     body: [
-      `Hi, I noticed ${company} ${buyerReasonForSentence(reason)}, so proof and timing may matter before adding another option.`,
-      `${brief.selectedUsp.headline} gives your team a simpler way to compare fit. ${buyerAngle}`,
-      `I can send two options: A for fast sampling, B for repeat supply, with ${brief.microOffer}. Which fits better?`
+      `Hi, I noticed ${company} ${openingReason}, so ${implication}.`,
+      `I can prepare a short ${offer} instead of a full catalog.`,
+      "Would A) matched specs or B) MOQ and lead-time checks be more useful first?"
     ].join("\n")
   };
+}
+
+function cleanFallbackSubject(value: string, brief: OutreachGenerationBrief): string {
+  const clean = value
+    .replace(/\bfit check\b/gi, "backup options")
+    .replace(/\bproof pack\b/gi, "proof")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (clean && !/\b(this product category|matched backup options)\b/i.test(clean)) return clean;
+  const reason = `${brief.buyerReason} ${brief.procurementTrigger}`;
+  const productMatch = reason.match(/\b(?:Fortika\s+)?(?:SPC|LVT|luxury vinyl|vinyl plank|rigid core)(?:\s+\d+(?:\.\d+)?mm)?\b/i)?.[0];
+  return productMatch ? `${productMatch} backup options` : clean;
+}
+
+function fallbackBuyerImplication(brief: OutreachGenerationBrief): string {
+  const source = normalizeQualityText(`${brief.likelyPain} ${brief.procurementTrigger}`);
+  if (/\blead time|delivery|quick-ship|quick ship|inventory|stock|replenish|container|truckload\b/.test(source)) {
+    return "lead time and matched specs likely matter before adding another supplier";
+  }
+  if (/\bcertification|proof|compliance|testing|warranty\b/.test(source)) {
+    return "proof and spec clarity likely matter before sampling";
+  }
+  if (/\bcategory|sku|range|collection|catalog|assortment\b/.test(source)) {
+    return "a narrow option list is probably easier to judge than a broad catalog";
+  }
+  return "a small proof-backed comparison is safer than a generic supplier pitch";
+}
+
+function fallbackMicroOfferPhrase(brief: OutreachGenerationBrief): string {
+  const subject = cleanFallbackSubject(brief.selectedUsp.headline, brief).replace(/\bbackup options\b/i, "backup option sheet");
+  const micro = brief.microOffer.replace(/^a\s+/i, "").replace(/\s+/g, " ").trim();
+  if (/moq|lead time|lead-time|spec|proof|certification/i.test(micro)) return `${subject} with ${micro}`;
+  return `${subject} with MOQ, lead time, and proof notes`;
 }
 
 function stripLeadingCompanyName(value: string, companyName: string): string {
@@ -6591,11 +6911,15 @@ function lowercaseFirstBusinessPhrase(value: string): string {
 
 function buyerReasonForSentence(value: string): string {
   const phrase = lowercaseFirstBusinessPhrase(value);
-  if (/^(handles|imports|distributes|sources|sells|serves|stocks|offers|manufactures|reviews|works|focuses|prepares)\b/.test(phrase)) {
+  if (/^works around\b/.test(phrase)) return phrase.replace(/^works around\b/, "appears to handle");
+  if (/^(handles|imports|distributes|sources|sells|serves|stocks|offers|manufactures|reviews|focuses|prepares)\b/.test(phrase)) {
     return phrase;
   }
+  if (/^(runs|features|lists|carries|supports|promotes|uses|builds)\b/.test(phrase)) return phrase;
   if (/^(appears|seems|looks)\b/.test(phrase)) return phrase;
-  return `works around ${phrase}`;
+  if (/\b(program|quick-ship|quick ship|truckload|container|direct)\b/i.test(phrase)) return `runs ${phrase}`;
+  if (/\b(range|collection|series|line|catalog|sku|spc|lvt|flooring|vinyl)\b/i.test(phrase)) return `features ${phrase}`;
+  return `appears to handle ${phrase}`;
 }
 
 function buyerAngleSentence(value: string): string {
@@ -7369,8 +7693,10 @@ function outreachInstructions(): string {
     "Privately follow this chain before writing: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
     "Write like a real export sales rep: 45-90 words, 2-4 compact paragraphs, no visible framework wording.",
     "The first real sentence must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
+    "Use at least two concrete clues from buyer research across the email; one must appear in the first real sentence.",
     "Never treat the buyer company name or the fact that a website exists as enough personalization.",
     "Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.",
+    "Do not use robotic keyword CTAs like Reply 'SPC table'. Ask naturally, as a real salesperson would.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
     "If evidence is missing, write conservatively and focus on a low-friction next step.",
     "Return only valid JSON with keys subject and body."
@@ -7384,6 +7710,7 @@ function outreachWorkflowInstructions(): string {
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
     "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
     "For every initial email, privately follow this chain: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
+    "Use at least two concrete buyer clues in the initial email and keep the CTA conversational, not keyword-based.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
     "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, vague CTAs, or claims without buyer logic and proof.",
     "Return only valid JSON that matches the requested schema. Do not add fields, markdown, or commentary."
@@ -7419,6 +7746,7 @@ function buildOutreachPrompt(
     "- Keep the body 45-90 words in 2-4 compact paragraphs.",
     "- Privately use this sequence: specific buyer clue plus why it matters -> one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel -> one low-friction micro-offer.",
     "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in the first real sentence.",
+    "- Use at least two concrete buyer clues from the research across the email. These should be real product, channel, collection, market, certification, spec, or procurement clues, not only the buyer's name.",
     "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
     "- Use only one USP in the email. Do not list all company strengths.",
@@ -7426,6 +7754,7 @@ function buildOutreachPrompt(
     "- Do not write only 'I saw your website' or only mention the company name. Use a product/category/channel/market/project/certification/procurement clue.",
     "- Ask for a simple next step, such as sending 2-3 matched options, a small comparison, MOQ/lead-time table, certification/spec pack, or A/B choices.",
     "- Never use a vague CTA like 'Would you like details?', 'Are you interested?', 'Can we talk?', or 'Please send your requirements'.",
+    "- Never use robotic keyword CTAs like Reply 'SPC table'. Write a natural question or A/B choice.",
     "- Sound like a human business note, not translated English or a mass template.",
     "- Never use reaching out, just following up, hope you are doing well, Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, best price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
     "- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.",
@@ -7472,6 +7801,7 @@ function buildOutreachWorkflowPrompt(input: {
     "- Treat the private outreach brief below as the locked angle for the first email.",
     input.outreachOsContext ?? "",
     "- For the initial email, choose exactly one concrete website evidence item and turn it into a buyer implication before mentioning our USP.",
+    "- Use at least two concrete buyer clues across the initial email. Good clues include named programs, collections, specs, SKUs, channels, markets, certifications, warehouse/quick-ship/container/truckload signals, or procurement signals.",
     "- Do not treat the buyer company name or 'I saw your website' as personalization.",
     "- Do not expose research steps, agent names, or internal reasoning in any email.",
     "- If evidence is thin, write a low-risk micro-offer instead of a broad supplier pitch.",
@@ -7503,6 +7833,7 @@ function buildOutreachWorkflowPrompt(input: {
     "- Mention one buyer pain point and one matching USP. Do not include a catalog dump.",
     "- Use a concrete micro-offer or A/B choice, such as a small comparison, sample-ready option list, MOQ/lead-time table, certification pack, or category fit check.",
     "- Do not write vague CTAs like 'Would you like details?', 'Are you interested?', or 'Can we schedule a call?'.",
+    "- Do not ask the buyer to reply with a keyword such as Reply 'SPC table'. That sounds automated. Use a natural question or A/B choice.",
     "- Sound like a warm human business note, not translated English or a mass blast. Do not fake prior familiarity.",
     "",
     "Never use these phrases:",

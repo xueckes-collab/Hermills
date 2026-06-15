@@ -591,6 +591,8 @@ button {
 .hermills-crm-workbench .letter-search,
 .hermills-crm-workbench .letter-form-grid input,
 .hermills-crm-workbench .letter-form-grid textarea,
+.hermills-crm-workbench .letter-form-field input,
+.hermills-crm-workbench .letter-form-field textarea,
 .hermills-crm-workbench .letter-field input,
 .hermills-crm-workbench .letter-field textarea,
 .hermills-crm-workbench .letter-search input,
@@ -7477,9 +7479,21 @@ button.letter-stat-card { cursor: pointer; }
   align-items: start;
 }
 
+.letter-single-compose {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.78fr) minmax(260px, 0.22fr);
+  align-items: start;
+  gap: 16px;
+  min-width: 0;
+}
+
 .letter-leads-layout {
   grid-template-columns: minmax(300px, 0.95fr) minmax(380px, 1.05fr);
   align-items: start;
+}
+
+.letter-wide-panel {
+  grid-column: 1 / -1;
 }
 
 .letter-panel {
@@ -7490,6 +7504,35 @@ button.letter-stat-card { cursor: pointer; }
   background: #ffffff;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
   overflow-wrap: anywhere;
+}
+
+.letter-single-note {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 16px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.letter-single-note strong {
+  color: #172554;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.letter-single-note span {
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.letter-single-note .letter-secondary {
+  width: 100%;
 }
 
 .letter-panel-heading {
@@ -7523,6 +7566,7 @@ button.letter-stat-card { cursor: pointer; }
 }
 
 .letter-form-grid label,
+.letter-form-field,
 .letter-field {
   display: grid;
   gap: 7px;
@@ -7534,11 +7578,16 @@ button.letter-stat-card { cursor: pointer; }
 .letter-form-grid input,
 .letter-form-grid select,
 .letter-form-grid textarea,
+.letter-form-field input,
+.letter-form-field select,
+.letter-form-field textarea,
 .letter-field input,
 .letter-field select,
 .letter-field textarea,
 .letter-search input,
 .letter-import-textarea {
+  position: relative;
+  z-index: 1;
   width: 100%;
   min-width: 0;
   border: 1px solid #cbd5e1;
@@ -7549,11 +7598,17 @@ button.letter-stat-card { cursor: pointer; }
   font: inherit;
   font-size: 14px;
   line-height: 1.35;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-app-region: no-drag;
 }
 
 .letter-form-grid input:focus,
 .letter-form-grid select:focus,
 .letter-form-grid textarea:focus,
+.letter-form-field input:focus,
+.letter-form-field select:focus,
+.letter-form-field textarea:focus,
 .letter-field input:focus,
 .letter-field select:focus,
 .letter-field textarea:focus,
@@ -7732,6 +7787,14 @@ button.letter-stat-card { cursor: pointer; }
 
 .signature-settings-panel {
   gap: 16px;
+}
+
+.signature-text-field {
+  margin-top: 0;
+}
+
+.signature-text-field textarea {
+  min-height: 148px;
 }
 
 .signature-logo-box {
@@ -8386,6 +8449,116 @@ button.letter-stat-card { cursor: pointer; }
   gap: 14px;
 }
 
+.mail-simple-panel {
+  display: grid;
+  gap: 14px;
+  max-width: 860px;
+}
+
+.mail-simple-status,
+.mail-helper-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 14px;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.mail-simple-status div,
+.mail-helper-card div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.mail-simple-status strong,
+.mail-helper-card strong {
+  color: #172554;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.mail-simple-status span,
+.mail-helper-card span {
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.mail-simple-status small {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #ffffff;
+  background: #2563eb;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.mail-helper-card {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  border-color: #99f6e4;
+  color: #134e4a;
+  background: #f0fdfa;
+}
+
+.mail-helper-card svg {
+  color: #0f766e;
+}
+
+.mail-helper-card strong {
+  color: #134e4a;
+}
+
+.mail-helper-card span {
+  color: #0f766e;
+}
+
+.mail-helper-card .letter-secondary {
+  white-space: nowrap;
+}
+
+.mail-simple-grid {
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+}
+
+.mail-simple-grid .letter-form-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.mail-advanced-settings {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.mail-advanced-settings summary {
+  width: fit-content;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #334155;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.mail-advanced-settings[open] summary {
+  margin-bottom: 14px;
+}
+
+.mail-advanced-settings > div {
+  margin-top: 14px;
+}
+
 .mail-settings-panel .sender-action-row {
   position: static;
   z-index: auto;
@@ -8614,6 +8787,7 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-two-column,
+  .letter-single-compose,
   .letter-leads-layout,
   .letter-campaign-review-grid {
     grid-template-columns: 1fr;
@@ -8675,6 +8849,7 @@ button.letter-stat-card { cursor: pointer; }
   }
 
   .letter-two-column,
+  .letter-single-compose,
   .letter-leads-layout,
   .letter-campaign-review-grid {
     grid-template-columns: 1fr;
@@ -8736,6 +8911,17 @@ button.letter-stat-card { cursor: pointer; }
   .sender-channel-status {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .mail-simple-status,
+  .mail-helper-card,
+  .mail-simple-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mail-helper-card .letter-secondary {
+    width: 100%;
+    white-space: normal;
   }
 
   .sender-channel-status small {

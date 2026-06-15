@@ -70,7 +70,7 @@ function usage() {
     "",
     "Optional inputs:",
     "  --build-python <exe> or HERMILLS_DEEP_RESEARCH_BUILD_PYTHON",
-    "      Python used at build time for pip/playwright commands. Falls back to py -3, python, python3.",
+    "      Deprecated. Dependencies are installed with the bundled Python runtime so native wheels match the packaged interpreter.",
     "  --requirements <file> or HERMILLS_DEEP_RESEARCH_REQUIREMENTS",
     "      Requirements file. Defaults to requirements-win.txt or requirements.txt in the source directory.",
     "  --playwright-browsers <dir> or HERMILLS_DEEP_RESEARCH_PLAYWRIGHT_BROWSERS",
@@ -241,6 +241,22 @@ function buildPythonArgs(buildPython, argsToAppend) {
   return [...buildPython.prefixArgs, ...argsToAppend];
 }
 
+function runtimePythonCommand(pythonDir) {
+  return {
+    command: path.join(pythonDir, "python.exe"),
+    prefixArgs: [],
+    label: "bundled Python runtime"
+  };
+}
+
+function sidecarPythonEnv() {
+  return {
+    ...process.env,
+    PYTHONPATH: [path.join(stageDir, "python-site-packages"), path.join(stageDir, "app"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
+    PLAYWRIGHT_BROWSERS_PATH: path.join(stageDir, "ms-playwright")
+  };
+}
+
 function runCommand(command, argsToAppend, options = {}) {
   return new Promise((resolve, reject) => {
     const child = execFile(command, argsToAppend, {
@@ -258,7 +274,7 @@ function runCommand(command, argsToAppend, options = {}) {
   });
 }
 
-async function installPythonDependencies(buildPython, sourceDir, sitePackagesDir) {
+async function installPythonDependencies(python, sourceDir, sitePackagesDir) {
   if (flag("skip-pip", "HERMILLS_DEEP_RESEARCH_SKIP_PIP")) {
     notes.push("[python] Skipped pip dependency install.");
     return;
@@ -295,11 +311,12 @@ async function installPythonDependencies(buildPython, sourceDir, sitePackagesDir
   }
 
   try {
-    await runCommand(buildPython.command, buildPythonArgs(buildPython, pipArgs));
+    await runCommand(python.command, buildPythonArgs(python, pipArgs), { env: sidecarPythonEnv() });
   } catch (error) {
     throw new Error([
       "Failed to install Python sidecar dependencies.",
-      "Make sure build Python has pip and can resolve the requirements.",
+      "Hermills now installs dependencies with the bundled Python runtime so compiled wheels match the packaged interpreter.",
+      "Make sure HERMILLS_DEEP_RESEARCH_PYTHON_RUNTIME points to a Python runtime with pip, or provide a same-version wheelhouse.",
       "For offline CI, set HERMILLS_DEEP_RESEARCH_WHEELHOUSE to a directory of prebuilt wheels.",
       `Original error: ${error.message}`
     ].join("\n"));
@@ -357,7 +374,7 @@ async function findChromiumExecutables(browserDir) {
   });
 }
 
-async function stagePlaywrightBrowsers(buildPython, sourceDir, browserDir, sitePackagesDir) {
+async function stagePlaywrightBrowsers(python, sourceDir, browserDir, sitePackagesDir) {
   const configuredBrowserDir = option("playwright-browsers", "HERMILLS_DEEP_RESEARCH_PLAYWRIGHT_BROWSERS");
   const defaultBrowserDir = configuredBrowserDir
     ? path.resolve(configuredBrowserDir)
@@ -383,17 +400,10 @@ async function stagePlaywrightBrowsers(buildPython, sourceDir, browserDir, siteP
     return;
   }
 
-  if (!buildPython) {
-    throw new Error([
-      "No Playwright browser cache was provided and no build Python is available to install Chromium.",
-      "Set HERMILLS_DEEP_RESEARCH_PLAYWRIGHT_BROWSERS to an existing ms-playwright directory, or set HERMILLS_DEEP_RESEARCH_BUILD_PYTHON."
-    ].join("\n"));
-  }
-
   await mkdir(browserDir, { recursive: true });
   const pythonPath = [sitePackagesDir, path.join(stageDir, "app"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   try {
-    await runCommand(buildPython.command, buildPythonArgs(buildPython, ["-m", "playwright", "install", "chromium"]), {
+    await runCommand(python.command, buildPythonArgs(python, ["-m", "playwright", "install", "chromium"]), {
       env: {
         ...process.env,
         PLAYWRIGHT_BROWSERS_PATH: browserDir,
@@ -485,6 +495,25 @@ async function validateStage() {
     ].join("\n"));
   }
   notes.push(`[verify] Found Chromium at ${rel(chromium[0])}.`);
+
+  const importProbe = [
+    "import importlib, sys",
+    "mods = ['_cffi_backend', 'greenlet._greenlet', 'scrapling', 'playwright.sync_api', 'fastapi']",
+    "failures = []",
+    "for mod in mods:",
+    "    try:",
+    "        importlib.import_module(mod)",
+    "    except Exception as exc:",
+    "        failures.append(f'{mod}: {exc}')",
+    "if failures:",
+    "    raise SystemExit('Bundled deep-research Python dependency import check failed for ' + sys.version.split()[0] + ': ' + '; '.join(failures))",
+    "print('deep-research import check ok for ' + sys.version.split()[0])"
+  ].join("\n");
+  await runCommand(path.join(stageDir, "python", "python.exe"), ["-c", importProbe], {
+    cwd: stageDir,
+    env: sidecarPythonEnv()
+  });
+  notes.push("[verify] Bundled Python can import Scrapling, Playwright, FastAPI, cffi, and greenlet.");
 }
 
 async function main() {
@@ -521,16 +550,14 @@ async function main() {
       path.join(sourceDir, ".playwright", "ms-playwright"),
       process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "ms-playwright") : undefined
     ]));
-  const needsBuildPython = hasDependencyInput || (!hasBrowserInput && !flag("skip-playwright-install", "HERMILLS_DEEP_RESEARCH_SKIP_PLAYWRIGHT_INSTALL"));
-  const buildPython = await resolveBuildPython(needsBuildPython);
-
   await resetStageDirectory();
   await stageSidecarSource(sourceDir, path.join(stageDir, "app"));
   await stagePythonRuntime(path.resolve(runtimeDir), path.join(stageDir, "python"));
   await mkdir(path.join(stageDir, "python-site-packages"), { recursive: true });
-  if (buildPython) await installPythonDependencies(buildPython, sourceDir, path.join(stageDir, "python-site-packages"));
+  const packagedPython = runtimePythonCommand(path.join(stageDir, "python"));
+  if (hasDependencyInput) await installPythonDependencies(packagedPython, sourceDir, path.join(stageDir, "python-site-packages"));
   else notes.push("[python] No dependency install needed for the provided inputs.");
-  await stagePlaywrightBrowsers(buildPython, sourceDir, path.join(stageDir, "ms-playwright"), path.join(stageDir, "python-site-packages"));
+  await stagePlaywrightBrowsers(packagedPython, sourceDir, path.join(stageDir, "ms-playwright"), path.join(stageDir, "python-site-packages"));
   await writeLauncher(stageDir);
   await writeManifest(stageDir, sourceDir);
   await validateStage();
