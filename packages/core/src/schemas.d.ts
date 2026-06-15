@@ -1516,6 +1516,100 @@ export declare const OutreachEmailQualityReviewSchema: z.ZodObject<{
     summary?: string | undefined;
     rewriteHints?: string[] | undefined;
 }>;
+export declare const CustomerResearchAngleSchema: z.ZodObject<{
+    name: z.ZodString;
+    whyItFits: z.ZodDefault<z.ZodString>;
+    buyerConcern: z.ZodDefault<z.ZodString>;
+    evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+}, "strict", z.ZodTypeAny, {
+    name: string;
+    whyItFits: string;
+    buyerConcern: string;
+    evidence: string[];
+    claimsToAvoid: string[];
+    riskLevel: "low" | "medium" | "high";
+}, {
+    name: string;
+    whyItFits?: string | undefined;
+    buyerConcern?: string | undefined;
+    evidence?: string[] | undefined;
+    claimsToAvoid?: string[] | undefined;
+    riskLevel?: "low" | "medium" | "high" | undefined;
+}>;
+export declare const CustomerResearchBriefSchema: z.ZodObject<{
+    fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+    shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+    buyerTypeDetail: z.ZodDefault<z.ZodString>;
+    purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+    bestOutreachPath: z.ZodDefault<z.ZodString>;
+    mainRisk: z.ZodDefault<z.ZodString>;
+    recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        whyItFits: z.ZodDefault<z.ZodString>;
+        buyerConcern: z.ZodDefault<z.ZodString>;
+        evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+    }, "strict", z.ZodTypeAny, {
+        name: string;
+        whyItFits: string;
+        buyerConcern: string;
+        evidence: string[];
+        claimsToAvoid: string[];
+        riskLevel: "low" | "medium" | "high";
+    }, {
+        name: string;
+        whyItFits?: string | undefined;
+        buyerConcern?: string | undefined;
+        evidence?: string[] | undefined;
+        claimsToAvoid?: string[] | undefined;
+        riskLevel?: "low" | "medium" | "high" | undefined;
+    }>, "many">>;
+    bestAngle: z.ZodDefault<z.ZodString>;
+    handoffBrief: z.ZodDefault<z.ZodString>;
+}, "strict", z.ZodTypeAny, {
+    claimsToAvoid: string[];
+    fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+    shouldWrite: "cautious" | "yes" | "no";
+    buyerTypeDetail: string;
+    purchaseIntentSignal: string;
+    bestOutreachPath: string;
+    mainRisk: string;
+    recommendedContactRoles: string[];
+    outreachAngles: {
+        name: string;
+        whyItFits: string;
+        buyerConcern: string;
+        evidence: string[];
+        claimsToAvoid: string[];
+        riskLevel: "low" | "medium" | "high";
+    }[];
+    bestAngle: string;
+    handoffBrief: string;
+}, {
+    claimsToAvoid?: string[] | undefined;
+    fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+    shouldWrite?: "cautious" | "yes" | "no" | undefined;
+    buyerTypeDetail?: string | undefined;
+    purchaseIntentSignal?: string | undefined;
+    bestOutreachPath?: string | undefined;
+    mainRisk?: string | undefined;
+    recommendedContactRoles?: string[] | undefined;
+    outreachAngles?: {
+        name: string;
+        whyItFits?: string | undefined;
+        buyerConcern?: string | undefined;
+        evidence?: string[] | undefined;
+        claimsToAvoid?: string[] | undefined;
+        riskLevel?: "low" | "medium" | "high" | undefined;
+    }[] | undefined;
+    bestAngle?: string | undefined;
+    handoffBrief?: string | undefined;
+}>;
 export declare const OutreachDraftSchema: z.ZodObject<{
     id: z.ZodString;
     profileId: z.ZodOptional<z.ZodString>;
@@ -1924,6 +2018,78 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         usedInEmail?: boolean | undefined;
     }>, "many">>;
     matchedExampleIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    researchBrief: z.ZodOptional<z.ZodObject<{
+        fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+        shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+        buyerTypeDetail: z.ZodDefault<z.ZodString>;
+        purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+        bestOutreachPath: z.ZodDefault<z.ZodString>;
+        mainRisk: z.ZodDefault<z.ZodString>;
+        recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            whyItFits: z.ZodDefault<z.ZodString>;
+            buyerConcern: z.ZodDefault<z.ZodString>;
+            evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+        }, "strict", z.ZodTypeAny, {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }, {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }>, "many">>;
+        bestAngle: z.ZodDefault<z.ZodString>;
+        handoffBrief: z.ZodDefault<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
+    }, {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    }>>;
     generationSummary: z.ZodDefault<z.ZodString>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
@@ -2052,6 +2218,26 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         checkedAt: string;
     } | undefined;
     modelUsed?: string | undefined;
+    researchBrief?: {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
 }, {
@@ -2176,6 +2362,26 @@ export declare const OutreachDraftSchema: z.ZodObject<{
         usedInEmail?: boolean | undefined;
     }[] | undefined;
     matchedExampleIds?: string[] | undefined;
+    researchBrief?: {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    } | undefined;
     generationSummary?: string | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -2544,6 +2750,78 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
         sourceUrl: string;
         snippet?: string | undefined;
     }>, "many">>;
+    brief: z.ZodOptional<z.ZodObject<{
+        fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+        shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+        buyerTypeDetail: z.ZodDefault<z.ZodString>;
+        purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+        bestOutreachPath: z.ZodDefault<z.ZodString>;
+        mainRisk: z.ZodDefault<z.ZodString>;
+        recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            whyItFits: z.ZodDefault<z.ZodString>;
+            buyerConcern: z.ZodDefault<z.ZodString>;
+            evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+        }, "strict", z.ZodTypeAny, {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }, {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }>, "many">>;
+        bestAngle: z.ZodDefault<z.ZodString>;
+        handoffBrief: z.ZodDefault<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
+    }, {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    }>>;
     textPreview: z.ZodDefault<z.ZodString>;
     error: z.ZodOptional<z.ZodString>;
     createdAt: z.ZodString;
@@ -2557,6 +2835,12 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     industry: string;
     buyerType: string;
     confidenceScore: number;
+    evidence: {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet: string;
+    }[];
     depth: "deep" | "adaptive" | "quick" | "standard";
     productSignals: string[];
     buyingSignals: string[];
@@ -2564,12 +2848,26 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     recommendedAngle: string;
     inferredNeed: string;
     fetchedUrls: string[];
-    evidence: {
-        label: string;
-        value: string;
-        sourceUrl: string;
-        snippet: string;
-    }[];
+    brief?: {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
+    } | undefined;
     error?: string | undefined;
 }, {
     createdAt: string;
@@ -2581,6 +2879,12 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     industry?: string | undefined;
     buyerType?: string | undefined;
     confidenceScore?: number | undefined;
+    evidence?: {
+        label: string;
+        value: string;
+        sourceUrl: string;
+        snippet?: string | undefined;
+    }[] | undefined;
     depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
     productSignals?: string[] | undefined;
     buyingSignals?: string[] | undefined;
@@ -2588,12 +2892,26 @@ export declare const CustomerResearchSnapshotSchema: z.ZodObject<{
     recommendedAngle?: string | undefined;
     inferredNeed?: string | undefined;
     fetchedUrls?: string[] | undefined;
-    evidence?: {
-        label: string;
-        value: string;
-        sourceUrl: string;
-        snippet?: string | undefined;
-    }[] | undefined;
+    brief?: {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    } | undefined;
     error?: string | undefined;
 }>;
 export declare const GeneratedIcpSchema: z.ZodObject<{
@@ -3003,6 +3321,78 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
             blocking?: boolean | undefined;
         }[] | undefined;
     }>>;
+    researchBrief: z.ZodOptional<z.ZodObject<{
+        fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+        shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+        buyerTypeDetail: z.ZodDefault<z.ZodString>;
+        purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+        bestOutreachPath: z.ZodDefault<z.ZodString>;
+        mainRisk: z.ZodDefault<z.ZodString>;
+        recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            whyItFits: z.ZodDefault<z.ZodString>;
+            buyerConcern: z.ZodDefault<z.ZodString>;
+            evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+        }, "strict", z.ZodTypeAny, {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }, {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }>, "many">>;
+        bestAngle: z.ZodDefault<z.ZodString>;
+        handoffBrief: z.ZodDefault<z.ZodString>;
+    }, "strict", z.ZodTypeAny, {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
+    }, {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    }>>;
     sentAt: z.ZodOptional<z.ZodString>;
     sendError: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
@@ -3099,6 +3489,26 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
         score: number;
         passed: boolean;
         checkedAt: string;
+    } | undefined;
+    researchBrief?: {
+        claimsToAvoid: string[];
+        fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+        shouldWrite: "cautious" | "yes" | "no";
+        buyerTypeDetail: string;
+        purchaseIntentSignal: string;
+        bestOutreachPath: string;
+        mainRisk: string;
+        recommendedContactRoles: string[];
+        outreachAngles: {
+            name: string;
+            whyItFits: string;
+            buyerConcern: string;
+            evidence: string[];
+            claimsToAvoid: string[];
+            riskLevel: "low" | "medium" | "high";
+        }[];
+        bestAngle: string;
+        handoffBrief: string;
     } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
@@ -3197,6 +3607,26 @@ export declare const EmailSequenceDraftSchema: z.ZodObject<{
             blocking?: boolean | undefined;
         }[] | undefined;
     } | undefined;
+    researchBrief?: {
+        claimsToAvoid?: string[] | undefined;
+        fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+        shouldWrite?: "cautious" | "yes" | "no" | undefined;
+        buyerTypeDetail?: string | undefined;
+        purchaseIntentSignal?: string | undefined;
+        bestOutreachPath?: string | undefined;
+        mainRisk?: string | undefined;
+        recommendedContactRoles?: string[] | undefined;
+        outreachAngles?: {
+            name: string;
+            whyItFits?: string | undefined;
+            buyerConcern?: string | undefined;
+            evidence?: string[] | undefined;
+            claimsToAvoid?: string[] | undefined;
+            riskLevel?: "low" | "medium" | "high" | undefined;
+        }[] | undefined;
+        bestAngle?: string | undefined;
+        handoffBrief?: string | undefined;
+    } | undefined;
     sentAt?: string | undefined;
     sendError?: string | undefined;
     draftId?: string | undefined;
@@ -3243,6 +3673,78 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             sourceUrl: string;
             snippet?: string | undefined;
         }>, "many">>;
+        brief: z.ZodOptional<z.ZodObject<{
+            fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+            shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+            buyerTypeDetail: z.ZodDefault<z.ZodString>;
+            purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+            bestOutreachPath: z.ZodDefault<z.ZodString>;
+            mainRisk: z.ZodDefault<z.ZodString>;
+            recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                whyItFits: z.ZodDefault<z.ZodString>;
+                buyerConcern: z.ZodDefault<z.ZodString>;
+                evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+            }, "strict", z.ZodTypeAny, {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }, {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }>, "many">>;
+            bestAngle: z.ZodDefault<z.ZodString>;
+            handoffBrief: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        }, {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        }>>;
         textPreview: z.ZodDefault<z.ZodString>;
         error: z.ZodOptional<z.ZodString>;
         createdAt: z.ZodString;
@@ -3256,6 +3758,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         industry: string;
         buyerType: string;
         confidenceScore: number;
+        evidence: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet: string;
+        }[];
         depth: "deep" | "adaptive" | "quick" | "standard";
         productSignals: string[];
         buyingSignals: string[];
@@ -3263,12 +3771,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
-        evidence: {
-            label: string;
-            value: string;
-            sourceUrl: string;
-            snippet: string;
-        }[];
+        brief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        } | undefined;
         error?: string | undefined;
     }, {
         createdAt: string;
@@ -3280,6 +3802,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         industry?: string | undefined;
         buyerType?: string | undefined;
         confidenceScore?: number | undefined;
+        evidence?: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet?: string | undefined;
+        }[] | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -3287,12 +3815,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
-        evidence?: {
-            label: string;
-            value: string;
-            sourceUrl: string;
-            snippet?: string | undefined;
-        }[] | undefined;
+        brief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        } | undefined;
         error?: string | undefined;
     }>;
     icps: z.ZodDefault<z.ZodArray<z.ZodObject<{
@@ -3701,6 +4243,78 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 blocking?: boolean | undefined;
             }[] | undefined;
         }>>;
+        researchBrief: z.ZodOptional<z.ZodObject<{
+            fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+            shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+            buyerTypeDetail: z.ZodDefault<z.ZodString>;
+            purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+            bestOutreachPath: z.ZodDefault<z.ZodString>;
+            mainRisk: z.ZodDefault<z.ZodString>;
+            recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                whyItFits: z.ZodDefault<z.ZodString>;
+                buyerConcern: z.ZodDefault<z.ZodString>;
+                evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+            }, "strict", z.ZodTypeAny, {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }, {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }>, "many">>;
+            bestAngle: z.ZodDefault<z.ZodString>;
+            handoffBrief: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        }, {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
@@ -3798,6 +4412,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             passed: boolean;
             checkedAt: string;
         } | undefined;
+        researchBrief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -3894,6 +4528,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 severity: "info" | "warning" | "block";
                 blocking?: boolean | undefined;
             }[] | undefined;
+        } | undefined;
+        researchBrief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -4256,6 +4910,78 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 blocking?: boolean | undefined;
             }[] | undefined;
         }>>;
+        researchBrief: z.ZodOptional<z.ZodObject<{
+            fitVerdict: z.ZodDefault<z.ZodEnum<["good-fit", "cautious", "poor-fit", "unknown"]>>;
+            shouldWrite: z.ZodDefault<z.ZodEnum<["yes", "cautious", "no"]>>;
+            buyerTypeDetail: z.ZodDefault<z.ZodString>;
+            purchaseIntentSignal: z.ZodDefault<z.ZodString>;
+            bestOutreachPath: z.ZodDefault<z.ZodString>;
+            mainRisk: z.ZodDefault<z.ZodString>;
+            recommendedContactRoles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+            outreachAngles: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                name: z.ZodString;
+                whyItFits: z.ZodDefault<z.ZodString>;
+                buyerConcern: z.ZodDefault<z.ZodString>;
+                evidence: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                claimsToAvoid: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+                riskLevel: z.ZodDefault<z.ZodEnum<["low", "medium", "high"]>>;
+            }, "strict", z.ZodTypeAny, {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }, {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }>, "many">>;
+            bestAngle: z.ZodDefault<z.ZodString>;
+            handoffBrief: z.ZodDefault<z.ZodString>;
+        }, "strict", z.ZodTypeAny, {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        }, {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        }>>;
         sentAt: z.ZodOptional<z.ZodString>;
         sendError: z.ZodOptional<z.ZodString>;
     }, "strict", z.ZodTypeAny, {
@@ -4352,6 +5078,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             score: number;
             passed: boolean;
             checkedAt: string;
+        } | undefined;
+        researchBrief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -4450,6 +5196,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 blocking?: boolean | undefined;
             }[] | undefined;
         } | undefined;
+        researchBrief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -4498,6 +5264,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         industry: string;
         buyerType: string;
         confidenceScore: number;
+        evidence: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet: string;
+        }[];
         depth: "deep" | "adaptive" | "quick" | "standard";
         productSignals: string[];
         buyingSignals: string[];
@@ -4505,12 +5277,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle: string;
         inferredNeed: string;
         fetchedUrls: string[];
-        evidence: {
-            label: string;
-            value: string;
-            sourceUrl: string;
-            snippet: string;
-        }[];
+        brief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        } | undefined;
         error?: string | undefined;
     };
     icps: {
@@ -4626,6 +5412,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             passed: boolean;
             checkedAt: string;
         } | undefined;
+        researchBrief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -4725,6 +5531,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
             passed: boolean;
             checkedAt: string;
         } | undefined;
+        researchBrief?: {
+            claimsToAvoid: string[];
+            fitVerdict: "unknown" | "good-fit" | "cautious" | "poor-fit";
+            shouldWrite: "cautious" | "yes" | "no";
+            buyerTypeDetail: string;
+            purchaseIntentSignal: string;
+            bestOutreachPath: string;
+            mainRisk: string;
+            recommendedContactRoles: string[];
+            outreachAngles: {
+                name: string;
+                whyItFits: string;
+                buyerConcern: string;
+                evidence: string[];
+                claimsToAvoid: string[];
+                riskLevel: "low" | "medium" | "high";
+            }[];
+            bestAngle: string;
+            handoffBrief: string;
+        } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
         draftId?: string | undefined;
@@ -4756,6 +5582,12 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         industry?: string | undefined;
         buyerType?: string | undefined;
         confidenceScore?: number | undefined;
+        evidence?: {
+            label: string;
+            value: string;
+            sourceUrl: string;
+            snippet?: string | undefined;
+        }[] | undefined;
         depth?: "deep" | "adaptive" | "quick" | "standard" | undefined;
         productSignals?: string[] | undefined;
         buyingSignals?: string[] | undefined;
@@ -4763,12 +5595,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
         recommendedAngle?: string | undefined;
         inferredNeed?: string | undefined;
         fetchedUrls?: string[] | undefined;
-        evidence?: {
-            label: string;
-            value: string;
-            sourceUrl: string;
-            snippet?: string | undefined;
-        }[] | undefined;
+        brief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
+        } | undefined;
         error?: string | undefined;
     };
     initialEmail: {
@@ -4864,6 +5710,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 severity: "info" | "warning" | "block";
                 blocking?: boolean | undefined;
             }[] | undefined;
+        } | undefined;
+        researchBrief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;
@@ -4994,6 +5860,26 @@ export declare const OutreachWorkflowSchema: z.ZodObject<{
                 severity: "info" | "warning" | "block";
                 blocking?: boolean | undefined;
             }[] | undefined;
+        } | undefined;
+        researchBrief?: {
+            claimsToAvoid?: string[] | undefined;
+            fitVerdict?: "unknown" | "good-fit" | "cautious" | "poor-fit" | undefined;
+            shouldWrite?: "cautious" | "yes" | "no" | undefined;
+            buyerTypeDetail?: string | undefined;
+            purchaseIntentSignal?: string | undefined;
+            bestOutreachPath?: string | undefined;
+            mainRisk?: string | undefined;
+            recommendedContactRoles?: string[] | undefined;
+            outreachAngles?: {
+                name: string;
+                whyItFits?: string | undefined;
+                buyerConcern?: string | undefined;
+                evidence?: string[] | undefined;
+                claimsToAvoid?: string[] | undefined;
+                riskLevel?: "low" | "medium" | "high" | undefined;
+            }[] | undefined;
+            bestAngle?: string | undefined;
+            handoffBrief?: string | undefined;
         } | undefined;
         sentAt?: string | undefined;
         sendError?: string | undefined;

@@ -605,6 +605,7 @@ export type OutreachDraft = {
   rewriteAttempts?: number;
   evidenceUsed?: OutreachEvidenceItem[];
   matchedExampleIds?: string[];
+  researchBrief?: CustomerResearchBrief;
   generationSummary?: string;
   sentAt?: string;
   sendError?: string;
@@ -730,6 +731,29 @@ export type CustomerResearchEvidence = {
   snippet: string;
 };
 
+export type CustomerResearchAngle = {
+  name: string;
+  whyItFits: string;
+  buyerConcern: string;
+  evidence: string[];
+  claimsToAvoid: string[];
+  riskLevel: "low" | "medium" | "high";
+};
+
+export type CustomerResearchBrief = {
+  fitVerdict: "good-fit" | "cautious" | "poor-fit" | "unknown";
+  shouldWrite: "yes" | "cautious" | "no";
+  buyerTypeDetail: string;
+  purchaseIntentSignal: string;
+  bestOutreachPath: string;
+  mainRisk: string;
+  recommendedContactRoles: string[];
+  claimsToAvoid: string[];
+  outreachAngles: CustomerResearchAngle[];
+  bestAngle: string;
+  handoffBrief: string;
+};
+
 export type CustomerResearchSnapshot = {
   website: string;
   companyName: string;
@@ -746,6 +770,7 @@ export type CustomerResearchSnapshot = {
   description: string;
   fetchedUrls: string[];
   evidence: CustomerResearchEvidence[];
+  brief?: CustomerResearchBrief;
   textPreview: string;
   error?: string;
   createdAt: string;
@@ -784,6 +809,7 @@ export type EmailSequenceDraft = {
   evidenceMap?: OutreachEvidenceMap;
   strategyMatch?: OutreachStrategyMatch;
   sendRiskReview?: OutreachSendRiskReview;
+  researchBrief?: CustomerResearchBrief;
   sentAt?: string;
   sendError?: string;
 };

@@ -56,7 +56,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -2088,10 +2088,24 @@ function LetterGenerationTrace({
   )
 }
 
+function customerFitLabel(value: CustomerResearchBrief['fitVerdict']) {
+  if (value === 'good-fit') return '适合开发'
+  if (value === 'cautious') return '谨慎开发'
+  if (value === 'poor-fit') return '不建议开发'
+  return '证据不足'
+}
+
+function customerWriteModeLabel(value: CustomerResearchBrief['shouldWrite']) {
+  if (value === 'yes') return '可以写'
+  if (value === 'no') return '先别写'
+  return '谨慎写'
+}
+
 function LetterQualitySummary({
   review,
   strategy,
   riskReview,
+  researchBrief,
   evidenceUsed,
   generationSummary,
   matchedExampleCount,
@@ -2102,6 +2116,7 @@ function LetterQualitySummary({
   review?: OutreachEmailQualityReview
   strategy?: OutreachStrategyMatch
   riskReview?: OutreachSendRiskReview
+  researchBrief?: CustomerResearchBrief
   evidenceUsed?: OutreachEvidenceItem[]
   generationSummary?: string
   matchedExampleCount?: number
@@ -2136,6 +2151,29 @@ function LetterQualitySummary({
         ))}
       </div>
       {review.summary ? <p>{review.summary}</p> : null}
+      {researchBrief ? (
+        <details className={`letter-research-brief ${researchBrief.fitVerdict}`} open>
+          <summary>
+            <span>客户判断简报</span>
+            <em>{customerFitLabel(researchBrief.fitVerdict)} · {customerWriteModeLabel(researchBrief.shouldWrite)}</em>
+          </summary>
+          <div className="letter-research-brief-grid">
+            <span><strong>客户类型</strong>{researchBrief.buyerTypeDetail || '暂未判断'}</span>
+            <span><strong>最佳切入点</strong>{researchBrief.bestAngle || researchBrief.bestOutreachPath || '暂未判断'}</span>
+            <span><strong>采购信号</strong>{researchBrief.purchaseIntentSignal || '暂未找到明确采购信号'}</span>
+            <span><strong>主要风险</strong>{researchBrief.mainRisk || '暂未发现明显风险'}</span>
+          </div>
+          {researchBrief.bestOutreachPath ? <p>{researchBrief.bestOutreachPath}</p> : null}
+          {researchBrief.claimsToAvoid.length ? (
+            <div className="letter-claims-avoid">
+              <strong>不能这样写</strong>
+              <ul>
+                {researchBrief.claimsToAvoid.slice(0, 4).map((claim) => <li key={claim}>{claim}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </details>
+      ) : null}
       {strategy ? (
         <div className="letter-strategy-summary">
           <span><strong>切入点</strong>{strategy.buyerPain || '未记录'}</span>
@@ -2312,6 +2350,7 @@ function DevelopmentLetterPage({
   const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
   const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
   const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
+  const activeResearchBrief = selectedWorkflowEmail?.researchBrief ?? draft?.researchBrief ?? workflow?.research.brief
   const activeEvidenceUsed = draft?.evidenceUsed ?? selectedWorkflowEmail?.evidenceMap?.verifiedFacts?.filter((item) => item.usedInEmail) ?? []
   const activeGenerationSummary = draft?.generationSummary
   const activeMatchedExampleCount = draft?.matchedExampleIds?.length ?? 0
@@ -2322,6 +2361,7 @@ function DevelopmentLetterPage({
   const campaignQualityReview = selectedCampaignRecipient?.draft?.qualityReview
   const campaignStrategyMatch = selectedCampaignRecipient?.draft?.strategyMatch
   const campaignRiskReview = selectedCampaignRecipient?.draft?.sendRiskReview
+  const campaignResearchBrief = selectedCampaignRecipient?.draft?.researchBrief
   const campaignEvidenceUsed = selectedCampaignRecipient?.draft?.evidenceUsed ?? []
   const campaignGenerationSummary = selectedCampaignRecipient?.draft?.generationSummary
   const campaignMatchedExampleCount = selectedCampaignRecipient?.draft?.matchedExampleIds?.length ?? 0
@@ -3372,7 +3412,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const rewritten = await api.rewriteOutreachDraft(draftId, { providerId: defaultProvider?.id, model: defaultProvider?.defaultModel })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview, strategyMatch: rewritten.strategyMatch, sendRiskReview: rewritten.sendRiskReview })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview, strategyMatch: rewritten.strategyMatch, sendRiskReview: rewritten.sendRiskReview, researchBrief: rewritten.researchBrief })
       else setDraft(rewritten)
       setDraftSubject(rewritten.subject)
       setDraftBody(rewritten.body)
@@ -4032,6 +4072,7 @@ function DevelopmentLetterPage({
                           review={activeQualityReview}
                           strategy={activeStrategyMatch}
                           riskReview={activeRiskReview}
+                          researchBrief={activeResearchBrief}
                           evidenceUsed={activeEvidenceUsed}
                           generationSummary={activeGenerationSummary}
                           matchedExampleCount={activeMatchedExampleCount}
@@ -4195,6 +4236,7 @@ function DevelopmentLetterPage({
                             review={campaignQualityReview}
                             strategy={campaignStrategyMatch}
                             riskReview={campaignRiskReview}
+                            researchBrief={campaignResearchBrief}
                             evidenceUsed={campaignEvidenceUsed}
                             generationSummary={campaignGenerationSummary}
                             matchedExampleCount={campaignMatchedExampleCount}

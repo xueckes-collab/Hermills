@@ -941,7 +941,8 @@ describe("Hermills local API", () => {
       subject: "Work light options",
       status: "draft",
       generationMode: "deep",
-      qualityReview: { passed: true }
+      qualityReview: { passed: true },
+      researchBrief: { fitVerdict: "good-fit", shouldWrite: "yes" }
     });
     expect(draftResponse.json().body).toContain("A for fast sampling");
     expect(runtime.requests.at(-1)?.messages.at(-1)?.content).toContain("Would you like details?");
@@ -959,7 +960,7 @@ describe("Hermills local API", () => {
     const workflowsResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Preview", headers });
     expect(workflowsResponse.json()[0]).toMatchObject({
       draftId: draftResponse.json().id,
-      research: { depth: "adaptive" }
+      research: { depth: "adaptive", brief: { fitVerdict: "good-fit" } }
     });
   });
 
@@ -1009,6 +1010,7 @@ describe("Hermills local API", () => {
       confidenceScore: 91,
       buyerType: "Importer / distributor",
       industry: "Industrial lighting distribution",
+      brief: { fitVerdict: "good-fit", shouldWrite: "yes" },
       evidence: [{ label: "Buyer channel", sourceUrl: "https://deep-buyer.example/about" }]
     });
     expect(response.json().research.error).toBeUndefined();

@@ -33,6 +33,7 @@ import {
   LogLevelSchema,
   LogSourceSchema,
   previewSecret,
+  CustomerResearchBriefSchema,
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
   OutreachBuyerPersonaSchema,
@@ -76,6 +77,7 @@ import {
   type OnboardingProviderState,
   type OnboardingState,
   type OnboardingUpdate,
+  type CustomerResearchBrief,
   type OutreachCampaign,
   type OutreachCampaignRecipient,
   type OutreachBuyerPersona,
@@ -2992,7 +2994,7 @@ class OutreachDraftRepository {
     });
   }
 
-  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview" | "evidenceMap" | "strategyMatch" | "sendRiskReview" | "writingEngine" | "model" | "modelUsed" | "rewriteAttempts" | "evidenceUsed" | "matchedExampleIds" | "generationSummary">>): Promise<OutreachDraft> {
+  async update(id: string, input: z.infer<typeof UpdateOutreachDraftBody> & Partial<Pick<OutreachDraft, "status" | "sentAt" | "sendError" | "qualityReview" | "evidenceMap" | "strategyMatch" | "sendRiskReview" | "writingEngine" | "model" | "modelUsed" | "rewriteAttempts" | "evidenceUsed" | "matchedExampleIds" | "researchBrief" | "generationSummary">>): Promise<OutreachDraft> {
     return this.withWriteLock(async () => {
       const document = await this.read();
       const index = document.drafts.findIndex((draft) => draft.id === id);
@@ -4046,6 +4048,7 @@ interface CustomerResearchResult {
   description: string;
   fetchedUrls: string[];
   evidence: CustomerResearchEvidence[];
+  brief?: CustomerResearchBrief;
   textPreview: string;
   error?: string;
 }
@@ -4075,6 +4078,7 @@ interface OutreachOsContext {
   mode: OutreachGenerationMode;
   evidenceMap: OutreachEvidenceMap;
   strategyMatch: OutreachStrategyMatch;
+  researchBrief?: CustomerResearchBrief;
   personas: OutreachBuyerPersona[];
   usps: OutreachUspCandidate[];
   ctaAssets: OutreachCtaAsset[];
@@ -4339,7 +4343,7 @@ function normalizeDeepResearchResult(website: string, payload: DeepResearchCompa
   ])).map((url) => truncatePlain(url, 1000)).slice(0, 12);
   const errors = payload.errors?.map((error) => [error.code, error.message].filter(Boolean).join(": ")).filter(Boolean) ?? [];
   const researchNote = [payload.error, ...(payload.warnings ?? []), ...errors].filter(Boolean).join(" ");
-  return {
+  const result: CustomerResearchResult = {
     website: normalizedWebsite,
     companyName: truncatePlain(payload.companyName?.trim() || payload.company_name?.trim() || inferCompanyName(title, description, normalizedWebsite), 180),
     depth: "deep",
@@ -4367,6 +4371,121 @@ function normalizeDeepResearchResult(website: string, payload: DeepResearchCompa
     textPreview,
     error: researchNote || undefined
   };
+  return withCustomerResearchBrief(result);
+}
+
+function withCustomerResearchBrief(result: CustomerResearchResult): CustomerResearchResult {
+  return {
+    ...result,
+    brief: buildCustomerResearchBrief(result)
+  };
+}
+
+function buildCustomerResearchBrief(research: CustomerResearchResult): CustomerResearchBrief {
+  const text = normalizeQualityText([
+    research.companyName,
+    research.title,
+    research.description,
+    research.buyerType,
+    research.industry,
+    research.inferredNeed,
+    research.recommendedAngle,
+    research.productSignals.join(" "),
+    research.buyingSignals.join(" "),
+    research.painSignals.join(" "),
+    research.evidence.map((item) => `${item.label} ${item.value} ${item.snippet}`).join(" "),
+    research.textPreview
+  ].filter(Boolean).join("\n"));
+  const concreteClues = bestCustomerResearchClues(research, 5);
+  const evidenceLines = concreteClues.length
+    ? concreteClues
+    : research.evidence.slice(0, 5).map((item) => item.snippet || item.value).filter(Boolean);
+  const isFlooringContext = /\b(spc|lvt|vinyl|flooring|plank|rigid core|laminate|tile)\b/.test(text);
+  const isManufacturerOrPeer = /\b(manufacturer|manufacturing|factory|oem|odm|production|producer|plant|mill)\b/.test(text);
+  const isDistributorOrImporter = /\b(importer|import|distributor|distribution|wholesale|wholesaler|dealer|retailer|retail|ecommerce|store|showroom|contractor)\b/.test(text);
+  const hasPurchaseIntent = research.buyingSignals.length > 0
+    || /\b(sourcing|procurement|supplier|suppliers|import|distributor|wholesale|dealer|stock|inventory|catalog|sample|quote|rfq|request a quote|contact sales|quick[- ]ship|container|truckload)\b/.test(text);
+  const hasEvidence = evidenceLines.length > 0 || research.evidence.length > 0;
+  const fitVerdict: CustomerResearchBrief["fitVerdict"] = !hasEvidence || research.confidenceScore < 25
+    ? "unknown"
+    : isDistributorOrImporter || hasPurchaseIntent
+      ? "good-fit"
+      : isManufacturerOrPeer && isFlooringContext
+        ? "cautious"
+        : "cautious";
+  const shouldWrite: CustomerResearchBrief["shouldWrite"] = fitVerdict === "good-fit" ? "yes" : "cautious";
+  const purchaseIntentSignal = hasPurchaseIntent
+    ? (research.buyingSignals[0] || "Website shows buying/sourcing-style signals, but the email must still phrase them as signals, not confirmed intent.")
+    : "No direct purchasing signal was found. Treat the buyer need as inferred, not proven.";
+  const buyerTypeDetail = isManufacturerOrPeer && isFlooringContext
+    ? "Looks like a manufacturer/OEM or peer in a related flooring category. Avoid a normal supplier pitch unless the seller has a complementary value angle."
+    : isDistributorOrImporter
+      ? "Looks like a channel buyer such as importer, distributor, wholesaler, retailer, showroom, or contractor."
+      : research.buyerType || "Buyer type is not certain from the website.";
+  const bestOutreachPath = isManufacturerOrPeer && isFlooringContext
+    ? "Use a peer-to-peer complementary angle: sample-ready options, backup capacity, certification/spec pack, or market-fit comparison. Do not imply they are simply shopping for a finished flooring supplier."
+    : hasPurchaseIntent
+      ? "Lead with the strongest website clue, connect it to sourcing risk or category expansion, then offer one small comparison or sample-ready option list."
+      : "Use a cautious research-based opener and a low-pressure category-fit check. Do not claim they are actively buying.";
+  const mainRisk = isManufacturerOrPeer && isFlooringContext
+    ? "Biggest risk: sending a generic supplier email to a company that may already manufacture similar products."
+    : !hasPurchaseIntent
+      ? "Biggest risk: overstating buying intent when the website only shows general business context."
+      : (research.painSignals[0] || "Biggest risk: writing a generic email that does not connect the buyer clue to a practical sourcing task.");
+  const recommendedContactRoles = isManufacturerOrPeer
+    ? ["Business development", "Product manager", "Sourcing manager", "International sales director"]
+    : isDistributorOrImporter
+      ? ["Category manager", "Sourcing manager", "Purchasing manager", "Owner"]
+      : ["Sourcing manager", "Owner", "Operations manager"];
+  const claimsToAvoid = [
+    "Do not say the buyer is purchasing now unless the website explicitly shows it.",
+    "Do not say we can solve their problem unless the problem is visible in the evidence.",
+    "Do not use generic supplier claims like high quality, competitive price, one-stop solution, or factory direct.",
+    isManufacturerOrPeer && isFlooringContext ? "Do not position them as a basic importer if they appear to manufacture or OEM similar flooring products." : "",
+    "Do not mention certifications, cases, prices, MOQ, lead time, or sample policy unless those facts exist in company materials."
+  ].filter(Boolean);
+  const angles: CustomerResearchBrief["outreachAngles"] = [
+    {
+      name: isManufacturerOrPeer && isFlooringContext ? "Complementary product or backup option" : "Buyer-specific sourcing fit",
+      whyItFits: bestOutreachPath,
+      buyerConcern: mainRisk,
+      evidence: evidenceLines.slice(0, 4),
+      claimsToAvoid: claimsToAvoid.slice(0, 4),
+      riskLevel: isManufacturerOrPeer && isFlooringContext ? "high" : hasPurchaseIntent ? "low" : "medium"
+    },
+    {
+      name: "Small proof-first CTA",
+      whyItFits: "A small next step is safer than a broad catalog pitch and gives the buyer an easy way to reply.",
+      buyerConcern: "The buyer may ignore a long supplier introduction if it does not reduce a practical evaluation task.",
+      evidence: [research.recommendedAngle, research.inferredNeed, ...evidenceLines].filter(Boolean).slice(0, 4),
+      claimsToAvoid: ["Do not promise a custom plan before seeing requirements.", "Do not ask for all requirements in the first email."],
+      riskLevel: "low"
+    }
+  ];
+  const bestAngle = angles[0]?.name ?? "Buyer-specific sourcing fit";
+  const handoffBrief = [
+    `Fit verdict: ${fitVerdict}; write mode: ${shouldWrite}.`,
+    `Buyer type: ${buyerTypeDetail}`,
+    `Purchase signal: ${purchaseIntentSignal}`,
+    `Best path: ${bestOutreachPath}`,
+    `Main risk: ${mainRisk}`,
+    evidenceLines.length ? `Evidence to use: ${evidenceLines.slice(0, 5).join(" | ")}` : "Evidence to use: none strong enough; stay conservative.",
+    `Contact roles: ${recommendedContactRoles.join(", ")}`,
+    `Do not say: ${claimsToAvoid.join(" | ")}`
+  ].join("\n");
+  return CustomerResearchBriefSchema.parse({
+    fitVerdict,
+    shouldWrite,
+    buyerTypeDetail,
+    purchaseIntentSignal,
+    bestOutreachPath,
+    mainRisk,
+    recommendedContactRoles,
+    claimsToAvoid,
+    outreachAngles: angles,
+    bestAngle,
+    handoffBrief: truncateForContext(handoffBrief, 3000)
+  });
 }
 
 function normalizeDeepResearchSources(items: DeepResearchSource[]): Array<{
@@ -4543,7 +4662,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
       ? `${depth === "adaptive" ? "Adaptive" : "Deep"} research sidecar was unavailable; used Node website research fallback.`
     : "";
   if (!initial.html) {
-    return {
+    return withCustomerResearchBrief({
       website,
       companyName: companyNameFromWebsite(website),
       depth,
@@ -4561,7 +4680,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
       evidence: [],
       textPreview: "",
       error: [fallbackNote, initial.error || "Could not fetch customer website."].filter(Boolean).join(" ")
-    };
+    });
   }
 
   const urls = [website, ...pickResearchLinks(website, initial.html, localResearchDepth)].slice(0, limits.pages);
@@ -4579,7 +4698,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
   const painSignals = inferPainSignals(textPreview);
   const buyerType = inferBuyerType(textPreview, industry);
   const recommendedAngle = inferRecommendedAngle({ buyerType, industry, inferredNeed, productSignals, buyingSignals, painSignals });
-  return {
+  return withCustomerResearchBrief({
     website,
     companyName,
     depth,
@@ -4615,7 +4734,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
     }),
     textPreview,
     error: fallbackNote || undefined
-  };
+  });
 }
 
 function localResearchEvidence(input: {
@@ -4985,6 +5104,7 @@ function formatCustomerResearchNotes(research: CustomerResearchResult): string {
     research.buyingSignals.length ? `Buying signals: ${research.buyingSignals.join("; ")}` : "",
     research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
     research.recommendedAngle ? `Recommended angle: ${research.recommendedAngle}` : "",
+    research.brief?.handoffBrief ? `Customer decision brief:\n${research.brief.handoffBrief}` : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
     research.evidence.length ? `Evidence: ${formatCustomerResearchEvidence(research.evidence)}` : "",
     research.error ? `Research note: ${research.error}` : ""
@@ -5006,10 +5126,28 @@ function formatCustomerResearchContext(research: CustomerResearchResult): string
     research.buyingSignals.length ? `Buying/procurement signals: ${research.buyingSignals.join("; ")}` : "",
     research.painSignals.length ? `Risk/pain signals: ${research.painSignals.join("; ")}` : "",
     research.recommendedAngle ? `Recommended outreach angle: ${research.recommendedAngle}` : "",
+    research.brief ? formatCustomerResearchBriefForPrompt(research.brief) : "",
     research.fetchedUrls.length ? `Checked pages: ${research.fetchedUrls.join(", ")}` : "",
     research.evidence.length ? `Evidence: ${formatCustomerResearchEvidence(research.evidence)}` : "",
     research.textPreview ? `Website text preview:\n${research.textPreview}` : "",
     research.error ? `Research limitation: ${research.error}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function formatCustomerResearchBriefForPrompt(brief: CustomerResearchBrief): string {
+  return [
+    "--- Customer decision brief ---",
+    `Fit verdict: ${brief.fitVerdict}`,
+    `Write mode: ${brief.shouldWrite}`,
+    brief.buyerTypeDetail ? `Buyer type detail: ${brief.buyerTypeDetail}` : "",
+    brief.purchaseIntentSignal ? `Purchase intent signal: ${brief.purchaseIntentSignal}` : "",
+    brief.bestOutreachPath ? `Best outreach path: ${brief.bestOutreachPath}` : "",
+    brief.mainRisk ? `Main risk: ${brief.mainRisk}` : "",
+    brief.bestAngle ? `Best angle: ${brief.bestAngle}` : "",
+    brief.recommendedContactRoles.length ? `Recommended contact roles: ${brief.recommendedContactRoles.join(", ")}` : "",
+    brief.claimsToAvoid.length ? `Claims to avoid: ${brief.claimsToAvoid.join("; ")}` : "",
+    brief.outreachAngles.length ? `Candidate angles:\n${brief.outreachAngles.map((angle, index) => `${index + 1}. ${angle.name}: ${angle.whyItFits}${angle.evidence.length ? ` Evidence: ${angle.evidence.join(" | ")}` : ""}`).join("\n")}` : "",
+    brief.handoffBrief ? `Brief handoff:\n${brief.handoffBrief}` : ""
   ].filter(Boolean).join("\n");
 }
 
@@ -5027,7 +5165,7 @@ function summarizeCustomerResearch(research: CustomerResearchResult) {
     buyerType: research.buyerType,
     likelyNeed: research.inferredNeed,
     primaryAngle: research.recommendedAngle,
-    riskNotes: research.painSignals,
+    riskNotes: [research.brief?.mainRisk, ...research.painSignals].filter(Boolean).slice(0, 6),
     checkedPages: research.fetchedUrls.length
   });
 }
@@ -5040,12 +5178,18 @@ function buildOutreachGenerationBrief(input: {
   const facts = extractCompanyKnowledgeFacts(input.companyKnowledgeContext);
   const product = facts.mainProducts[0] || input.lead.need || "this product category";
   const buyerSegment = input.research?.buyerType || input.lead.industry || "Potential B2B buyer";
-  const buyerReason = strongestResearchSignal(input.research) || input.lead.need || input.lead.notes || `appears to be reviewing ${product}`;
-  const likelyPain = input.research?.painSignals[0]
+  const buyerReason = input.research?.brief?.purchaseIntentSignal
+    ?? strongestResearchSignal(input.research)
+    ?? input.lead.need
+    ?? input.lead.notes
+    ?? `appears to be reviewing ${product}`;
+  const likelyPain = input.research?.brief?.mainRisk
+    ?? input.research?.painSignals[0]
     ?? input.research?.inferredNeed
     ?? input.lead.need
     ?? "Needs a faster way to judge supplier fit without reading a full catalog.";
-  const procurementTrigger = input.research?.buyingSignals[0]
+  const procurementTrigger = input.research?.brief?.bestOutreachPath
+    ?? input.research?.buyingSignals[0]
     ?? triggerFromBuyerSegment(buyerSegment)
     ?? "Supplier comparison or category-fit review.";
   const selectedUsp = selectOutreachUsp({ facts, product, likelyPain, buyerSegment });
@@ -5079,6 +5223,7 @@ function buildOutreachOsContext(input: {
     mode: input.mode,
     evidenceMap,
     strategyMatch,
+    researchBrief: input.research?.brief,
     personas: input.personas,
     usps: input.usps,
     ctaAssets: input.ctaAssets
@@ -5133,10 +5278,16 @@ function buildOutreachEvidenceMap(input: {
   addEvidence(inferred, "inferred", "Buyer type", input.research?.buyerType || input.brief.buyerSegment, "model", input.research?.website);
   addEvidence(inferred, "inferred", "Likely need", input.research?.inferredNeed || input.brief.likelyPain, "model", input.research?.website);
   addEvidence(inferred, "inferred", "Recommended angle", input.research?.recommendedAngle || input.brief.procurementTrigger, "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Customer fit verdict", input.research?.brief ? `${input.research.brief.fitVerdict}; write mode ${input.research.brief.shouldWrite}` : "", "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Best outreach path", input.research?.brief?.bestOutreachPath, "model", input.research?.website);
+  addEvidence(inferred, "inferred", "Purchase intent signal", input.research?.brief?.purchaseIntentSignal, "model", input.research?.website);
   for (const product of facts.mainProducts) addEvidence(verified, "verified", "Seller product", product, "company-profile");
   for (const certification of facts.certifications) addEvidence(verified, "verified", "Seller certification", certification, "company-profile");
   for (const claim of unsupportedOutreachClaims(input.lead, input.research)) {
     addEvidence(prohibited, "prohibited", "Unsupported claim", claim, "model", input.lead.website);
+  }
+  for (const claim of input.research?.brief?.claimsToAvoid ?? []) {
+    addEvidence(prohibited, "prohibited", "Brief claim to avoid", claim, "model", input.lead.website);
   }
   if (!verified.length && !inferred.length) {
     addEvidence(generic, "generic", "Generic sourcing context", "Teams sourcing this category often need a focused comparison before adding a new option.", "model");
@@ -5211,6 +5362,8 @@ function buildOutreachStrategyMatch(input: {
   const buyerImplication = deriveBuyerImplication(input.brief);
   const warnings = [
     input.evidenceMap.status === "need_more_data" ? `Missing data: ${input.evidenceMap.missingFields.join(", ")}` : "",
+    input.research?.brief?.shouldWrite === "no" ? "Customer brief says do not write unless the user adds a stronger reason." : "",
+    input.research?.brief?.shouldWrite === "cautious" ? `Cautious write mode: ${input.research.brief.mainRisk}` : "",
     input.usps.length ? "" : "No saved USP bank item; using company profile fallback.",
     ctaAsset ? "" : `No saved ${desiredAssetType.replace(/_/g, " ")} CTA asset; CTA must stay conservative or use profile-derived proof.`,
     input.brief.missingEvidence.length ? `Proof still thin: ${input.brief.missingEvidence.join(", ")}` : ""
@@ -5250,6 +5403,7 @@ function formatOutreachOsContext(context: OutreachOsContext): string {
     "--- Outreach OS evidence and asset map ---",
     `Generation mode: ${context.mode}`,
     "Use this section as private strategy. Do not expose framework names or reasoning.",
+    context.researchBrief ? formatCustomerResearchBriefForPrompt(context.researchBrief) : "",
     context.evidenceMap.verifiedFacts.length ? `Verified facts:\n${context.evidenceMap.verifiedFacts.slice(0, 8).map(evidenceLine).join("\n")}` : "Verified facts: none",
     context.evidenceMap.inferredInsights.length ? `Inferred insights:\n${context.evidenceMap.inferredInsights.slice(0, 6).map(evidenceLine).join("\n")}` : "",
     context.evidenceMap.missingFields.length ? `Missing data: ${context.evidenceMap.missingFields.join(", ")}` : "",
@@ -5277,6 +5431,7 @@ function unsupportedOutreachClaims(lead: OutreachLead, research?: CustomerResear
   if (/exclusive supplier|official partner|guaranteed|number one|#1|best in the world/i.test(text)) {
     claims.push("Avoid unsupported superlatives, exclusive-partner claims, or guaranteed results.");
   }
+  for (const claim of research?.brief?.claimsToAvoid ?? []) claims.push(claim);
   return claims;
 }
 
@@ -5748,6 +5903,7 @@ type OutreachQualityResearchContext = {
   description?: string;
   textPreview?: string;
   evidence?: CustomerResearchEvidence[];
+  brief?: CustomerResearchBrief;
   productSignals?: string[];
   buyingSignals?: string[];
   painSignals?: string[];
@@ -5782,6 +5938,13 @@ function reviewOutreachEmail(input: {
   const vagueCta = /\b(would you like details|are you interested|can we talk|can we have a call|can we schedule a call|please send (?:me )?your requirements|do you have any need|can i send samples|would you like samples|let me know if interested)\b/i.test(normalized);
   const roboticKeywordCta = /\breply\s+['"][^'"]{3,40}['"]/i.test(`${subject}\n${body}`) && !/\breply\s+['"]?[abc]['"]?\b/i.test(`${subject}\n${body}`);
   const concreteCta = /\b(2-3|two|three|a\/b|option a|option b|matched options|moq|lead time|lead-time|spec(?:ification)? pack|certification pack|proof pack|short comparison|side by side|table)\b/i.test(normalized);
+  const fitBrief = input.research?.brief;
+  const peerOrManufacturerRisk = Boolean(fitBrief && /\b(manufacturer|oem|peer|factory|manufacture)\b/i.test(`${fitBrief.buyerTypeDetail} ${input.research?.buyerType ?? ""}`));
+  const genericSupplierPitch = /\b(we|our)\b.{0,40}\b(supply|supplier|manufacture|manufacturer|factory|products?|flooring|catalog)\b/.test(normalized)
+    && /\b(high quality|competitive price|best price|one-stop|factory direct|leading manufacturer|trusted supplier|supply you|provide you)\b/.test(normalized);
+  const noDirectPurchaseSignal = Boolean(fitBrief && /no direct purchasing signal|not proven|inferred/i.test(fitBrief.purchaseIntentSignal));
+  const overstatesPurchaseIntent = noDirectPurchaseSignal && /\b(you|your team|your company)\b.{0,80}\b(are|is|seem|looks)\b.{0,80}\b(sourcing|buying|purchasing|looking for|need|needs|planning)\b/.test(normalized);
+  const violatesFitBrief = (peerOrManufacturerRisk && genericSupplierPitch) || overstatesPurchaseIntent;
   const hasLowFrictionAsk = (normalized.includes("?") || outreachNextStepPhrases.some((phrase) => normalized.includes(phrase)))
     && concreteCta
     && (hasMicroOffer || /\breply with\s+[abc]\b/.test(normalized))
@@ -5795,10 +5958,11 @@ function reviewOutreachEmail(input: {
   const strongEvidenceHits = evidenceTokenHitCount(normalized, strongEvidenceTerms);
   const openingStrongEvidenceHits = evidenceTokenHitCount(opening, strongEvidenceTerms);
   const hasEnoughConcreteEvidence = !strongEvidenceTerms.length || (strongEvidenceHits >= 2 && openingStrongEvidenceHits >= 1);
-  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !localSkeleton && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
+  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !localSkeleton && !violatesFitBrief && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
   const personalizedPassed = containsAny(normalized, activePersonalizationTokens)
     && hasBuyerImplication
     && hasEnoughConcreteEvidence
+    && !violatesFitBrief
     && !looksLikeMassTemplate(normalized)
     && !genericWebsiteOpening
     && !domainOnlyOpening
@@ -5822,8 +5986,8 @@ function reviewOutreachEmail(input: {
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
-    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0) - (localSkeleton ? 6 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : `Template phrase found: ${templateHits[0] ?? (localSkeleton ? "fixed outreach skeleton" : stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`),
-    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : "The message needs 2 concrete buyer clues plus a business implication, not just a name or category."),
+    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0) - (localSkeleton ? 6 : 0) - (violatesFitBrief ? 8 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : (violatesFitBrief ? "The email overstates buyer fit or uses a generic supplier pitch against the research brief." : `Template phrase found: ${templateHits[0] ?? (localSkeleton ? "fixed outreach skeleton" : stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`)),
+    qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : (violatesFitBrief ? "The email ignores the customer decision brief; adjust the angle before sending." : "The message needs 2 concrete buyer clues plus a business implication, not just a name or category.")),
     qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table."),
     qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
   ];
@@ -5833,8 +5997,8 @@ function reviewOutreachEmail(input: {
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
     buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not use only a domain, page title, or phrase like 'works around'.",
-    humanTonePassed ? "" : "Remove translated-template phrases and write like a short human business note.",
-    personalizedPassed ? "" : "Add at least two customer-specific clues from the buyer website and explain the buyer implication.",
+    humanTonePassed ? "" : (violatesFitBrief ? "Remove generic supplier claims and make the email match the customer fit verdict." : "Remove translated-template phrases and write like a short human business note."),
+    personalizedPassed ? "" : (violatesFitBrief ? "Follow the customer decision brief: if the buyer may be a peer/manufacturer or purchase intent is weak, use a cautious complementary angle." : "Add at least two customer-specific clues from the buyer website and explain the buyer implication."),
     nextStepPassed ? "" : "End with one natural low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice. Avoid keyword-reply CTAs like Reply 'SPC table'.",
     twoSecondPassed ? "" : "Rewrite as a 45-90 word human sales note, not a visible three-line formula."
   ].filter(Boolean);
@@ -5898,6 +6062,12 @@ function buyerContextTokens(lead?: OutreachLead, research?: OutreachQualityResea
     ...(research?.productSignals ?? []),
     ...(research?.buyingSignals ?? []),
     ...(research?.painSignals ?? []),
+    research?.brief?.buyerTypeDetail,
+    research?.brief?.bestOutreachPath,
+    research?.brief?.purchaseIntentSignal,
+    research?.brief?.mainRisk,
+    research?.brief?.bestAngle,
+    ...(research?.brief?.outreachAngles ?? []).flatMap((angle) => [angle.name, angle.whyItFits, angle.buyerConcern, ...angle.evidence]),
     research?.textPreview,
     research?.inferredNeed,
     research?.recommendedAngle,
@@ -5918,6 +6088,12 @@ function buyerEvidenceTokens(lead?: OutreachLead, research?: OutreachQualityRese
     ...(research?.productSignals ?? []),
     ...(research?.buyingSignals ?? []),
     ...(research?.painSignals ?? []),
+    research?.brief?.buyerTypeDetail,
+    research?.brief?.bestOutreachPath,
+    research?.brief?.purchaseIntentSignal,
+    research?.brief?.mainRisk,
+    research?.brief?.bestAngle,
+    ...(research?.brief?.outreachAngles ?? []).flatMap((angle) => [angle.name, angle.whyItFits, angle.buyerConcern, ...angle.evidence]),
     research?.textPreview,
     research?.inferredNeed,
     research?.recommendedAngle,
@@ -5937,7 +6113,10 @@ function buyerStrongEvidenceTerms(lead?: OutreachLead, research?: OutreachQualit
     ...(research?.evidence ?? []).flatMap((item) => [item.value, item.snippet]),
     ...(research?.productSignals ?? []),
     ...(research?.buyingSignals ?? []),
-    ...(research?.painSignals ?? [])
+    ...(research?.painSignals ?? []),
+    research?.brief?.bestOutreachPath,
+    research?.brief?.mainRisk,
+    ...(research?.brief?.outreachAngles ?? []).flatMap((angle) => angle.evidence)
   ].filter(Boolean).join("\n");
   const phrases = Array.from(source.matchAll(/\b[A-Z][A-Za-z0-9&/-]*(?:\s+[A-Z0-9][A-Za-z0-9&/-]*){0,4}\b/g))
     .map((match) => match[0])
@@ -6071,6 +6250,19 @@ function reviewOutreachSendRisk(input: {
   }
   if (/\bguaranteed\s+(profit|result|ranking|delivery)\b|\bexclusive supplier\b|\bofficial partner\b|\b#1\b/i.test(`${input.subject}\n${input.body}`)) {
     addIssue("unsupported_claim", "block", "Email contains unsupported proof or guarantee language.");
+  }
+  const fitBrief = input.research?.brief;
+  if (fitBrief?.shouldWrite === "no") {
+    addIssue("customer_fit_blocked", "block", "Customer research says this buyer is not a good fit unless the user adds a stronger reason.");
+  }
+  if (fitBrief && /no direct purchasing signal|not proven|inferred/i.test(fitBrief.purchaseIntentSignal)
+    && /\b(you|your team|your company)\b.{0,80}\b(are|is|seem|looks)\b.{0,80}\b(sourcing|buying|purchasing|looking for|need|needs|planning)\b/i.test(`${input.subject}\n${input.body}`)) {
+    addIssue("purchase_intent_overstated", "block", "Email states or strongly implies purchase intent that the research brief did not prove.");
+  }
+  if (fitBrief && /\b(manufacturer|oem|peer|factory|manufacture)\b/i.test(`${fitBrief.buyerTypeDetail} ${input.research?.buyerType ?? ""}`)
+    && /\b(we|our)\b.{0,40}\b(supply|supplier|manufacture|manufacturer|factory|products?|flooring|catalog)\b/i.test(`${input.subject}\n${input.body}`)
+    && /\b(high quality|competitive price|best price|one-stop|factory direct|leading manufacturer|trusted supplier|supply you|provide you)\b/i.test(`${input.subject}\n${input.body}`)) {
+    addIssue("peer_buyer_generic_pitch", "block", "Buyer may be a manufacturer or peer; generic supplier-pitch wording is unsafe.");
   }
   const supportContext = normalizeQualityText([
     input.companyKnowledgeContext ?? "",
@@ -6265,6 +6457,7 @@ async function generateOutreachDraft(input: {
     rewriteAttempts: polished.repairAttempts,
     evidenceUsed: harness.evidenceUsed,
     matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+    researchBrief: input.research?.brief,
     generationSummary: summarizeHarnessGeneration({
       research: input.research,
       strategy: outreachOs.strategyMatch,
@@ -6392,6 +6585,7 @@ async function generateOutreachWorkflow(input: {
     body: polishedInitial.body,
     qualityReview: initialQualityReview,
     lead,
+    research,
     ctaAssets,
     companyKnowledgeContext
   });
@@ -6416,6 +6610,7 @@ async function generateOutreachWorkflow(input: {
     rewriteAttempts: polishedInitial.repairAttempts,
     evidenceUsed: harness.evidenceUsed,
     matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+    researchBrief: research.brief,
     generationSummary: summarizeHarnessGeneration({
       research,
       strategy: outreachOs.strategyMatch,
@@ -6456,6 +6651,7 @@ async function generateOutreachWorkflow(input: {
       rewriteAttempts: 0,
       evidenceUsed: harness.evidenceUsed,
       matchedExampleIds: harness.goldenExamples.map((example) => example.id),
+      researchBrief: research.brief,
       generationSummary: summarizeHarnessGeneration({
         research,
         strategy: outreachOs.strategyMatch,
@@ -6464,7 +6660,7 @@ async function generateOutreachWorkflow(input: {
         repairAttempts: 0
       })
     });
-    followUps.push({ ...email, draftId: draft.id, qualityReview: followUpQualityReview, evidenceMap: outreachOs.evidenceMap, strategyMatch: outreachOs.strategyMatch, sendRiskReview });
+    followUps.push({ ...email, draftId: draft.id, qualityReview: followUpQualityReview, evidenceMap: outreachOs.evidenceMap, strategyMatch: outreachOs.strategyMatch, researchBrief: research.brief, sendRiskReview });
   }
   const now = new Date().toISOString();
   return input.workflows.create({
@@ -6487,6 +6683,7 @@ async function generateOutreachWorkflow(input: {
       qualityReview: initialQualityReview,
       evidenceMap: outreachOs.evidenceMap,
       strategyMatch: outreachOs.strategyMatch,
+      researchBrief: research.brief,
       sendRiskReview: initialSendRiskReview
     },
     followUps,
@@ -6637,6 +6834,7 @@ async function approveOutreachCampaignRecipient(input: {
     subject: draft.subject,
     body: draft.body,
     qualityReview: review,
+    research: workflow.research,
     ctaAssets: await input.assets.listCtaAssets(detail.profileId),
     companyKnowledgeContext: await buildCompanyKnowledgeContext(input.companyProfile, input.materials)
   });
@@ -6856,6 +7054,7 @@ async function rewriteOutreachDraft(input: {
     writingEngine: "harness-v2",
     rewriteAttempts: Math.min(5, (input.draft.rewriteAttempts ?? 0) + 1),
     matchedExampleIds: matchedExamples.map((example) => example.id),
+    researchBrief: input.workflow?.research.brief ?? input.draft.researchBrief,
     generationSummary: summarizeHarnessGeneration({
       research: input.workflow?.research,
       strategy: input.draft.strategyMatch ?? OutreachStrategyMatchSchema.parse({}),
@@ -6914,7 +7113,8 @@ function buildOutreachRewritePrompt(input: {
       input.workflow.research.inferredNeed ? `Likely concern: ${input.workflow.research.inferredNeed}` : "",
       input.workflow.research.recommendedAngle ? `Recommended angle: ${input.workflow.research.recommendedAngle}` : "",
       input.workflow.research.productSignals.length ? `Product signals: ${input.workflow.research.productSignals.join("; ")}` : "",
-      input.workflow.research.buyingSignals.length ? `Buying signals: ${input.workflow.research.buyingSignals.join("; ")}` : ""
+      input.workflow.research.buyingSignals.length ? `Buying signals: ${input.workflow.research.buyingSignals.join("; ")}` : "",
+      input.workflow.research.brief ? formatCustomerResearchBriefForPrompt(input.workflow.research.brief) : ""
     ].filter(Boolean).join("\n") : "No workflow research available.",
     "",
     input.goldenExamplesContext ?? "",
@@ -7014,6 +7214,9 @@ function buildOutreachRepairPrompt(input: {
     "- Use at least two concrete buyer clues from the research across the repaired email.",
     "- Convert that evidence into the buyer's likely risk, sourcing task, category need, compliance check, or launch/replenishment context.",
     "- Use exactly one buyer-relevant USP from the private brief.",
+    "- Obey the Customer decision brief. If write mode is cautious, remove confident sourcing assumptions and use a careful complementary angle.",
+    "- If the buyer may be a manufacturer/OEM or peer, do not pitch as if they are a basic importer. Avoid 'we can supply you flooring' style wording.",
+    "- Remove any claim that appears under Claims to avoid.",
     "- End with one low-friction micro-offer: 2-3 matched options, MOQ/lead-time table, spec/certification pack, short comparison, or A/B choices.",
     "- Never end with only 'Would you like details?', 'Are you interested?', or 'Can we have a call?'.",
     "- Never use robotic keyword CTAs like Reply 'SPC table'. Ask as a human salesperson would.",
@@ -8009,8 +8212,10 @@ function summarizeHarnessGeneration(input: {
 }): string {
   const evidenceSource = input.research?.depth ? `${input.research.depth} research` : "lead notes";
   const examples = input.matchedExamples.length ? `${input.matchedExamples.length} golden example(s)` : "no saved golden examples";
+  const brief = input.research?.brief;
+  const fit = brief ? ` Customer fit: ${brief.fitVerdict}, write mode: ${brief.shouldWrite}.` : "";
   return [
-    `Used ${evidenceSource}, matched angle "${truncatePlain(input.strategy.selectedUsp || input.strategy.buyerPain || "buyer-specific angle", 90)}", referenced ${examples}.`,
+    `Used ${evidenceSource}, matched angle "${truncatePlain(input.strategy.selectedUsp || input.strategy.buyerPain || "buyer-specific angle", 90)}", referenced ${examples}.${fit}`,
     `QA score ${input.qualityReview.score}/100 after ${input.repairAttempts} rewrite attempt(s).`
   ].join(" ");
 }
@@ -8024,6 +8229,9 @@ function outreachInstructions(): string {
     "The first real sentence must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
     "Use at least two concrete clues from buyer research across the email; one must appear in the first real sentence.",
     "Never treat the buyer company name or the fact that a website exists as enough personalization.",
+    "Obey the Customer decision brief when present. If write mode is cautious, do not write a normal supplier pitch; use a conservative complementary angle.",
+    "If the buyer looks like a manufacturer/OEM or peer, never assume they are a basic importer. Use partnership, backup capacity, proof pack, sample-ready options, or category comparison only if supported by evidence.",
+    "Never say the buyer is purchasing, sourcing, expanding, or facing a problem unless the evidence explicitly supports it; otherwise say it as a possible evaluation task.",
     "Never end with a vague ask like 'Would you like details?' or 'Are you interested?'. Offer a small next step: 2-3 options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or A/B choices.",
     "Do not use robotic keyword CTAs like Reply 'SPC table'. Ask naturally, as a real salesperson would.",
     "Do not invent company strengths, certifications, prices, cases, or shipping terms.",
@@ -8040,6 +8248,8 @@ function outreachWorkflowInstructions(): string {
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
     "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
     "For every initial email, privately follow this chain: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
+    "Obey the Customer decision brief. If fit is cautious, write like a careful business note, not a generic supplier pitch. If the buyer appears to be a manufacturer/OEM or peer, avoid importer assumptions.",
+    "Never turn inferred purchase intent into a stated fact.",
     "Use at least two concrete buyer clues in the initial email and keep the CTA conversational, not keyword-based.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
     "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, vague CTAs, or claims without buyer logic and proof.",
@@ -8078,6 +8288,9 @@ function buildOutreachPrompt(
     "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in the first real sentence.",
     "- Use at least two concrete buyer clues from the research across the email. These should be real product, channel, collection, market, certification, spec, or procurement clues, not only the buyer's name.",
     "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
+    "- Obey the Customer decision brief. If write mode is cautious, write as a careful hypothesis, not as a confident supplier pitch.",
+    "- If the buyer looks like a manufacturer/OEM or peer, do not call them an importer or imply they need another finished-goods supplier. Use a complementary angle only.",
+    "- Follow every 'Claims to avoid' item from the research brief.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
     "- Use only one USP in the email. Do not list all company strengths.",
     "- The first real sentence must not introduce our company credentials first. It must tell the buyer why this email is about them.",
@@ -8089,6 +8302,7 @@ function buildOutreachPrompt(
     "- Sound like a human business note, not translated English or a mass template.",
     "- Never use reaching out, just following up, hope you are doing well, Dear Sir/Madam, esteemed company, sincerely hope to establish cooperation, leading manufacturer, high quality and competitive price, best price, one-stop solution, factory direct, win-win cooperation, or please kindly.",
     "- Avoid hype, fake familiarity, guaranteed results, and unsupported claims.",
+    "- Before finalizing, silently check: would this exact email make sense if the buyer is not currently purchasing? If not, rewrite it more cautiously.",
     "- Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
     "",
     formatOutreachGenerationBrief(generationBrief),
@@ -8131,6 +8345,10 @@ function buildOutreachWorkflowPrompt(input: {
     "- The user only supplied a customer website and email. You must do the strategic work silently in the output fields.",
     "- Treat the private outreach brief below as the locked angle for the first email.",
     input.outreachOsContext ?? "",
+    "- Treat the Customer decision brief as higher priority than generic sales instincts.",
+    "- If the brief says cautious, write as a careful hypothesis and low-friction offer. Do not assert that the buyer is actively sourcing.",
+    "- If the buyer appears to manufacture/OEM similar products, do not pitch them as a simple importer. Use complementary product, backup option, proof pack, or category comparison only when supported.",
+    "- Do not include any claim listed under Claims to avoid.",
     "- For the initial email, choose exactly one concrete website evidence item and turn it into a buyer implication before mentioning our USP.",
     "- Use at least two concrete buyer clues across the initial email. Good clues include named programs, collections, specs, SKUs, channels, markets, certifications, warehouse/quick-ship/container/truckload signals, or procurement signals.",
     "- Do not treat the buyer company name or 'I saw your website' as personalization.",

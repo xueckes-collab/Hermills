@@ -401,6 +401,29 @@ export const OutreachEmailQualityReviewSchema = z.object({
   reviewedAt: z.string().datetime()
 }).strict();
 
+export const CustomerResearchAngleSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  whyItFits: z.string().trim().max(800).default(""),
+  buyerConcern: z.string().trim().max(600).default(""),
+  evidence: z.array(z.string().trim().min(1).max(500)).max(6).default([]),
+  claimsToAvoid: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
+  riskLevel: z.enum(["low", "medium", "high"]).default("medium")
+}).strict();
+
+export const CustomerResearchBriefSchema = z.object({
+  fitVerdict: z.enum(["good-fit", "cautious", "poor-fit", "unknown"]).default("unknown"),
+  shouldWrite: z.enum(["yes", "cautious", "no"]).default("cautious"),
+  buyerTypeDetail: z.string().trim().max(500).default(""),
+  purchaseIntentSignal: z.string().trim().max(800).default(""),
+  bestOutreachPath: z.string().trim().max(800).default(""),
+  mainRisk: z.string().trim().max(800).default(""),
+  recommendedContactRoles: z.array(z.string().trim().min(1).max(120)).max(8).default([]),
+  claimsToAvoid: z.array(z.string().trim().min(1).max(300)).max(10).default([]),
+  outreachAngles: z.array(CustomerResearchAngleSchema).max(5).default([]),
+  bestAngle: z.string().trim().max(160).default(""),
+  handoffBrief: z.string().trim().max(3000).default("")
+}).strict();
+
 export const OutreachDraftSchema = z.object({
   id: z.string().min(1),
   profileId: z.string().min(1).optional(),
@@ -424,6 +447,7 @@ export const OutreachDraftSchema = z.object({
   rewriteAttempts: z.number().int().min(0).max(5).default(0),
   evidenceUsed: z.array(OutreachEvidenceItemSchema).max(12).default([]),
   matchedExampleIds: z.array(z.string().min(1)).max(8).default([]),
+  researchBrief: CustomerResearchBriefSchema.optional(),
   generationSummary: z.string().trim().max(2000).default(""),
   sentAt: z.string().datetime().optional(),
   sendError: z.string().max(1000).optional(),
@@ -538,6 +562,7 @@ export const CustomerResearchSnapshotSchema = z.object({
   description: z.string().trim().max(1000).default(""),
   fetchedUrls: z.array(z.string().min(1).max(1000)).max(12).default([]),
   evidence: z.array(CustomerResearchEvidenceSchema).max(40).default([]),
+  brief: CustomerResearchBriefSchema.optional(),
   textPreview: z.string().trim().max(12000).default(""),
   error: z.string().max(1000).optional(),
   createdAt: z.string().datetime()
@@ -578,6 +603,7 @@ export const EmailSequenceDraftSchema = z.object({
   evidenceMap: OutreachEvidenceMapSchema.optional(),
   strategyMatch: OutreachStrategyMatchSchema.optional(),
   sendRiskReview: OutreachSendRiskReviewSchema.optional(),
+  researchBrief: CustomerResearchBriefSchema.optional(),
   sentAt: z.string().datetime().optional(),
   sendError: z.string().max(1000).optional()
 }).strict();

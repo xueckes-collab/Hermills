@@ -122,6 +122,9 @@ describe("outreach campaign API", () => {
     expect(generatedResponse.json().recipients.every((recipient: { draft?: { generationMode?: string; evidenceMap?: unknown; strategyMatch?: unknown; sendRiskReview?: { passed?: boolean } } }) =>
       recipient.draft?.generationMode === "deep" && recipient.draft.evidenceMap && recipient.draft.strategyMatch && recipient.draft.sendRiskReview?.passed === true
     )).toBe(true);
+    expect(generatedResponse.json().recipients.every((recipient: { draft?: { researchBrief?: { fitVerdict?: string; shouldWrite?: string } } }) =>
+      recipient.draft?.researchBrief?.fitVerdict === "good-fit" && recipient.draft.researchBrief.shouldWrite === "yes"
+    )).toBe(true);
     expect(generatedResponse.json().recipients.every((recipient: { researchSummary?: { depth?: string; confidenceScore?: number } }) => recipient.researchSummary?.depth === "deep" && Number(recipient.researchSummary.confidenceScore) > 0)).toBe(true);
     expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Research depth: deep"))).toBe(true);
     expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Outreach OS evidence and asset map"))).toBe(true);

@@ -15,6 +15,7 @@ import type {
   MaterialRecordSchema,
   MaterialScopeSchema,
   DeepResearchSidecarConfigSchema,
+  CustomerResearchBriefSchema,
   CustomerResearchEvidenceSchema,
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
@@ -79,6 +80,7 @@ export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
 export type OutreachSendChannel = z.infer<typeof OutreachSendChannelSchema>;
 export type OutreachSenderApiCredential = z.infer<typeof OutreachSenderApiCredentialSchema>;
 export type DeepResearchSidecarConfig = z.infer<typeof DeepResearchSidecarConfigSchema>;
+export type CustomerResearchBrief = z.infer<typeof CustomerResearchBriefSchema>;
 export type CustomerResearchEvidence = z.infer<typeof CustomerResearchEvidenceSchema>;
 export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;
 export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
