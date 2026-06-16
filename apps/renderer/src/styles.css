@@ -3839,6 +3839,80 @@ textarea,
   padding: 0 10px 8px;
 }
 
+.letter-loop-summary {
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  border-radius: 8px;
+  background: rgba(245, 243, 255, 0.72);
+  overflow: hidden;
+}
+
+.letter-loop-summary summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: #5b21b6;
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.letter-loop-grid,
+.letter-value-match {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 10px 8px;
+}
+
+.letter-value-match {
+  padding-top: 2px;
+}
+
+.letter-loop-grid span,
+.letter-value-match span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #312e81;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.letter-loop-grid strong,
+.letter-value-match strong {
+  color: #5b21b6;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.letter-loop-summary > p {
+  margin: 0;
+  padding: 0 10px 8px;
+  color: #4338ca;
+}
+
+.letter-loop-risks {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 10px 8px 28px;
+  color: #6d28d9;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.letter-loop-learning {
+  display: block;
+  padding: 0 10px 10px;
+  color: #6d28d9;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+}
+
 .letter-claims-avoid {
   display: grid;
   gap: 5px;
@@ -9085,6 +9159,8 @@ button.letter-stat-card { cursor: pointer; }
   .letter-form-grid,
   .letter-provider-grid,
   .letter-research-brief-grid,
+  .letter-loop-grid,
+  .letter-value-match,
   .sender-channel-grid {
     grid-template-columns: 1fr;
   }

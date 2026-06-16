@@ -56,7 +56,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -2101,11 +2101,39 @@ function customerWriteModeLabel(value: CustomerResearchBrief['shouldWrite']) {
   return '谨慎写'
 }
 
+function loopFitLabel(value?: OutreachLeadFitScore['fit']) {
+  if (value === 'high') return '高机会'
+  if (value === 'medium') return '中等机会'
+  if (value === 'cautious') return '谨慎开发'
+  if (value === 'low') return '低机会'
+  return '未判断'
+}
+
+function loopAngleLabel(value?: NonNullable<OutreachLeadFitScore['primaryAngle']>) {
+  const labels: Record<NonNullable<OutreachLeadFitScore['primaryAngle']>, string> = {
+    'general-supply': '常规供应',
+    'product-line-extension': '产品线补充',
+    'new-product-development': '新品开发',
+    'private-label-oem': '贴牌 / OEM',
+    'project-specification': '项目规格',
+    'certification-compliance': '认证证明',
+    'material-complement': '互补材料',
+    'backup-capacity': '备用产能',
+    'channel-partnership': '渠道合作',
+    other: '其他角度',
+  }
+  return value ? labels[value] : '未选择'
+}
+
 function LetterQualitySummary({
   review,
   strategy,
   riskReview,
   researchBrief,
+  leadFitScore,
+  evidenceLock,
+  valueMatch,
+  learningSignal,
   evidenceUsed,
   generationSummary,
   matchedExampleCount,
@@ -2117,6 +2145,10 @@ function LetterQualitySummary({
   strategy?: OutreachStrategyMatch
   riskReview?: OutreachSendRiskReview
   researchBrief?: CustomerResearchBrief
+  leadFitScore?: OutreachLeadFitScore
+  evidenceLock?: OutreachEvidenceLock
+  valueMatch?: OutreachValueMatch
+  learningSignal?: OutreachLearningSignal
   evidenceUsed?: OutreachEvidenceItem[]
   generationSummary?: string
   matchedExampleCount?: number
@@ -2172,6 +2204,31 @@ function LetterQualitySummary({
               </ul>
             </div>
           ) : null}
+        </details>
+      ) : null}
+      {leadFitScore || valueMatch || evidenceLock ? (
+        <details className="letter-loop-summary" open>
+          <summary>开发 Loop 摘要</summary>
+          <div className="letter-loop-grid">
+            <span><strong>开发评分</strong>{leadFitScore ? `${leadFitScore.score}/100 · ${loopFitLabel(leadFitScore.fit)}` : '未记录'}</span>
+            <span><strong>推荐角度</strong>{loopAngleLabel(leadFitScore?.primaryAngle)}</span>
+            <span><strong>预计回复率</strong>{leadFitScore?.expectedReplyRate ? `${leadFitScore.expectedReplyRate.minPercent}-${leadFitScore.expectedReplyRate.maxPercent}%` : '未估算'}</span>
+            <span><strong>证据锁</strong>{evidenceLock ? `${evidenceLock.usableFacts.length} 条可用 · ${evidenceLock.mustNotSay.length} 条禁说` : '未锁定'}</span>
+          </div>
+          {leadFitScore?.recommendedApproach ? <p>{leadFitScore.recommendedApproach}</p> : null}
+          {valueMatch ? (
+            <div className="letter-value-match">
+              <span><strong>只用这个卖点</strong>{valueMatch.specificValue || '未记录'}</span>
+              <span><strong>客户问题</strong>{valueMatch.customerConcern || '未记录'}</span>
+              <span><strong>CTA</strong>{valueMatch.cta || '未记录'}</span>
+            </div>
+          ) : null}
+          {evidenceLock?.mustNotSay?.length ? (
+            <ul className="letter-loop-risks">
+              {evidenceLock.mustNotSay.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+          {learningSignal?.recordedAt ? <em className="letter-loop-learning">已记录学习信号：{learningSignal.replyOutcome}</em> : null}
         </details>
       ) : null}
       {strategy ? (
@@ -2351,6 +2408,10 @@ function DevelopmentLetterPage({
   const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
   const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
   const activeResearchBrief = selectedWorkflowEmail?.researchBrief ?? draft?.researchBrief ?? workflow?.research.brief
+  const activeLeadFitScore = selectedWorkflowEmail?.leadFitScore ?? draft?.leadFitScore
+  const activeEvidenceLock = selectedWorkflowEmail?.evidenceLock ?? draft?.evidenceLock
+  const activeValueMatch = selectedWorkflowEmail?.valueMatch ?? draft?.valueMatch
+  const activeLearningSignal = selectedWorkflowEmail?.learningSignal ?? draft?.learningSignal
   const activeEvidenceUsed = draft?.evidenceUsed ?? selectedWorkflowEmail?.evidenceMap?.verifiedFacts?.filter((item) => item.usedInEmail) ?? []
   const activeGenerationSummary = draft?.generationSummary
   const activeMatchedExampleCount = draft?.matchedExampleIds?.length ?? 0
@@ -2362,6 +2423,10 @@ function DevelopmentLetterPage({
   const campaignStrategyMatch = selectedCampaignRecipient?.draft?.strategyMatch
   const campaignRiskReview = selectedCampaignRecipient?.draft?.sendRiskReview
   const campaignResearchBrief = selectedCampaignRecipient?.draft?.researchBrief
+  const campaignLeadFitScore = selectedCampaignRecipient?.draft?.leadFitScore ?? selectedCampaignRecipient?.leadFitScore
+  const campaignEvidenceLock = selectedCampaignRecipient?.draft?.evidenceLock ?? selectedCampaignRecipient?.evidenceLock
+  const campaignValueMatch = selectedCampaignRecipient?.draft?.valueMatch ?? selectedCampaignRecipient?.valueMatch
+  const campaignLearningSignal = selectedCampaignRecipient?.draft?.learningSignal ?? selectedCampaignRecipient?.learningSignal
   const campaignEvidenceUsed = selectedCampaignRecipient?.draft?.evidenceUsed ?? []
   const campaignGenerationSummary = selectedCampaignRecipient?.draft?.generationSummary
   const campaignMatchedExampleCount = selectedCampaignRecipient?.draft?.matchedExampleIds?.length ?? 0
@@ -4073,6 +4138,10 @@ function DevelopmentLetterPage({
                           strategy={activeStrategyMatch}
                           riskReview={activeRiskReview}
                           researchBrief={activeResearchBrief}
+                          leadFitScore={activeLeadFitScore}
+                          evidenceLock={activeEvidenceLock}
+                          valueMatch={activeValueMatch}
+                          learningSignal={activeLearningSignal}
                           evidenceUsed={activeEvidenceUsed}
                           generationSummary={activeGenerationSummary}
                           matchedExampleCount={activeMatchedExampleCount}
@@ -4237,6 +4306,10 @@ function DevelopmentLetterPage({
                             strategy={campaignStrategyMatch}
                             riskReview={campaignRiskReview}
                             researchBrief={campaignResearchBrief}
+                            leadFitScore={campaignLeadFitScore}
+                            evidenceLock={campaignEvidenceLock}
+                            valueMatch={campaignValueMatch}
+                            learningSignal={campaignLearningSignal}
                             evidenceUsed={campaignEvidenceUsed}
                             generationSummary={campaignGenerationSummary}
                             matchedExampleCount={campaignMatchedExampleCount}

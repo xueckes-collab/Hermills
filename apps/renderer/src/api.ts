@@ -442,6 +442,11 @@ export type OutreachLead = {
   replyStatus: OutreachLeadReplyStatus;
   statusColor: OutreachLeadStatusColor;
   currentRound: number;
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   createdAt: string;
   updatedAt: string;
 };
@@ -477,6 +482,101 @@ export type OutreachLeadStats = {
 
 export type OutreachGenerationMode = "lite" | "deep";
 export type OutreachEvidenceLevel = "verified" | "inferred" | "generic" | "prohibited";
+export type OutreachCustomerType = "importer" | "distributor" | "brand-owner" | "manufacturer" | "contractor" | "competitor" | "oem-odm" | "other" | "unknown";
+export type OutreachDevelopmentAngle =
+  | "general-supply"
+  | "product-line-extension"
+  | "new-product-development"
+  | "private-label-oem"
+  | "project-specification"
+  | "certification-compliance"
+  | "material-complement"
+  | "backup-capacity"
+  | "channel-partnership"
+  | "other";
+export type OutreachReplyOutcome = "no-reply" | "positive" | "rejection" | "referral" | "neutral" | "bounce" | "unsubscribe" | "unknown";
+export type OutreachLeadFitScore = {
+  customerType: OutreachCustomerType;
+  fit: "high" | "medium" | "low" | "cautious" | "unknown";
+  score: number;
+  purchaseOrCooperationSignal: "strong" | "medium" | "weak" | "none" | "unknown";
+  recommendedAngles: OutreachDevelopmentAngle[];
+  primaryAngle?: OutreachDevelopmentAngle;
+  disallowedAngles: Array<{ angle?: OutreachDevelopmentAngle; label: string; reason: string }>;
+  recommendedApproach: string;
+  notRecommendedApproach: string;
+  expectedReplyRate: { minPercent: number; maxPercent: number; rationale: string };
+  risks: string[];
+  rationale: string;
+  scoredAt?: string;
+};
+export type OutreachEvidenceLockItem = {
+  id: string;
+  statement: string;
+  source: "lead" | "website" | "company-profile" | "material" | "model" | "user";
+  sourceUrl?: string;
+  evidenceId?: string;
+  reason: string;
+};
+export type OutreachEvidenceLock = {
+  status: "unlocked" | "locked" | "needs-review";
+  usableFacts: OutreachEvidenceLockItem[];
+  unsupportedInferences: OutreachEvidenceLockItem[];
+  riskyAssumptions: OutreachEvidenceLockItem[];
+  mustNotSay: string[];
+  summary: string;
+  lockedAt?: string;
+};
+export type OutreachValueMatch = {
+  ourProduct: string;
+  customerProductLine: string;
+  customerConcern: string;
+  specificValue: string;
+  proofPoints: string[];
+  firstEmailPoint: string;
+  cta: string;
+  assetIds: string[];
+  confidenceScore: number;
+  rationale: string;
+};
+export type OutreachSendOutcome = {
+  status: "not-sent" | "queued" | "sent" | "delivered" | "opened" | "clicked" | "replied" | "bounced" | "failed" | "unsubscribed";
+  messageId?: string;
+  senderAccountId?: string;
+  senderEmail?: string;
+  senderDomain?: string;
+  sentAt?: string;
+  repliedAt?: string;
+  bouncedAt?: string;
+  unsubscribedAt?: string;
+  bounced: boolean;
+  opened: boolean;
+  clicked: boolean;
+  replied: boolean;
+  notes: string;
+};
+export type OutreachLearningSignal = {
+  customerType: OutreachCustomerType;
+  customerCountry: string;
+  customerIndustry: string;
+  developmentAngle?: OutreachDevelopmentAngle;
+  subject: string;
+  cta: string;
+  emailWordCount: number;
+  firstLineType: "customer-observation" | "business-type" | "trigger-event" | "generic" | "unknown";
+  valuePoint: string;
+  hadAttachment: boolean;
+  sentAt?: string;
+  replyStep?: number;
+  replyOutcome: OutreachReplyOutcome;
+  replyContent: string;
+  userEditedFields: string[];
+  userChangeSummary: string;
+  userMarkedGood: boolean;
+  userAdopted: boolean;
+  nextOptimization: string;
+  recordedAt?: string;
+};
 
 export type OutreachEvidenceItem = {
   id: string;
@@ -596,6 +696,9 @@ export type OutreachDraft = {
   providerId?: string;
   model?: string;
   usage?: ChatMessage["usage"];
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   qualityReview?: OutreachEmailQualityReview;
   evidenceMap?: OutreachEvidenceMap;
   strategyMatch?: OutreachStrategyMatch;
@@ -607,6 +710,8 @@ export type OutreachDraft = {
   matchedExampleIds?: string[];
   researchBrief?: CustomerResearchBrief;
   generationSummary?: string;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   sentAt?: string;
   sendError?: string;
   createdAt: string;
@@ -805,11 +910,16 @@ export type EmailSequenceDraft = {
   subject: string;
   body: string;
   status: "draft" | "sent" | "failed";
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   qualityReview?: OutreachEmailQualityReview;
   evidenceMap?: OutreachEvidenceMap;
   strategyMatch?: OutreachStrategyMatch;
   sendRiskReview?: OutreachSendRiskReview;
   researchBrief?: CustomerResearchBrief;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   sentAt?: string;
   sendError?: string;
 };
@@ -875,6 +985,37 @@ export type OutreachCampaignStats = {
   stopped: number;
 };
 
+export type OutreachCampaignDeliverabilityStats = {
+  attempted: number;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  unsubscribed: number;
+  highSpamRisk: number;
+  mailboxIssues: number;
+  domainIssues: number;
+  abnormalFrequency: number;
+};
+
+export type OutreachCampaignLearningSummary = {
+  sampleSize: number;
+  responsiveCustomerTypes: OutreachCustomerType[];
+  responsiveCountries: string[];
+  responsiveIndustries: string[];
+  effectiveAngles: OutreachDevelopmentAngle[];
+  effectiveSubjects: string[];
+  effectiveCtas: string[];
+  effectiveValuePoints: string[];
+  weakSignals: string[];
+  riskyPhrases: string[];
+  userKeptPatterns: string[];
+  userRemovedPatterns: string[];
+  updatedAt?: string;
+};
+
 export type OutreachCampaignRecipient = {
   id: string;
   profileId: string;
@@ -888,7 +1029,12 @@ export type OutreachCampaignRecipient = {
   contactName?: string;
   contactTitle?: string;
   status: OutreachCampaignRecipientStatus;
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   researchSummary?: CustomerResearchSummary;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   approvedAt?: string;
   queuedAt?: string;
   sentAt?: string;
@@ -921,6 +1067,8 @@ export type OutreachCampaign = {
   researchDepth: OutreachResearchDepth;
   rateLimit: OutreachCampaignRateLimit;
   stats: OutreachCampaignStats;
+  deliverabilityStats?: OutreachCampaignDeliverabilityStats;
+  learningSummary?: OutreachCampaignLearningSummary;
   recipients: OutreachCampaignRecipient[];
   startedAt?: string;
   pausedAt?: string;
