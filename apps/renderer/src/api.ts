@@ -133,6 +133,47 @@ export type AppState = {
   runtimeRecoverable: boolean;
 };
 
+export type CloudUser = {
+  id: string;
+  email?: string;
+  fullName?: string;
+};
+
+export type CloudStatus = {
+  configured: boolean;
+  authenticated: boolean;
+  required: boolean;
+  user?: CloudUser;
+  expiresAt?: string;
+  cloudUrl?: string;
+  lastSyncAt?: string;
+  syncQueued: number;
+  learningPackVersion?: string;
+  message: string;
+  lastSyncError?: string;
+};
+
+export type CloudLearningPack = {
+  version: string;
+  generatedAt: string;
+  userPreferences: {
+    preferredTone?: string;
+    preferredCta?: string;
+    preferredEmailLength?: string;
+    avoidPhrases: string[];
+    commonEdits: string[];
+  };
+  companyRules: string[];
+  customerRules: string[];
+  globalRules: Array<{
+    ruleType: string;
+    condition: Record<string, unknown>;
+    recommendation: string;
+    confidence: number;
+    evidenceCount: number;
+  }>;
+};
+
 export type InstallEvent = {
   jobId: string;
   level: "info" | "warn" | "error" | "done";
@@ -1310,6 +1351,39 @@ export const api = {
   async appState(): Promise<AppState> {
     return request<AppState>("/api/app-state");
   },
+  async cloudStatus(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/cloud/status");
+  },
+  async cloudSignup(input: { email: string; password: string; fullName?: string }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async cloudLogin(input: { email: string; password: string }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async cloudLogout(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/logout", { method: "POST", body: "{}" });
+  },
+  async cloudPasswordReset(email: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>("/api/auth/password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+  },
+  async cloudSync(force = false): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/cloud/sync", {
+      method: "POST",
+      body: JSON.stringify({ force })
+    });
+  },
+  async learningPack(): Promise<CloudLearningPack> {
+    return request<CloudLearningPack>("/api/learning-pack");
+  },
   async onboarding(): Promise<OnboardingState> {
     return mapOnboarding(await request<RawOnboardingState>("/api/onboarding"));
   },
@@ -1969,6 +2043,24 @@ export const fallback = {
     shouldShowFirstDeploy: true,
     runtimeRecoverable: false
   } satisfies AppState,
+  cloudStatus: {
+    configured: false,
+    authenticated: false,
+    required: false,
+    syncQueued: 0,
+    message: "云端未配置"
+  } satisfies CloudStatus,
+  learningPack: {
+    version: "local-default",
+    generatedAt: "",
+    userPreferences: {
+      avoidPhrases: [],
+      commonEdits: []
+    },
+    companyRules: [],
+    customerRules: [],
+    globalRules: []
+  } satisfies CloudLearningPack,
   companyProfile: {
     version: 1,
     name: "",

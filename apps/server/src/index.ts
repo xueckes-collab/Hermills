@@ -129,6 +129,13 @@ import {
   verifyApiMailTransport,
   type ApiMailCredential
 } from "./mail-transports.js";
+import {
+  CloudAuthBodySchema,
+  CloudEmailBodySchema,
+  CloudError,
+  CloudSyncBodySchema,
+  HermillsCloudService
+} from "./cloud.js";
 
 export interface ServerOptions {
   host?: string;
@@ -712,6 +719,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
   const logs = new LogRepository(options.baseDir);
+  const cloud = new HermillsCloudService({ baseDir: options.baseDir, fetchImpl });
   await syncDefaultRuntimeInferenceProvider(runtime, providers, logs);
   const researchFetchImpl: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const deepResearch = new DeepResearchClient({ baseDir: options.baseDir, config: options.deepResearch, fetchImpl: researchFetchImpl, logs });
@@ -738,8 +746,34 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     await assertActiveProfile(channel.profileId);
     return channel;
   };
+  const buildCloudSyncSnapshot = async () => {
+    const profileId = await resolveProfileId();
+    const [companyProfileRecord, leads, drafts, workflows, campaigns, feedback] = await Promise.all([
+      companyProfile.get(),
+      outreachLeads.list({ profileId }),
+      outreachDrafts.list({ profileId }),
+      outreachWorkflows.list({ profileId }),
+      outreachCampaigns.listWithRecipients({ profileId }, outreachDrafts),
+      outreachFeedback.list({ profileId })
+    ]);
+    return { profileId, companyProfile: companyProfileRecord, leads, drafts, workflows, campaigns, feedback };
+  };
 
   server.get("/api/health", async () => ({ ok: true, product: "Hermills" }));
+  server.get("/api/cloud/status", async () => cloud.status());
+  server.post("/api/auth/signup", async (request) => cloud.signUp(CloudAuthBodySchema.parse(request.body ?? {})));
+  server.post("/api/auth/login", async (request) => cloud.login(CloudAuthBodySchema.parse(request.body ?? {})));
+  server.post("/api/auth/logout", async () => cloud.logout());
+  server.post("/api/auth/password-reset", async (request) => cloud.resetPassword(CloudEmailBodySchema.parse(request.body ?? {}).email));
+  server.post("/api/cloud/sync", async (request) => {
+    CloudSyncBodySchema.parse(request.body ?? {});
+    const snapshot = await buildCloudSyncSnapshot();
+    return cloud.syncSnapshot(snapshot);
+  });
+  server.get("/api/learning-pack", async () => {
+    const profileId = await resolveProfileId();
+    return cloud.learningPack({ companyProfile: await companyProfile.get(), profileId });
+  });
   server.get("/api/app-state", async () => appState.response(await runtime.getStatus()));
   server.get("/api/onboarding", async () => onboarding.get());
   server.put("/api/onboarding", async (request) => onboarding.update(OnboardingUpdateSchema.parse(request.body ?? {})));
@@ -1182,6 +1216,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       emailSignature: outreachEmailSignature,
       assets: outreachAssets,
       drafts: outreachDrafts,
+      cloud,
       research
     });
     await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -1201,6 +1236,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       deepResearch,
+      cloud,
       profileId: await resolveProfileId(body.profileId)
     });
     await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -1220,6 +1256,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       deepResearch,
+      cloud,
       profileId: await resolveProfileId(body.profileId)
     });
     await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
@@ -1284,7 +1321,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       campaigns: outreachCampaigns,
-      deepResearch
+      deepResearch,
+      cloud
     });
   });
   server.post("/api/outreach/campaigns/:id/recipients/:recipientId/approve", async (request) => {
@@ -1634,8 +1672,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   });
 
   server.setErrorHandler(async (error, _request, reply) => {
-    const code = error instanceof z.ZodError || error instanceof ClientInputError ? "VALIDATION_ERROR" : "INTERNAL_ERROR";
-    const status = error instanceof z.ZodError || error instanceof ClientInputError ? 400 : 500;
+    const code = error instanceof CloudError ? error.code : error instanceof z.ZodError || error instanceof ClientInputError ? "VALIDATION_ERROR" : "INTERNAL_ERROR";
+    const status = error instanceof CloudError ? error.status : error instanceof z.ZodError || error instanceof ClientInputError ? 400 : 500;
     const message = redactSecrets(error instanceof Error ? error.message : String(error));
     const stack = error instanceof Error ? error.stack : undefined;
     server.log.error(redactSecrets(stack ?? message));
@@ -7418,6 +7456,7 @@ async function generateOutreachDraft(input: {
   emailSignature: OutreachEmailSignatureRepository;
   assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
+  cloud?: HermillsCloudService;
   research?: CustomerResearchResult;
 }): Promise<OutreachDraft> {
   await assertCompanyProfileReady(input.companyProfile);
@@ -7459,10 +7498,20 @@ async function generateOutreachDraft(input: {
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch, outreachOs.valueMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
   const harness = buildOutreachHarnessContext({ model, goldenExamples, lead: input.lead, research: input.research, outreachOs, strategicBrief });
+  const learningPackContext = input.cloud
+    ? await input.cloud.learningPackContext({
+      profileId: input.profileId,
+      companyProfile: companyProfileRecord,
+      lead: input.lead,
+      customerType: outreachOs.leadFitScore.customerType,
+      industry: input.lead.industry || input.research?.industry
+    }).catch(() => "")
+    : "";
   const prompt = buildOutreachPrompt(input.lead, language, input.body.tone, companyKnowledgeContext, strategicBrief, [
     customerResearchContext,
     outreachOsContext,
-    harness.goldenExamplesContext
+    harness.goldenExamplesContext,
+    learningPackContext
   ].filter(Boolean).join("\n\n"), signatureBlock);
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
@@ -7555,6 +7604,7 @@ async function generateOutreachWorkflow(input: {
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
   deepResearch?: DeepResearchClient;
+  cloud?: HermillsCloudService;
   research?: CustomerResearchResult;
   researchDepth?: OutreachResearchDepth;
 }): Promise<OutreachWorkflow> {
@@ -7615,11 +7665,20 @@ async function generateOutreachWorkflow(input: {
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch, outreachOs.valueMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
   const harness = buildOutreachHarnessContext({ model, goldenExamples, lead, research, outreachOs, strategicBrief });
+  const learningPackContext = input.cloud
+    ? await input.cloud.learningPackContext({
+      profileId: input.profileId,
+      companyProfile: companyProfileRecord,
+      lead,
+      customerType: outreachOs.leadFitScore.customerType,
+      industry: lead.industry || research.industry
+    }).catch(() => "")
+    : "";
   const prompt = buildOutreachWorkflowPrompt({
     lead,
     research,
     generationBrief: strategicBrief,
-    outreachOsContext: [outreachOsContext, harness.goldenExamplesContext].filter(Boolean).join("\n\n"),
+    outreachOsContext: [outreachOsContext, harness.goldenExamplesContext, learningPackContext].filter(Boolean).join("\n\n"),
     companyKnowledgeContext,
     language,
     tone: input.body.tone,
@@ -7828,6 +7887,7 @@ async function generateOutreachCampaignWorkflows(input: {
   workflows: OutreachWorkflowRepository;
   campaigns: OutreachCampaignRepository;
   deepResearch?: DeepResearchClient;
+  cloud?: HermillsCloudService;
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
   if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot generate new drafts.");
@@ -7877,6 +7937,7 @@ async function generateOutreachCampaignWorkflows(input: {
         drafts: input.drafts,
         workflows: input.workflows,
         deepResearch: input.deepResearch,
+        cloud: input.cloud,
         research,
         researchDepth: campaign.researchDepth
       });

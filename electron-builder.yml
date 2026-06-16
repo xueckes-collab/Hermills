@@ -39,9 +39,11 @@ extraResources:
     filter:
       - icon.png
       - icon.ico
+      - hermills-cloud.example.json
   - from: build
     to: .
     filter:
+      - hermills-cloud.json
       - hermills-engines/**/*
   - from: packages/runtime/dist/helpers
     to: bin

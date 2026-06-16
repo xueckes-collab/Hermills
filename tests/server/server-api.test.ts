@@ -88,6 +88,47 @@ describe("Hermills local API", () => {
     });
   });
 
+  it("keeps cloud memory optional when Supabase is not configured", async () => {
+    const previousEnv = {
+      url: process.env.SUPABASE_URL,
+      key: process.env.SUPABASE_ANON_KEY,
+      required: process.env.HERMILLS_CLOUD_REQUIRED
+    };
+    const restoreEnv = () => {
+      if (previousEnv.url === undefined) delete process.env.SUPABASE_URL;
+      else process.env.SUPABASE_URL = previousEnv.url;
+      if (previousEnv.key === undefined) delete process.env.SUPABASE_ANON_KEY;
+      else process.env.SUPABASE_ANON_KEY = previousEnv.key;
+      if (previousEnv.required === undefined) delete process.env.HERMILLS_CLOUD_REQUIRED;
+      else process.env.HERMILLS_CLOUD_REQUIRED = previousEnv.required;
+    };
+    try {
+      delete process.env.SUPABASE_URL;
+      delete process.env.SUPABASE_ANON_KEY;
+      delete process.env.HERMILLS_CLOUD_REQUIRED;
+      await server.close();
+      server = await createServer({ baseDir, desktopToken: "test-token", runtimeService: runtime, deepResearch: { enabled: false } });
+      const statusResponse = await server.inject({ method: "GET", url: "/api/cloud/status", headers });
+      expect(statusResponse.statusCode).toBe(200);
+      expect(statusResponse.json()).toMatchObject({
+        configured: false,
+        authenticated: false,
+        syncQueued: 0
+      });
+
+      const loginResponse = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers,
+        payload: { email: "buyer@example.com", password: "secret123" }
+      });
+      expect(loginResponse.statusCode).toBe(503);
+      expect(loginResponse.json().error.message).toContain("Supabase is not configured");
+    } finally {
+      restoreEnv();
+    }
+  });
+
   it("marks first deploy hidden only after install completes with a running gateway", async () => {
     const installResponse = await server.inject({ method: "POST", url: "/api/runtime/install", headers, payload: {} });
     expect(installResponse.statusCode).toBe(200);

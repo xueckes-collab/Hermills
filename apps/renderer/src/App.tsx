@@ -56,7 +56,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CloudStatus, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -552,10 +552,12 @@ export default function App() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [advancedPanel, setAdvancedPanel] = useState<AdvancedPanel>('setup')
   const [uiMode, setUiMode] = useState<UiModeId>(() => (['simple', 'expert'] as UiModeId[])[0])
+  const cloudAutoSyncedRef = useRef(false)
   const appState = useEndpoint(api.appState, fallback.appState)
   const runtime = useEndpoint(api.runtimeStatus, fallback.runtime)
   const localDeploymentComplete = !appState.data.shouldShowFirstDeploy
   const workspaceEnabled = !appState.loading && localDeploymentComplete
+  const cloudStatus = useEndpoint(api.cloudStatus, fallback.cloudStatus, workspaceEnabled)
   const onboarding = useEndpoint(loadOnboardingState, fallbackOnboarding, workspaceEnabled)
   const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, workspaceEnabled)
   const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, workspaceEnabled)
@@ -575,13 +577,29 @@ export default function App() {
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
-  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
+  const cloudLoginRequired = workspaceEnabled && cloudStatus.data.configured && cloudStatus.data.required && !cloudStatus.data.authenticated
+  const serviceWarning = appState.error || runtime.error || cloudStatus.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
   const serviceWarningMessage = serviceWarning ? copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy)) : ''
 
   useEffect(() => {
     document.documentElement.lang = normalizeUiLanguage(onboarding.data.language ?? fallbackOnboarding.language)
   }, [onboarding.data.language])
+
+  useEffect(() => {
+    if (!chatEnabled || !cloudStatus.data.authenticated) {
+      cloudAutoSyncedRef.current = false
+      return
+    }
+    if (cloudAutoSyncedRef.current) return
+    cloudAutoSyncedRef.current = true
+    void api.cloudSync().then(cloudStatus.setData).catch((error) => {
+      cloudStatus.setData({
+        ...cloudStatus.data,
+        lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+      })
+    })
+  }, [chatEnabled, cloudStatus.data.authenticated])
 
   async function refreshAfterDeploy() {
     runtime.setData(await api.runtimeStatus())
@@ -650,9 +668,19 @@ export default function App() {
     )
   }
 
-  if (onboarding.loading || companyProfile.loading || companyMaterials.loading) {
+  if (cloudStatus.loading || onboarding.loading || companyProfile.loading || companyMaterials.loading) {
     return (
       <OnboardingLoadingPage serviceError={serviceWarning} copy={copy} />
+    )
+  }
+
+  if (cloudLoginRequired) {
+    return (
+      <CloudLoginPage
+        status={cloudStatus.data}
+        serviceError={serviceWarning}
+        setStatus={cloudStatus.setData}
+      />
     )
   }
 
@@ -687,6 +715,8 @@ export default function App() {
         setOutreachCampaigns={outreachCampaigns.setData}
         outreachSenders={outreachSenders.data}
         setOutreachSenders={outreachSenders.setData}
+        cloudStatus={cloudStatus.data}
+        setCloudStatus={cloudStatus.setData}
         setRuntime={runtime.setData}
         agents={agents.data}
         setAgents={agents.setData}
@@ -740,6 +770,113 @@ export default function App() {
   )
 }
 
+function CloudLoginPage({
+  status,
+  serviceError,
+  setStatus,
+}: {
+  status: CloudStatus
+  serviceError?: string
+  setStatus: (status: CloudStatus) => void
+}) {
+  const copy = getUiCopy('zh-CN')
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [busy, setBusy] = useState('')
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(mode)
+    setError('')
+    setNotice('')
+    try {
+      const next = mode === 'signup'
+        ? await api.cloudSignup({ email, password, fullName: fullName.trim() || undefined })
+        : await api.cloudLogin({ email, password })
+      setStatus(next)
+      if (!next.authenticated) setNotice('账号已创建。如果你的 Supabase 开启了邮箱验证，请先去邮箱完成验证，再回来登录。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function resetPassword() {
+    if (!email.trim()) {
+      setError('先填写邮箱，再发送重置邮件。')
+      return
+    }
+    setBusy('reset')
+    setError('')
+    setNotice('')
+    try {
+      await api.cloudPasswordReset(email)
+      setNotice('重置邮件已发送，请打开邮箱继续。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="cloud-auth-page">
+      <div className="cloud-auth-brand">
+        <div className="letter-logo"><Mail size={18} /></div>
+        <div>
+          <strong>Outbound Mail OS</strong>
+          <span>Hermills 云端大脑</span>
+        </div>
+      </div>
+      <form className="cloud-auth-card" onSubmit={submit}>
+        <div className="cloud-auth-icon"><KeyRound size={22} /></div>
+        <div>
+          <p className="cloud-auth-eyebrow">账号登录</p>
+          <h1>{mode === 'signup' ? '创建 Hermills 账号' : '登录 Hermills'}</h1>
+          <p>登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。</p>
+        </div>
+        {serviceError ? <div className="letter-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
+        {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+        {error ? <div className="letter-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
+        {mode === 'signup' ? (
+          <label>
+            <span>姓名</span>
+            <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="你的名字" />
+          </label>
+        ) : null}
+        <label>
+          <span>邮箱</span>
+          <input autoFocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" required />
+        </label>
+        <label>
+          <span>密码</span>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位密码" minLength={6} required />
+        </label>
+        <button className="letter-primary" type="submit" disabled={Boolean(busy)}>
+          {busy === mode ? '处理中...' : mode === 'signup' ? '注册并登录' : '登录'}
+          <ChevronRight size={16} />
+        </button>
+        <div className="cloud-auth-actions">
+          <button type="button" onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}>
+            {mode === 'signup' ? '已有账号，去登录' : '没有账号，去注册'}
+          </button>
+          <button type="button" onClick={resetPassword} disabled={busy === 'reset'}>
+            {busy === 'reset' ? '发送中...' : '忘记密码'}
+          </button>
+        </div>
+        {!status.configured ? (
+          <p className="cloud-auth-footnote">当前安装包还没有配置 Supabase URL 和匿名 Key。</p>
+        ) : null}
+      </form>
+    </div>
+  )
+}
+
 function ClientWorkspace({
   runtime,
   sessions,
@@ -754,6 +891,8 @@ function ClientWorkspace({
   setOutreachCampaigns,
   outreachSenders,
   setOutreachSenders,
+  cloudStatus,
+  setCloudStatus,
   setRuntime,
   agents,
   setAgents,
@@ -785,6 +924,8 @@ function ClientWorkspace({
   setOutreachCampaigns: (campaigns: OutreachCampaign[]) => void
   outreachSenders: OutreachSenderAccount[]
   setOutreachSenders: (senders: OutreachSenderAccount[]) => void
+  cloudStatus: CloudStatus
+  setCloudStatus: (status: CloudStatus) => void
   setRuntime: (runtime: RuntimeStatus) => void
   agents: Agent[]
   setAgents: (agents: Agent[]) => void
@@ -1261,6 +1402,8 @@ function ClientWorkspace({
             setCampaigns={setOutreachCampaigns}
             senderAccounts={outreachSenders}
             setSenderAccounts={setOutreachSenders}
+            cloudStatus={cloudStatus}
+            setCloudStatus={setCloudStatus}
             providers={providers}
             onOpenCompanyKnowledge={openCompanyKnowledge}
             onOpenChat={() => setWorkspaceView('chat')}
@@ -2292,6 +2435,8 @@ function DevelopmentLetterPage({
   setCampaigns,
   senderAccounts,
   setSenderAccounts,
+  cloudStatus,
+  setCloudStatus,
   providers,
   onOpenCompanyKnowledge,
   onOpenChat,
@@ -2306,6 +2451,8 @@ function DevelopmentLetterPage({
   setCampaigns: (campaigns: OutreachCampaign[]) => void
   senderAccounts: OutreachSenderAccount[]
   setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
+  cloudStatus: CloudStatus
+  setCloudStatus: (status: CloudStatus) => void
   providers: Provider[]
   onOpenCompanyKnowledge: () => void
   onOpenChat: () => void
@@ -3829,6 +3976,24 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function syncCloudNow() {
+    if (!cloudStatus.authenticated) return
+    setBusy('cloudSync')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.cloudSync(true)
+      setCloudStatus(next)
+      setNotice('云端学习数据已同步。')
+    } catch (err) {
+      const message = humanizeErrorMessage(err, copy, 'message')
+      setCloudStatus({ ...cloudStatus, lastSyncError: message })
+      setError(message)
+    } finally {
+      setBusy('')
+    }
+  }
+
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
     { id: 'dashboard', label: '今日外联', icon: Clock },
     { id: 'leads', label: '客户', icon: Users },
@@ -3840,6 +4005,13 @@ function DevelopmentLetterPage({
     { id: 'profile', label: '公司资料', icon: UserRound },
   ]
   const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '今日外联'
+  const cloudSidebarStatus = cloudStatus.lastSyncError
+    ? { className: 'warning', label: '云端同步失败' }
+    : cloudStatus.authenticated
+      ? { className: 'ready', label: cloudStatus.lastSyncAt ? '云端数据已同步' : '云端大脑已连接' }
+      : cloudStatus.configured
+        ? { className: 'warning', label: '云端大脑待登录' }
+        : { className: 'muted', label: '云端大脑未启用' }
   const letterSubtitle = letterView === 'dashboard'
     ? '查看今天要处理的客户、草稿、发送和回复'
     : letterView === 'leads'
@@ -3879,6 +4051,12 @@ function DevelopmentLetterPage({
         </nav>
         <div className="letter-sidebar-footer">
           <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
+          <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
+          {cloudStatus.authenticated ? (
+            <button type="button" onClick={syncCloudNow} disabled={busy === 'cloudSync'}>
+              <RefreshCw size={15} /> {busy === 'cloudSync' ? '同步中' : '同步数据'}
+            </button>
+          ) : null}
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
           <button type="button" onClick={onOpenChat}><Bot size={15} /> AI 助手</button>
           <button type="button" onClick={onOpenSettings}><Settings size={15} /> 系统设置</button>
