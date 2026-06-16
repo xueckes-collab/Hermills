@@ -263,17 +263,27 @@ fi
 
   it("keeps OpenAI-compatible providers on chat completions", async () => {
     let requestUrl = "";
+    let requestBody: {
+      model?: string;
+      max_tokens?: number;
+      response_format?: { type?: string };
+      thinking?: { type?: string };
+      reasoning_effort?: string;
+    } | undefined;
     const service = new RuntimeService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-openai-compatible-")),
-      fetchImpl: async (url) => {
+      fetchImpl: async (url, init) => {
         requestUrl = String(url);
+        requestBody = JSON.parse(String(init?.body));
         return Response.json({ choices: [{ message: { content: "chat reply" } }] });
       }
     });
 
     await expect(service.createHermesReply({
       messages: [{ id: "m1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
-      model: "deepseek-v4-flash",
+      model: "deepseek-v4-pro",
+      maxOutputTokens: 4096,
+      responseFormat: "json_object",
       provider: {
         kind: "openai-compatible",
         baseUrl: "https://api.deepseek.com",
@@ -282,6 +292,32 @@ fi
     })).resolves.toBe("chat reply");
 
     expect(requestUrl).toBe("https://api.deepseek.com/v1/chat/completions");
+    expect(requestBody?.model).toBe("deepseek-v4-pro");
+    expect(requestBody?.max_tokens).toBe(4096);
+    expect(requestBody?.response_format).toEqual({ type: "json_object" });
+    expect(requestBody?.thinking).toEqual({ type: "enabled" });
+    expect(requestBody?.reasoning_effort).toBe("max");
+  });
+
+  it("syncs a DeepSeek provider into the managed Hermes home", async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-provider-sync-"));
+    const service = new RuntimeService({ baseDir });
+
+    await service.configureInferenceProvider({
+      kind: "openai-compatible",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-test-deepseek",
+      defaultModel: "deepseek-v4-pro"
+    });
+
+    const envText = await readFile(path.join(baseDir, "hermes-home", ".env"), "utf8");
+    const configText = await readFile(path.join(baseDir, "hermes-home", "config.yaml"), "utf8");
+    expect(envText).toContain("API_SERVER_ENABLED=true");
+    expect(envText).toContain("DEEPSEEK_API_KEY=sk-test-deepseek");
+    expect(envText).toContain("DEEPSEEK_BASE_URL=https://api.deepseek.com");
+    expect(configText).toContain('default: "deepseek-v4-pro"');
+    expect(configText).toContain('provider: "deepseek"');
+    expect(configText).toContain('base_url: "https://api.deepseek.com"');
   });
 
   it("sends Anthropic providers through the Messages API", async () => {

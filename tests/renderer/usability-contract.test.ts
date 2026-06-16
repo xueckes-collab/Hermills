@@ -372,8 +372,8 @@ describe("renderer usability contract", () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const serverSource = await readFile(projectFile("apps/server/src/index.ts"), "utf8");
 
-    expect(getUiCopy("zh-CN").devLetter.defaults.language).toBe("中文");
-    expect(getUiCopy("zh-CN").devLetter.defaults.tone).toBe("专业、真诚、简洁");
+    expect(getUiCopy("zh-CN").devLetter.defaults.language).toBe("English");
+    expect(getUiCopy("zh-CN").devLetter.defaults.tone).toBe("professional, warm, concise");
     expect(getUiCopy("zh-CN").devLetter.mailSetup.defaultSenderLabel).toBe("公司发件邮箱");
     expect(getUiCopy("zh-CN").devLetter.mailSetup.defaultSenderFromName).toBe("销售团队");
     expect(getUiCopy("zh-CN").devLetter.mailSetup.providerSenderLabel("Gmail")).toBe("Gmail 发件邮箱");

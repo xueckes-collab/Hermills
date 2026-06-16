@@ -1593,7 +1593,7 @@ const zhCN = withOverrides(en, {
     quickTitle: '只填官网和邮箱',
     quickSubtitle: 'Hermes 会读取客户官网，整理客户背景和可能需求，然后按你的公司资料写第一封邮件。',
     navAria: '打开开发信工具',
-    defaults: { language: '中文', tone: '专业、真诚、简洁' },
+    defaults: { language: 'English', tone: 'professional, warm, concise' },
     steps: { auto: '一键流程', leads: '客户', draft: '草稿', send: '发送' },
     fields: {
       companyName: '客户公司',

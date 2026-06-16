@@ -57,7 +57,7 @@ describe("outreach campaign API", () => {
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
           subject: "Contractor work light options",
-          body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
         });
       }
       return JSON.stringify({
@@ -79,7 +79,7 @@ describe("outreach campaign API", () => {
         }],
         initialEmail: {
           subject: "Work light options",
-          body: "Hi, I saw your contractor lighting channel, so reliable stock likely matters before adding work-light options.\nI can share two sample-ready work light options with MOQ and lead time.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
         },
         followUps: Array.from({ length: 9 }, (_, index) => ({
           step: index + 1,
@@ -179,7 +179,7 @@ describe("outreach campaign API", () => {
       payload: {
         confirm: true,
         subject: "Re: purchase order attached",
-        body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
+        body: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
       }
     });
     expect(blockedRiskApproval.statusCode).toBe(400);
@@ -212,7 +212,7 @@ describe("outreach campaign API", () => {
       payload: {
         confirm: true,
         subject: "Contractor work light options",
-        body: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
+        body: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
       }
     });
     expect(approveResponse.statusCode).toBe(200);
@@ -256,9 +256,9 @@ describe("outreach campaign API", () => {
     expect(sentMail).toMatchObject({
       to: firstRecipient.email,
       subject: "Contractor work light options",
-      text: "Hi, I saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
+      text: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
     });
-    expect(String(sentMail.html)).toContain("<strong>Sales team</strong>");
+    expect(String(sentMail.html)).toContain("Best regards<br />Sales team");
     expect(String(sentMail.html)).toContain("cid:hermills-signature-logo");
     expect(sentMail.attachments).toEqual([
       expect.objectContaining({

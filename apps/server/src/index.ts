@@ -150,6 +150,7 @@ export interface RuntimeAdapter {
   stopComputerControlDashboard(): Promise<ComputerControlCommandResult>;
   runComputerControlPrompt(prompt: string): Promise<ComputerControlRunResult>;
   createHermesReply(request: HermesReplyRequest): Promise<string>;
+  configureInferenceProvider?(provider?: HermesReplyRequest["provider"]): Promise<void>;
   dispose?(): Promise<void>;
 }
 
@@ -175,6 +176,8 @@ const MAX_TOTAL_MATERIAL_BYTES = 250 * 1024 * 1024;
 const MAX_SIGNATURE_LOGO_BYTES = 2 * 1024 * 1024;
 const SIGNATURE_LOGO_CID = "hermills-signature-logo";
 const SIGNATURE_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const MAX_OUTREACH_LEAD_NOTES_CHARS = 20_000;
+const OUTREACH_EMAIL_LANGUAGE = "English";
 
 const UpsertAgentBody = z.object({
   displayName: z.string().min(2).max(80),
@@ -408,7 +411,7 @@ const OutreachLeadInputBody = z.object({
   contactTitle: OptionalOnboardingString(160),
   email: OptionalOnboardingString(320),
   need: z.string().trim().max(2000).default(""),
-  notes: z.string().trim().max(4000).default(""),
+  notes: z.string().trim().max(MAX_OUTREACH_LEAD_NOTES_CHARS).default(""),
   tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
   source: z.string().trim().min(1).max(64).optional(),
   status: z.enum(["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]).optional(),
@@ -698,6 +701,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
   const logs = new LogRepository(options.baseDir);
+  await syncDefaultRuntimeInferenceProvider(runtime, providers, logs);
   const researchFetchImpl: typeof fetch = options.fetchImpl ?? ((input, init) => fetch(input, init));
   const deepResearch = new DeepResearchClient({ baseDir: options.baseDir, config: options.deepResearch, fetchImpl: researchFetchImpl, logs });
   const resolveProfileId = async (profileId?: string) => {
@@ -730,7 +734,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.put("/api/onboarding", async (request) => onboarding.update(OnboardingUpdateSchema.parse(request.body ?? {})));
   server.post("/api/onboarding/complete", async (request) => {
     const body = OnboardingUpdateSchema.parse(request.body ?? {});
-    return completeOnboarding(body, onboarding, profiles, agents, providers);
+    return completeOnboarding(body, onboarding, profiles, agents, providers, runtime, logs);
   });
   server.get("/api/runtime/latest", async () => runtime.getLatest());
   server.get("/api/runtime/update-check", async (request) => {
@@ -812,10 +816,16 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   });
 
   server.get("/api/settings/providers", async () => (await providers.list()).map(publicProvider));
-  server.post("/api/settings/providers", async (request) => publicProvider(await providers.create(UpsertProviderBody.parse(request.body))));
+  server.post("/api/settings/providers", async (request) => {
+    const provider = await providers.create(UpsertProviderBody.parse(request.body));
+    await syncRuntimeInferenceProvider(runtime, provider, await providers.readApiKey(provider).catch(() => undefined), logs);
+    return publicProvider(provider);
+  });
   server.put("/api/settings/providers/:id", async (request) => {
     const { id } = request.params as { id: string };
-    return publicProvider(await providers.update(id, UpsertProviderBody.partial().parse(request.body)));
+    const provider = await providers.update(id, UpsertProviderBody.partial().parse(request.body));
+    await syncRuntimeInferenceProvider(runtime, provider, await providers.readApiKey(provider).catch(() => undefined), logs);
+    return publicProvider(provider);
   });
   server.delete("/api/settings/providers/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -1158,6 +1168,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      emailSignature: outreachEmailSignature,
       assets: outreachAssets,
       drafts: outreachDrafts,
       research
@@ -1173,6 +1184,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      emailSignature: outreachEmailSignature,
       assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
@@ -1191,6 +1203,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      emailSignature: outreachEmailSignature,
       assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
@@ -1228,7 +1241,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       name: body.name,
       description: body.description,
       senderAccountId: body.senderAccountId,
-      language: body.language,
+      language: normalizeOutreachEmailLanguage(body.language),
       tone: body.tone,
       providerId: body.providerId,
       model: body.model,
@@ -1254,6 +1267,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       providers,
       companyProfile,
       materials,
+      emailSignature: outreachEmailSignature,
       assets: outreachAssets,
       leads: outreachLeads,
       drafts: outreachDrafts,
@@ -1726,11 +1740,19 @@ async function completeOnboarding(
   onboarding: OnboardingRepository,
   profiles: ProfileRepository,
   agents: AgentRepository,
-  providers: ProviderRepository
+  providers: ProviderRepository,
+  runtime: RuntimeAdapter,
+  logs: LogRepository
 ): Promise<OnboardingState> {
   const draft = await onboarding.update(input);
   const providerInput = input.provider === undefined ? draft.provider : input.provider;
   const provider = providerInput ? await upsertOnboardingProvider(providerInput, providers) : undefined;
+  if (provider) {
+    const providerRecord = await providers.get(provider.id);
+    if (providerRecord) {
+      await syncRuntimeInferenceProvider(runtime, providerRecord, await providers.readApiKey(providerRecord).catch(() => undefined), logs);
+    }
+  }
   const providerState = provider ? onboardingProviderFromCredential(provider) : undefined;
   const profileState = await profiles.list();
   const activeProfileId = profileState.activeProfileId;
@@ -1774,6 +1796,44 @@ function onboardingProviderFromCredential(provider: PublicProviderCredential): O
     keyPreview: provider.keyPreview,
     enabled: provider.enabled
   };
+}
+
+async function syncDefaultRuntimeInferenceProvider(
+  runtime: RuntimeAdapter,
+  providers: ProviderRepository,
+  logs: LogRepository
+): Promise<void> {
+  const provider = (await providers.list()).find((item) => item.enabled && item.kind !== "local" && Boolean(item.credentialRef));
+  if (!provider) return;
+  await syncRuntimeInferenceProvider(runtime, provider, await providers.readApiKey(provider).catch(() => undefined), logs);
+}
+
+async function syncRuntimeInferenceProvider(
+  runtime: RuntimeAdapter,
+  provider: ProviderCredential,
+  apiKey: string | undefined,
+  logs: LogRepository
+): Promise<void> {
+  if (!runtime.configureInferenceProvider || provider.kind === "local" || !apiKey) return;
+  try {
+    await runtime.configureInferenceProvider({
+      kind: provider.kind,
+      baseUrl: provider.baseUrl,
+      apiKey,
+      defaultModel: provider.defaultModel
+    });
+    await logs.create({
+      source: "server",
+      level: "info",
+      message: `Synced local Hermes inference provider: ${provider.displayName} (${provider.defaultModel ?? "default model"}).`
+    });
+  } catch (error) {
+    await logs.create({
+      source: "server",
+      level: "warn",
+      message: `Could not sync local Hermes inference provider: ${redactSecrets(error instanceof Error ? error.message : String(error))}`
+    });
+  }
 }
 
 async function upsertDefaultOnboardingAgent(input: {
@@ -5091,7 +5151,7 @@ function scoreResearchConfidence(input: {
 }
 
 function formatCustomerResearchNotes(research: CustomerResearchResult): string {
-  return [
+  const notes = [
     "Auto customer research:",
     `Depth: ${research.depth}`,
     `Confidence: ${research.confidenceScore}/100`,
@@ -5109,6 +5169,7 @@ function formatCustomerResearchNotes(research: CustomerResearchResult): string {
     research.evidence.length ? `Evidence: ${formatCustomerResearchEvidence(research.evidence)}` : "",
     research.error ? `Research note: ${research.error}` : ""
   ].filter(Boolean).join("\n");
+  return truncateForContext(notes, MAX_OUTREACH_LEAD_NOTES_CHARS);
 }
 
 function formatCustomerResearchContext(research: CustomerResearchResult): string {
@@ -5745,11 +5806,12 @@ function formatOutreachGenerationBrief(brief: OutreachGenerationBrief): string {
   return [
     "--- Private outreach brief ---",
     "Use this brief internally to write the email. Do not expose this section or mention that a workflow exists.",
+    "Goal: decide how to successfully develop this account, not whether to stop at a fit verdict.",
     "Required evidence chain: use Buyer reason as the visible line-1 clue -> connect Likely pain/risk or Procurement trigger -> use Single USP -> ask for Low-friction next step.",
     `Buyer reason: ${brief.buyerReason}`,
     `Buyer segment: ${brief.buyerSegment}`,
     `Likely pain/risk: ${brief.likelyPain}`,
-    `Procurement trigger: ${brief.procurementTrigger}`,
+    `Successful development angle: ${brief.procurementTrigger}`,
     `Single USP to use: ${brief.selectedUsp.headline}`,
     `Why it matters to buyer: ${brief.selectedUsp.buyerAngle}`,
     `Allowed proof: ${brief.selectedUsp.proof}`,
@@ -5923,6 +5985,12 @@ function reviewOutreachEmail(input: {
   const evidenceTokens = buyerEvidenceTokens(input.lead, input.research);
   const activePersonalizationTokens = evidenceTokens.length ? evidenceTokens : tokens;
   const templateHits = outreachTemplatePhrases.filter((phrase) => normalized.includes(phrase));
+  const containsCjk = hasCjkCharacters(`${subject}\n${body}`);
+  const hasGreeting = hasEmailGreeting(body);
+  const hasSignoff = hasEmailSignoff(body);
+  const hasBusinessSignature = hasSignoff && body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).some((line, index, lines) => (
+    index > 0 && /^(best regards|kind regards|regards|thanks|thank you|sincerely)[,，]?$/i.test(lines[index - 1]) && line.length >= 2
+  ));
   const genericSubject = isGenericOutreachSubject(subject, activePersonalizationTokens);
   const startsWithSupplierIntro = /^(we|our company|i am|this is)\b/.test(opening) && !/\b(saw|noticed|looking at|checked|read|your)\b/.test(opening);
   const openingEvidenceHits = evidenceTokenHitCount(opening, activePersonalizationTokens);
@@ -5958,7 +6026,7 @@ function reviewOutreachEmail(input: {
   const strongEvidenceHits = evidenceTokenHitCount(normalized, strongEvidenceTerms);
   const openingStrongEvidenceHits = evidenceTokenHitCount(opening, strongEvidenceTerms);
   const hasEnoughConcreteEvidence = !strongEvidenceTerms.length || (strongEvidenceHits >= 2 && openingStrongEvidenceHits >= 1);
-  const humanTonePassed = templateHits.length === 0 && !stiffAiOpening && !badPseudoPersonalization && !localSkeleton && !violatesFitBrief && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
+  const humanTonePassed = templateHits.length === 0 && !containsCjk && !stiffAiOpening && !badPseudoPersonalization && !localSkeleton && !violatesFitBrief && !/\bcooperation with us\b/.test(normalized) && !/\bkindly\s+\w+/.test(normalized);
   const personalizedPassed = containsAny(normalized, activePersonalizationTokens)
     && hasBuyerImplication
     && hasEnoughConcreteEvidence
@@ -5972,24 +6040,26 @@ function reviewOutreachEmail(input: {
   const words = countWords(body);
   const paragraphCount = body.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean).length || 1;
   const tooFormulaic = localSkeleton || /\b(line 1|line 2|line 3|buyer implication|procurement trigger|micro-offer|evidence chain|selected usp)\b/i.test(normalized);
-  const twoSecondPassed = words >= 35 && words <= 110 && countWords(opening) <= 32 && subject.length <= 50 && paragraphCount >= 1 && paragraphCount <= 4 && !genericSubject && !tooFormulaic;
+  const twoSecondPassed = words >= 35 && words <= 125 && countWords(opening) <= 32 && subject.length <= 50 && paragraphCount >= 1 && paragraphCount <= 5 && !genericSubject && !tooFormulaic && hasGreeting && hasBusinessSignature;
   const twoSecondScore = twoSecondPassed ? 20 : Math.max(0,
     20
-    - Math.ceil(Math.max(0, words - 110) / 10) * 3
+    - Math.ceil(Math.max(0, words - 125) / 10) * 3
     - (words < 35 ? 10 : 0)
     - (countWords(opening) > 32 ? 12 : 0)
     - (subject.length > 50 ? 8 : 0)
-    - (paragraphCount < 1 || paragraphCount > 4 ? 8 : 0)
+    - (paragraphCount < 1 || paragraphCount > 5 ? 8 : 0)
     - (genericSubject ? 12 : 0)
     - (tooFormulaic ? 12 : 0)
+    - (!hasGreeting ? 8 : 0)
+    - (!hasBusinessSignature ? 8 : 0)
   );
 
   const checks = [
     qualityCheck("buyerReason", "Buyer-specific first line", buyerReasonPassed, buyerReasonPassed ? 20 : 0, buyerReasonPassed ? "The opening explains why this buyer is being contacted." : "The first line does not clearly say why this buyer should care."),
-    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (stiffAiOpening ? 6 : 0) - (localSkeleton ? 6 : 0) - (violatesFitBrief ? 8 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : (violatesFitBrief ? "The email overstates buyer fit or uses a generic supplier pitch against the research brief." : `Template phrase found: ${templateHits[0] ?? (localSkeleton ? "fixed outreach skeleton" : stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`)),
+    qualityCheck("humanTone", "Human English", humanTonePassed, humanTonePassed ? 20 : Math.max(0, 12 - templateHits.length * 4 - (containsCjk ? 10 : 0) - (stiffAiOpening ? 6 : 0) - (localSkeleton ? 6 : 0) - (violatesFitBrief ? 8 : 0)), humanTonePassed ? "The wording avoids obvious translated-template phrases." : (containsCjk ? "The customer-facing email must be written in English only." : violatesFitBrief ? "The email overstates buyer fit or uses a generic supplier pitch against the research brief." : `Template phrase found: ${templateHits[0] ?? (localSkeleton ? "fixed outreach skeleton" : stiffAiOpening ? "stiff AI opening" : "translated sales wording")}.`)),
     qualityCheck("personalized", "Evidence-backed personalization", personalizedPassed, personalizedPassed ? 20 : 4, personalizedPassed ? "The message links a concrete buyer signal to a likely sourcing implication." : (violatesFitBrief ? "The email ignores the customer decision brief; adjust the angle before sending." : "The message needs 2 concrete buyer clues plus a business implication, not just a name or category.")),
     qualityCheck("nextStep", "Clear next step", nextStepPassed, nextStepPassed ? 20 : 0, nextStepPassed ? "The buyer can answer a low-friction micro-offer." : "The CTA is too vague; offer a specific yes/no, A/B option, comparison, option list, specs, proof pack, or MOQ/lead-time table."),
-    qualityCheck("twoSecondRead", "2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short enough to scan quickly." : "Keep it like a human note: 35-110 words, short subject, 1-4 short paragraphs, no visible framework wording.")
+    qualityCheck("twoSecondRead", "Complete 2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short, complete, and scan-friendly." : "Keep it like a complete human business email: greeting, 35-125 words, short subject, 1-5 short paragraphs, low-friction CTA, and a real signoff/signature.")
   ];
   const score = Math.max(0, Math.min(100, checks.reduce((sum, check) => sum + check.score, 0)));
   const hardFailed = !buyerReasonPassed || !humanTonePassed || !personalizedPassed || !nextStepPassed || !twoSecondPassed;
@@ -5997,10 +6067,12 @@ function reviewOutreachEmail(input: {
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
     buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not use only a domain, page title, or phrase like 'works around'.",
-    humanTonePassed ? "" : (violatesFitBrief ? "Remove generic supplier claims and make the email match the customer fit verdict." : "Remove translated-template phrases and write like a short human business note."),
+    humanTonePassed ? "" : (containsCjk ? "Rewrite the customer-facing email in English only; keep Chinese only for internal notes." : violatesFitBrief ? "Remove generic supplier claims and make the email match the customer success angle." : "Remove translated-template phrases and write like a short human business note."),
     personalizedPassed ? "" : (violatesFitBrief ? "Follow the customer decision brief: if the buyer may be a peer/manufacturer or purchase intent is weak, use a cautious complementary angle." : "Add at least two customer-specific clues from the buyer website and explain the buyer implication."),
     nextStepPassed ? "" : "End with one natural low-friction micro-offer: 2-3 matched options, an MOQ/lead-time table, a spec/certification pack, a short comparison, or a natural A/B choice. Avoid keyword-reply CTAs like Reply 'SPC table'.",
-    twoSecondPassed ? "" : "Rewrite as a 45-90 word human sales note, not a visible three-line formula."
+    hasGreeting ? "" : "Start the body with a normal greeting such as Hi DECNO team, or Hi [Name],.",
+    hasSignoff ? "" : "End with Best regards and the saved sender signature.",
+    twoSecondPassed ? "" : "Rewrite as a complete 45-110 word human sales email with greeting, CTA, and signature, not a visible formula."
   ].filter(Boolean);
   return OutreachEmailQualityReviewSchema.parse({
     score,
@@ -6028,6 +6100,69 @@ function firstBusinessLine(body: string): string {
     const opening = normalizeOpeningLine(line);
     return opening && countWords(opening) > 2;
   }) ?? lines[0] ?? "";
+}
+
+function normalizeOutreachEmailLanguage(_language?: string): string {
+  return OUTREACH_EMAIL_LANGUAGE;
+}
+
+async function outreachDraftSignatureBlock(repository: OutreachEmailSignatureRepository, companyProfile: CompanyProfile): Promise<string> {
+  const signature = await repository.get();
+  const savedText = signature.enabled ? normalizeEmailSignature(signature).text : "";
+  const fallbackText = [companyProfile.name, companyProfile.website].map((item) => item?.trim()).filter(Boolean).join("\n");
+  return ensureSignatureSignoff(savedText || fallbackText);
+}
+
+function ensureSignatureSignoff(value: string): string {
+  const text = value.trim();
+  if (!text) return "Best regards,";
+  return hasEmailSignoff(text) ? text : `Best regards,\n${text}`;
+}
+
+function finalizeCopyReadyOutreachEmail(input: { subject: string; body: string; lead: OutreachLead; signatureBlock?: string }): { subject: string; body: string } {
+  const subject = truncatePlain(input.subject.replace(/^subject\s*[:：]\s*/i, "").trim() || "Quick question", 240);
+  let body = normalizeEmailBodyText(input.body);
+  body = removePlaceholderSignature(body);
+  if (!hasEmailGreeting(body)) body = `${outreachGreetingLine(input.lead)}\n\n${body}`;
+  const signatureBlock = input.signatureBlock?.trim();
+  if (signatureBlock && !hasEmailSignoff(body)) body = `${body}\n\n${signatureBlock}`;
+  return { subject, body: truncateForContext(body.trim(), 20_000) };
+}
+
+function normalizeEmailBodyText(value: string): string {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/^body\s*[:：]\s*/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function outreachGreetingLine(lead: OutreachLead): string {
+  const contactName = lead.contactName?.trim();
+  if (contactName) return `Hi ${contactName},`;
+  const companyName = lead.companyName?.trim();
+  if (companyName && !/^customer$/i.test(companyName)) return `Hi ${companyName} team,`;
+  return "Hi team,";
+}
+
+function hasEmailGreeting(body: string): boolean {
+  const firstLine = body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "";
+  return /^(hi|hello)\s+[^,，.!?]{1,80}[,，]\s*$/i.test(firstLine) || /^(hi|hello)[,，]\s*$/i.test(firstLine);
+}
+
+function hasEmailSignoff(body: string): boolean {
+  return /(?:^|\n)\s*(best regards|kind regards|regards|thanks|thank you|sincerely)[,，]?\s*(?:\n|$)/i.test(body.trim());
+}
+
+function hasCjkCharacters(value: string): boolean {
+  return /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(value);
+}
+
+function removePlaceholderSignature(body: string): string {
+  if (!/\[(?:your name|company name|website|phone|whatsapp|email|name|company)\]/i.test(body)) return body.trim();
+  return body
+    .replace(/\n*\s*(?:best regards|kind regards|regards|thanks|thank you|sincerely)[,，]?\s*\n(?:\s*\[[^\]]+\]\s*\n?){1,6}\s*$/i, "")
+    .trim();
 }
 
 function normalizeOpeningLine(line: string): string {
@@ -6360,11 +6495,15 @@ async function generateOutreachDraft(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  emailSignature: OutreachEmailSignatureRepository;
   assets: OutreachAssetRepository;
   drafts: OutreachDraftRepository;
   research?: CustomerResearchResult;
 }): Promise<OutreachDraft> {
   await assertCompanyProfileReady(input.companyProfile);
+  const language = normalizeOutreachEmailLanguage(input.body.language);
+  const companyProfileRecord = await input.companyProfile.get();
+  const signatureBlock = await outreachDraftSignatureBlock(input.emailSignature, companyProfileRecord);
   const providerRecord = await resolveGenerationProvider(input.body.providerId, input.providers);
   const apiKey = providerRecord ? await input.providers.readApiKey(providerRecord).catch(() => undefined) : undefined;
   const provider = providerRecord ? {
@@ -6400,18 +6539,19 @@ async function generateOutreachDraft(input: {
   const strategicBrief = applyOutreachOsStrategyToBrief(generationBrief, outreachOs.strategyMatch);
   const outreachOsContext = formatOutreachOsContext(outreachOs);
   const harness = buildOutreachHarnessContext({ model, goldenExamples, lead: input.lead, research: input.research, outreachOs, strategicBrief });
-  const prompt = buildOutreachPrompt(input.lead, input.body.language, input.body.tone, companyKnowledgeContext, strategicBrief, [
+  const prompt = buildOutreachPrompt(input.lead, language, input.body.tone, companyKnowledgeContext, strategicBrief, [
     customerResearchContext,
     outreachOsContext,
     harness.goldenExamplesContext
-  ].filter(Boolean).join("\n\n"));
+  ].filter(Boolean).join("\n\n"), signatureBlock);
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
     model,
     instructions: outreachInstructions(),
     provider,
     reasoningEffort: "medium",
-    maxOutputTokens: 4096
+    maxOutputTokens: 4096,
+    responseFormat: "json_object"
   });
   const parsed = parseGeneratedOutreachDraft(replyText);
   const polished = await polishOutreachDraft({
@@ -6419,13 +6559,14 @@ async function generateOutreachDraft(input: {
     lead: input.lead,
     research: input.research,
     brief: strategicBrief,
-    language: input.body.language,
+    language,
     tone: input.body.tone,
     companyKnowledgeContext,
     goldenExamplesContext: harness.goldenExamplesContext,
     runtime: input.runtime,
     provider,
-    model
+    model,
+    signatureBlock
   });
   const sendRiskReview = reviewOutreachSendRisk({
     subject: polished.subject,
@@ -6441,7 +6582,7 @@ async function generateOutreachDraft(input: {
     leadId: input.lead.id,
     subject: polished.subject,
     body: polished.body,
-    language: input.body.language,
+    language,
     tone: input.body.tone,
     generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
@@ -6476,6 +6617,7 @@ async function generateOutreachWorkflow(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  emailSignature: OutreachEmailSignatureRepository;
   assets: OutreachAssetRepository;
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
@@ -6485,6 +6627,9 @@ async function generateOutreachWorkflow(input: {
   researchDepth?: OutreachResearchDepth;
 }): Promise<OutreachWorkflow> {
   await assertCompanyProfileReady(input.companyProfile);
+  const language = normalizeOutreachEmailLanguage(input.body.language);
+  const companyProfileRecord = await input.companyProfile.get();
+  const signatureBlock = await outreachDraftSignatureBlock(input.emailSignature, companyProfileRecord);
   const researchDepth = input.researchDepth ?? input.body.researchDepth ?? "adaptive";
   const research = input.research ?? await researchCustomerWebsite(input.body.website, researchDepth, {
     email: input.body.email,
@@ -6544,8 +6689,9 @@ async function generateOutreachWorkflow(input: {
     generationBrief: strategicBrief,
     outreachOsContext: [outreachOsContext, harness.goldenExamplesContext].filter(Boolean).join("\n\n"),
     companyKnowledgeContext,
-    language: input.body.language,
-    tone: input.body.tone
+    language,
+    tone: input.body.tone,
+    signatureBlock
   });
   const replyText = await input.runtime.createHermesReply({
     messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
@@ -6553,9 +6699,10 @@ async function generateOutreachWorkflow(input: {
     instructions: outreachWorkflowInstructions(),
     provider,
     reasoningEffort: "medium",
-    maxOutputTokens: 8192
+    maxOutputTokens: 8192,
+    responseFormat: "json_object"
   });
-  const generated = parseGeneratedOutreachWorkflow(replyText, lead, input.body.language, input.body.tone);
+  const generated = parseGeneratedOutreachWorkflow(replyText, lead, language, input.body.tone);
   const polishedInitial = await polishOutreachDraft({
     candidate: {
       subject: generated.initialEmail.subject,
@@ -6564,21 +6711,23 @@ async function generateOutreachWorkflow(input: {
     lead,
     research,
     brief: strategicBrief,
-    language: input.body.language,
+    language,
     tone: input.body.tone,
     companyKnowledgeContext,
     goldenExamplesContext: harness.goldenExamplesContext,
     runtime: input.runtime,
     provider,
-    model
+    model,
+    signatureBlock
   });
   const initialQualityReview = polishedInitial.qualityReview;
   const polishedFollowUps = polishWorkflowFollowUps({
     followUps: generated.followUps,
     lead,
     brief: strategicBrief,
-    language: input.body.language,
-    tone: input.body.tone
+    language,
+    tone: input.body.tone,
+    signatureBlock
   });
   const initialSendRiskReview = reviewOutreachSendRisk({
     subject: polishedInitial.subject,
@@ -6594,7 +6743,7 @@ async function generateOutreachWorkflow(input: {
     leadId: lead.id,
     subject: polishedInitial.subject,
     body: polishedInitial.body,
-    language: input.body.language,
+    language,
     tone: input.body.tone,
     generationMode: outreachOs.mode,
     promptSnapshot: truncateForContext(prompt, 30_000),
@@ -6635,7 +6784,7 @@ async function generateOutreachWorkflow(input: {
       leadId: lead.id,
       subject: email.subject,
       body: email.body,
-      language: input.body.language,
+      language,
       tone: input.body.tone,
       generationMode: outreachOs.mode,
       promptSnapshot: truncateForContext(prompt, 30_000),
@@ -6669,7 +6818,7 @@ async function generateOutreachWorkflow(input: {
     draftId: initialDraft.id,
     website: research.website,
     email: input.body.email,
-    language: input.body.language,
+    language,
     tone: input.body.tone,
     generationMode: outreachOs.mode,
     research: CustomerResearchSnapshotSchema.parse({ ...research, createdAt: now }),
@@ -6700,6 +6849,7 @@ async function generateOutreachCampaignWorkflows(input: {
   providers: ProviderRepository;
   companyProfile: CompanyProfileRepository;
   materials: MaterialRepository;
+  emailSignature: OutreachEmailSignatureRepository;
   assets: OutreachAssetRepository;
   leads: OutreachLeadRepository;
   drafts: OutreachDraftRepository;
@@ -6749,6 +6899,7 @@ async function generateOutreachCampaignWorkflows(input: {
         providers: input.providers,
         companyProfile: input.companyProfile,
         materials: input.materials,
+        emailSignature: input.emailSignature,
         assets: input.assets,
         leads: input.leads,
         drafts: input.drafts,
@@ -7026,7 +7177,8 @@ async function rewriteOutreachDraft(input: {
     instructions: outreachInstructions(),
     provider,
     reasoningEffort: "medium",
-    maxOutputTokens: 4096
+    maxOutputTokens: 4096,
+    responseFormat: "json_object"
   });
   const parsed = parseGeneratedOutreachDraft(replyText);
   const review = reviewOutreachEmail({
@@ -7136,13 +7288,20 @@ async function polishOutreachDraft(input: {
   runtime: RuntimeAdapter;
   provider?: HermesReplyRequest["provider"];
   model?: string;
+  signatureBlock?: string;
   maxRepairAttempts?: number;
 }): Promise<PolishedOutreachDraft> {
   const maxRepairAttempts = input.maxRepairAttempts ?? 2;
-  let best = {
+  const initial = finalizeCopyReadyOutreachEmail({
     subject: input.candidate.subject,
     body: input.candidate.body,
-    qualityReview: reviewOutreachEmail({ subject: input.candidate.subject, body: input.candidate.body, lead: input.lead, research: input.research }),
+    lead: input.lead,
+    signatureBlock: input.signatureBlock
+  });
+  let best = {
+    subject: initial.subject,
+    body: initial.body,
+    qualityReview: reviewOutreachEmail({ subject: initial.subject, body: initial.body, lead: input.lead, research: input.research }),
     repairAttempts: 0
   };
   if (best.qualityReview.passed) return best;
@@ -7158,7 +7317,8 @@ async function polishOutreachDraft(input: {
       language: input.language,
       tone: input.tone,
       companyKnowledgeContext: input.companyKnowledgeContext,
-      goldenExamplesContext: input.goldenExamplesContext
+      goldenExamplesContext: input.goldenExamplesContext,
+      signatureBlock: input.signatureBlock
     });
     const replyText = await input.runtime.createHermesReply({
       messages: [{ id: randomUUID(), role: "user", content: repairPrompt, createdAt: new Date().toISOString() }],
@@ -7166,16 +7326,25 @@ async function polishOutreachDraft(input: {
       instructions: outreachInstructions(),
       provider: input.provider,
       reasoningEffort: "medium",
-      maxOutputTokens: 4096
+      maxOutputTokens: 4096,
+      responseFormat: "json_object"
     });
-    const parsed = parseGeneratedOutreachDraft(replyText);
+    const parsed = finalizeCopyReadyOutreachEmail({
+      ...parseGeneratedOutreachDraft(replyText),
+      lead: input.lead,
+      signatureBlock: input.signatureBlock
+    });
     const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead, research: input.research });
     const repaired = { subject: parsed.subject, body: parsed.body, qualityReview, repairAttempts: attempt };
     if (qualityReview.score > best.qualityReview.score) best = repaired;
     if (qualityReview.passed) return repaired;
   }
 
-  const fallback = fallbackOutreachDraftFromBrief(input.lead, input.brief);
+  const fallback = finalizeCopyReadyOutreachEmail({
+    ...fallbackOutreachDraftFromBrief(input.lead, input.brief),
+    lead: input.lead,
+    signatureBlock: input.signatureBlock
+  });
   const fallbackReview = reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead, research: input.research });
   if (fallbackReview.score >= best.qualityReview.score && fallbackReview.passed && !looksLikeLocalOutreachSkeleton(fallback.subject, fallback.body)) {
     return {
@@ -7199,6 +7368,7 @@ function buildOutreachRepairPrompt(input: {
   tone: string;
   companyKnowledgeContext: string;
   goldenExamplesContext?: string;
+  signatureBlock?: string;
 }): string {
   return [
     "Rewrite this B2B cold email so it passes the buyer 2-second quality gate.",
@@ -7209,6 +7379,9 @@ function buildOutreachRepairPrompt(input: {
     "",
     "Repair rules:",
     "- Keep the body 45-90 words in 2-4 compact paragraphs.",
+    "- Write the customer-facing email in English only, even if the app UI or internal notes are Chinese.",
+    "- The body must start with a normal greeting such as Hi [Name/team],.",
+    "- The body must end with Best regards and the sender signature provided below.",
     "- First real sentence must say why this specific buyer should care and what the business implication is.",
     "- First real sentence must contain one concrete buyer evidence clue from the lead or research; do not merely say you saw their website.",
     "- Use at least two concrete buyer clues from the research across the repaired email.",
@@ -7247,6 +7420,9 @@ function buildOutreachRepairPrompt(input: {
     "",
     input.goldenExamplesContext ?? "",
     "",
+    "--- Required sender signature ---",
+    input.signatureBlock || "Best regards,",
+    "",
     "--- Company knowledge ---",
     input.companyKnowledgeContext || "No company knowledge has been added yet; stay conservative."
   ].filter(Boolean).join("\n");
@@ -7262,9 +7438,9 @@ function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGener
   return {
     subject: truncatePlain(subjectBase || `Backup options for ${company}`, 50),
     body: [
-      `Hi, I noticed ${company} ${openingReason}, so ${implication}.`,
-      `I can prepare a short ${offer} instead of a full catalog.`,
-      "Would A) matched specs or B) MOQ and lead-time checks be more useful first?"
+      `${company} ${openingReason}; ${implication}.`,
+      `We can prepare a short ${offer} for your team to compare without a broad catalog.`,
+      "Would 2-3 relevant specs be worth a quick look?"
     ].join("\n")
   };
 }
@@ -7346,6 +7522,7 @@ function polishWorkflowFollowUps(input: {
   brief: OutreachGenerationBrief;
   language: string;
   tone: string;
+  signatureBlock?: string;
 }): OutreachWorkflow["followUps"] {
   void input.language;
   void input.tone;
@@ -7361,16 +7538,34 @@ function polishWorkflowFollowUps(input: {
       body: truncateForContext(candidate.body || "", 20_000),
       status: "draft" as const
     } : fallbackFollowUpFromBrief(input.lead, input.brief, index, strategy);
-    const review = reviewOutreachEmail({ subject: normalized.subject, body: normalized.body, lead: input.lead });
-    const hasTemplatePhrase = outreachTemplatePhrases.some((phrase) => normalizeQualityText(`${normalized.subject}\n${normalized.body}`).includes(phrase));
-    if (review.level === "blocked" || hasTemplatePhrase || countWords(normalized.body) > 150) {
-      const fallback = fallbackFollowUpFromBrief(input.lead, input.brief, index, strategy);
+    const copyReady = {
+      ...normalized,
+      ...finalizeCopyReadyOutreachEmail({
+        subject: normalized.subject,
+        body: normalized.body,
+        lead: input.lead,
+        signatureBlock: input.signatureBlock
+      })
+    };
+    const review = reviewOutreachEmail({ subject: copyReady.subject, body: copyReady.body, lead: input.lead });
+    const hasTemplatePhrase = outreachTemplatePhrases.some((phrase) => normalizeQualityText(`${copyReady.subject}\n${copyReady.body}`).includes(phrase));
+    if (review.level === "blocked" || hasTemplatePhrase || countWords(copyReady.body) > 170) {
+      const fallbackBase = fallbackFollowUpFromBrief(input.lead, input.brief, index, strategy);
+      const fallback = {
+        ...fallbackBase,
+        ...finalizeCopyReadyOutreachEmail({
+          subject: fallbackBase.subject,
+          body: fallbackBase.body,
+          lead: input.lead,
+          signatureBlock: input.signatureBlock
+        })
+      };
       return {
         ...fallback,
         qualityReview: reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead })
       };
     }
-    return { ...normalized, qualityReview: review };
+    return { ...copyReady, qualityReview: review };
   });
 }
 
@@ -7383,11 +7578,11 @@ function fallbackFollowUpFromBrief(
   const company = lead.companyName || "your team";
   const subject = index === 7 ? `Close the loop on ${truncatePlain(company, 28)}` : truncatePlain(`${strategy.strategy}: ${brief.selectedUsp.headline}`, 58);
   const lines = [
-    `Hi, quick note on ${company} and ${lowercaseFirstBusinessPhrase(brief.procurementTrigger)}.`,
+    `A quick note on ${company} and ${lowercaseFirstBusinessPhrase(brief.procurementTrigger)}.`,
     `${brief.selectedUsp.headline} may be worth a quick look because ${lowercaseFirstBusinessPhrase(brief.likelyPain)}.`,
     index === 2
-      ? `Should I send an A/B option pack with ${brief.microOffer}, or is someone else better for this?`
-      : `Would it help if I sent an A/B option pack with ${brief.microOffer}?`
+      ? `Should I send a short option pack with ${brief.microOffer}, or is someone else better for this?`
+      : `Would a short option pack with ${brief.microOffer} be worth a look?`
   ];
   if (index === 7) {
     lines[2] = "If this is not relevant, I can close the loop here.";
@@ -8225,7 +8420,9 @@ function outreachInstructions(): string {
     "You are Hermills Outreach, a senior B2B export sales strategist writing warm emails, not generic cold blasts.",
     "Write concise, specific, reply-worthy emails for international sales. The buyer should feel the note is about their business, not the sender's factory.",
     "Privately follow this chain before writing: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
-    "Write like a real export sales rep: 45-90 words, 2-4 compact paragraphs, no visible framework wording.",
+    "Write like a real export sales rep: English only, complete business email, 45-110 words, 2-5 compact paragraphs, no visible framework wording.",
+    "Every customer-facing body must include greeting, customer-first opening, value bridge, low-friction CTA, Best regards, and sender signature.",
+    "Do not merely decide whether the buyer is suitable. Convert the research into how to successfully develop this account with the safest angle.",
     "The first real sentence must contain a concrete buyer clue such as their product category, channel, market, project, certification, supplier-risk signal, or procurement trigger, then explain why that clue matters.",
     "Use at least two concrete clues from buyer research across the email; one must appear in the first real sentence.",
     "Never treat the buyer company name or the fact that a website exists as enough personalization.",
@@ -8246,9 +8443,10 @@ function outreachWorkflowInstructions(): string {
     "You are Hermills Letter App, a senior B2B export sales strategist building Snov-style outreach workflows.",
     "Internally act as a coordinated agent queue: Website Reader -> Buyer Psychology Analyst -> ICP/USP Matcher -> Email Writer -> QA Reviewer.",
     "Your job is to research the buyer, model ICP buyer psychology, identify procurement triggers, match differentiated supplier USPs, and write warm outreach.",
-    "Treat the output as an operational drip workflow: ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
+    "Treat the output as an operational drip workflow: customer research -> successful development angle -> ICP -> USP -> initial warm email -> 9 follow-ups, with stop/handoff discipline reflected inside the existing fields.",
+    "All customer-facing emails must be English, complete business emails with greeting, low-friction CTA, Best regards, and sender signature.",
     "For every initial email, privately follow this chain: buyer website evidence -> buyer role/scene -> buyer risk, KPI tension, or procurement trigger -> one matching supplier USP -> one low-friction micro-offer.",
-    "Obey the Customer decision brief. If fit is cautious, write like a careful business note, not a generic supplier pitch. If the buyer appears to be a manufacturer/OEM or peer, avoid importer assumptions.",
+    "Obey the Customer decision brief. If fit is cautious, turn it into the safest successful development angle, not a generic supplier pitch. If the buyer appears to be a manufacturer/OEM or peer, avoid importer assumptions.",
     "Never turn inferred purchase intent into a stated fact.",
     "Use at least two concrete buyer clues in the initial email and keep the CTA conversational, not keyword-based.",
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
@@ -8263,7 +8461,8 @@ function buildOutreachPrompt(
   tone: string,
   companyKnowledgeContext: string,
   generationBrief: OutreachGenerationBrief,
-  customerResearchContext = ""
+  customerResearchContext = "",
+  signatureBlock = ""
 ): string {
   const leadLines = [
     `Company: ${lead.companyName}`,
@@ -8283,12 +8482,17 @@ function buildOutreachPrompt(
     `Tone: ${tone}.`,
     "Requirements:",
     "- Use a short subject line.",
-    "- Keep the body 45-90 words in 2-4 compact paragraphs.",
+    "- Write the customer-facing email in English only, even if the app UI or internal notes are Chinese.",
+    "- Keep the body 45-110 words in 2-5 compact paragraphs including greeting and signature.",
+    "- The body must start with a normal greeting: Hi [Name], Hi [Company] team, or Hi team,.",
+    "- The body must end with Best regards and the sender signature shown below.",
+    "- Build the email with these 8 modules: Subject, Greeting, Customer-first opening, Reality check when needed, Value bridge, Soft proof, Low-friction CTA, Signature.",
     "- Privately use this sequence: specific buyer clue plus why it matters -> one relevant supplier USP tied to that buyer's risk, KPI, sourcing task, or channel -> one low-friction micro-offer.",
     "- Before writing, choose one concrete buyer evidence item from the lead or website research. The evidence must be visible in the first real sentence.",
     "- Use at least two concrete buyer clues from the research across the email. These should be real product, channel, collection, market, certification, spec, or procurement clues, not only the buyer's name.",
     "- Convert that evidence into a buyer implication: what they may be trying to protect, improve, source, compare, certify, stock, or launch.",
-    "- Obey the Customer decision brief. If write mode is cautious, write as a careful hypothesis, not as a confident supplier pitch.",
+    "- Do not stop at whether the buyer is a fit. Choose the safest way to successfully develop this account: standard supply, product/spec comparison, complementary material/process, backup capacity, channel cooperation, proof pack, or cautious benchmark.",
+    "- Obey the Customer decision brief. If write mode is cautious, write as a careful hypothesis and safer success angle, not as a confident supplier pitch.",
     "- If the buyer looks like a manufacturer/OEM or peer, do not call them an importer or imply they need another finished-goods supplier. Use a complementary angle only.",
     "- Follow every 'Claims to avoid' item from the research brief.",
     "- Use the private outreach brief as the locked strategy. Do not switch to a different USP or generic company introduction.",
@@ -8312,6 +8516,9 @@ function buildOutreachPrompt(
     "",
     customerResearchContext || "--- Customer website research ---\nNo website research was available.",
     "",
+    "--- Required sender signature ---",
+    signatureBlock || "Best regards,",
+    "",
     "--- Company knowledge ---",
     companyKnowledgeContext || "No company knowledge has been added yet. Keep the message general and ask the user to add company details for a stronger draft."
   ].join("\n");
@@ -8325,6 +8532,7 @@ function buildOutreachWorkflowPrompt(input: {
   companyKnowledgeContext: string;
   language: string;
   tone: string;
+  signatureBlock?: string;
 }): string {
   return [
     "Build a complete Letter App style B2B outreach workflow for a China-based export/trading company.",
@@ -8346,6 +8554,7 @@ function buildOutreachWorkflowPrompt(input: {
     "- Treat the private outreach brief below as the locked angle for the first email.",
     input.outreachOsContext ?? "",
     "- Treat the Customer decision brief as higher priority than generic sales instincts.",
+    "- Do not stop at 'fit / no fit'. Turn the verdict into the safest way to successfully develop this account.",
     "- If the brief says cautious, write as a careful hypothesis and low-friction offer. Do not assert that the buyer is actively sourcing.",
     "- If the buyer appears to manufacture/OEM similar products, do not pitch them as a simple importer. Use complementary product, backup option, proof pack, or category comparison only when supported.",
     "- Do not include any claim listed under Claims to avoid.",
@@ -8373,7 +8582,10 @@ function buildOutreachWorkflowPrompt(input: {
     "",
     "Initial warm email rules:",
     "- Subject under 50 characters.",
-    "- Body 45-90 words in 2-4 compact paragraphs.",
+    "- Body 45-110 words in 2-5 compact paragraphs including greeting and signature.",
+    "- Body must start with a greeting: Hi [Name], Hi [Company] team, or Hi team,.",
+    "- Body must end with Best regards and the required sender signature below.",
+    "- Follow the 8 modules: Subject, Greeting, Customer-first opening, Reality check when needed, Value bridge, Soft proof, Low-friction CTA, Signature.",
     "- Peer-to-peer, helpful, warm, concise.",
     "- Privately shape it as buyer-specific context hook plus why it matters -> one relevant USP tied to their sourcing risk, KPI, channel, or procurement task -> low-friction micro-offer.",
     "- The first real sentence must be about the buyer, not our credentials.",
@@ -8412,6 +8624,9 @@ function buildOutreachWorkflowPrompt(input: {
     "",
     "--- Customer website research ---",
     formatCustomerResearchContext(input.research),
+    "",
+    "--- Required sender signature ---",
+    input.signatureBlock || "Best regards,",
     "",
     "--- Our company knowledge ---",
     input.companyKnowledgeContext || "No company knowledge has been added yet. Use conservative wording and suggest adding company docs for stronger emails."
@@ -8586,11 +8801,13 @@ function fallbackOutreachWorkflow(lead: OutreachLead, language: string, tone: st
     strategy: "Initial warm email",
     subject: truncatePlain(`${lead.companyName} sourcing idea`, 50),
     body: [
-      `Hi, I was looking at ${lead.companyName} and noticed this may connect to ${productHint}.`,
+      `Hi ${lead.companyName} team,`,
       "",
-      `Instead of sending a broad catalog, I can share 2-3 options that fit your likely buying priorities, with notes on MOQ, lead time, and where each option works best.`,
+      `${lead.companyName} appears connected to ${productHint}, so a small proof-backed comparison is safer than a broad supplier pitch.`,
       "",
-      "If helpful, I can send option A focused on fast sampling or option B focused on lower-risk repeat supply. Which would be more useful?"
+      "We can prepare 2-3 matched options with MOQ, lead time, and proof notes so your team can judge fit quickly.",
+      "",
+      "Would that be worth a quick look?"
     ].join("\n"),
     status: "draft"
   };
@@ -8609,12 +8826,13 @@ function fallbackOutreachWorkflow(lead: OutreachLead, language: string, tone: st
 }
 
 function followUpFallbackBody(lead: OutreachLead, strategy: string): string {
+  const productHint = lead.need || "this product category";
   return [
-    `Hi, quick note on ${lead.companyName}.`,
+    `Hi ${lead.companyName} team,`,
     "",
-    `${strategy}: I can share a small, practical option list instead of a full catalog, so your team can quickly see whether this category is worth reviewing.`,
+    `${strategy}: a small comparison around ${productHint} may help your team review sample-ready options, lead time, and proof without opening a broad supplier search.`,
     "",
-    "If useful, reply with A for specs or B for a short comparison."
+    "Would a 2-3 option comparison be worth a quick look?"
   ].join("\n");
 }
 
@@ -8700,11 +8918,17 @@ async function buildSignedOutreachMailMessage(input: {
 }): Promise<Pick<SendMailOptions, "text" | "html" | "attachments">> {
   const bodyText = input.draft.body.trim();
   const signature = input.signature.enabled ? normalizeEmailSignature(input.signature) : undefined;
-  const text = [bodyText, signature?.text].filter(Boolean).join("\n\n");
+  const bodyAlreadySigned = hasEmailSignoff(bodyText);
+  const text = [bodyText, bodyAlreadySigned ? "" : signature?.text].filter(Boolean).join("\n\n");
   const bodyHtml = plainTextToEmailHtml(bodyText);
   const includeLogo = Boolean(signature?.logoHtml && input.logo && signatureProviderSupportsInlineLogo(input.sender));
   const html = signature
-    ? [
+    ? bodyAlreadySigned
+      ? [
+        bodyHtml,
+        includeLogo ? `<div class="hermills-signature-logo" style="margin-top:12px;">${signature.logoHtml}</div>` : ""
+      ].join("")
+      : [
         bodyHtml,
         `<div class="hermills-signature" style="margin-top:18px;padding-top:12px;border-top:1px solid #e5e7eb;color:#374151;font-family:Arial,sans-serif;font-size:13px;line-height:1.45;">`,
         includeLogo ? signature.logoHtml : "",

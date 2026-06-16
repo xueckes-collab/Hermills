@@ -121,7 +121,7 @@ const providerPresets = [
     kind: 'openai-compatible',
     displayName: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-v4-flash',
+    defaultModel: 'deepseek-v4-pro',
     keyPlaceholder: 'sk-...',
   },
   {

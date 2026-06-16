@@ -69,14 +69,22 @@ export interface HermesReplyProvider {
   defaultModel?: string;
 }
 
+interface HermesInferenceProviderConfig {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  env: Record<string, string>;
+}
+
 export interface HermesReplyRequest {
   messages: ChatMessage[];
   model?: string;
   instructions?: string;
   provider?: HermesReplyProvider;
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "max";
   maxOutputTokens?: number;
   responseMode?: "auto" | "responses" | "chat";
+  responseFormat?: "text" | "json_object";
 }
 
 export interface GatewayStatus {
@@ -612,13 +620,17 @@ export class RuntimeService {
       return this.createOpenAIResponseReply(replyRequest, target);
     }
 
+    const model = resolveCompletionModel(replyRequest);
     const response = await this.fetchImpl(chatCompletionsUrl(target.baseUrl), {
       method: "POST",
       headers: { Authorization: `Bearer ${target.apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: resolveCompletionModel(replyRequest),
+        model,
         messages: buildCompletionMessages(replyRequest),
-        stream: false
+        stream: false,
+        ...(replyRequest.maxOutputTokens ? { max_tokens: replyRequest.maxOutputTokens } : {}),
+        ...(replyRequest.responseFormat === "json_object" ? { response_format: { type: "json_object" } } : {}),
+        ...deepSeekChatOptions(model, target.baseUrl, replyRequest)
       })
     });
     if (!response.ok) {
@@ -627,6 +639,14 @@ export class RuntimeService {
     }
     const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
     return payload.choices?.[0]?.message?.content ?? "Hermes returned an empty response.";
+  }
+
+  async configureInferenceProvider(provider?: HermesReplyProvider): Promise<void> {
+    const config = hermesInferenceProviderConfig(provider);
+    if (!config) return;
+    const apiKey = await this.ensureApiKey();
+    await this.writeApiServerEnv(apiKey, config.env);
+    await this.writeModelConfig(config);
   }
 
   private async createOpenAIResponseReply(replyRequest: HermesReplyRequest, target: { baseUrl: string; apiKey: string }): Promise<string> {
@@ -639,7 +659,7 @@ export class RuntimeService {
         input: buildResponsesInput(replyRequest),
         ...buildResponsesInstructions(replyRequest),
         ...(replyRequest.maxOutputTokens ? { max_output_tokens: replyRequest.maxOutputTokens } : {}),
-        ...(supportsResponsesReasoning(model) ? { reasoning: { effort: replyRequest.reasoningEffort ?? "medium" } } : {}),
+        ...(supportsResponsesReasoning(model) ? { reasoning: { effort: openAIResponsesReasoningEffort(replyRequest.reasoningEffort) } } : {}),
         stream: false,
         store: false
       })
@@ -1128,7 +1148,7 @@ export class RuntimeService {
     }
   }
 
-  private async writeApiServerEnv(apiKey: string): Promise<void> {
+  private async writeApiServerEnv(apiKey: string, extraEnv: Record<string, string> = {}): Promise<void> {
     await ensurePrivateDirectory(this.hermesHome);
     const envPath = path.join(this.hermesHome, ".env");
     const current = await readFile(envPath, "utf8").catch(() => "");
@@ -1136,9 +1156,18 @@ export class RuntimeService {
       API_SERVER_ENABLED: "true",
       API_SERVER_HOST: "127.0.0.1",
       API_SERVER_PORT: String(this.apiPort),
-      API_SERVER_KEY: apiKey
+      API_SERVER_KEY: apiKey,
+      ...extraEnv
     });
     await writeAtomic(envPath, next, 0o600);
+  }
+
+  private async writeModelConfig(config: HermesInferenceProviderConfig): Promise<void> {
+    await ensurePrivateDirectory(this.hermesHome);
+    const configPath = path.join(this.hermesHome, "config.yaml");
+    const current = await readFile(configPath, "utf8").catch(() => "model:\n");
+    const next = upsertHermesModelConfig(current, config);
+    await writeAtomic(configPath, next, 0o600);
   }
 
   private apiBaseUrl(): string {
@@ -1422,6 +1451,32 @@ function shouldUseOpenAIResponses(request: HermesReplyRequest, resolvedBaseUrl: 
   return isOfficialOpenAIBaseUrl(resolvedBaseUrl);
 }
 
+function deepSeekChatOptions(model: string, baseUrl: string, request: HermesReplyRequest): Record<string, unknown> {
+  if (!isDeepSeekTarget(model, baseUrl)) return {};
+  return {
+    thinking: { type: "enabled" },
+    reasoning_effort: deepSeekReasoningEffort(model, request.reasoningEffort)
+  };
+}
+
+function isDeepSeekTarget(model: string, baseUrl: string): boolean {
+  const normalizedModel = model.trim().toLowerCase();
+  const normalizedBaseUrl = baseUrl.toLowerCase();
+  return normalizedBaseUrl.includes("api.deepseek.com") || /^deepseek-(v4|chat|reasoner)/i.test(normalizedModel);
+}
+
+function deepSeekReasoningEffort(model: string, effort?: HermesReplyRequest["reasoningEffort"]): "high" | "max" {
+  if (effort === "max") return "max";
+  if (effort === "high" && /pro/i.test(model)) return "max";
+  if (effort === "high") return "high";
+  return /pro/i.test(model) ? "max" : "high";
+}
+
+function openAIResponsesReasoningEffort(effort?: HermesReplyRequest["reasoningEffort"]): "minimal" | "low" | "medium" | "high" {
+  if (effort === "minimal" || effort === "low" || effort === "medium" || effort === "high") return effort;
+  return "medium";
+}
+
 function isOfficialOpenAIBaseUrl(baseUrl: string): boolean {
   try {
     const url = new URL(baseUrl);
@@ -1680,6 +1735,166 @@ function upsertEnv(current: string, values: Record<string, string>): string {
     if (!seen.has(key)) next.push(`${key}=${value}`);
   }
   return `${next.join("\n")}\n`;
+}
+
+function hermesInferenceProviderConfig(provider?: HermesReplyProvider): HermesInferenceProviderConfig | undefined {
+  const input = provider;
+  const apiKey = input?.apiKey?.trim();
+  const baseUrl = input?.baseUrl?.trim();
+  if (!input || !apiKey || !baseUrl || input.kind === "local") return undefined;
+
+  const normalized = baseUrl.toLowerCase();
+  const model = input.defaultModel?.trim();
+  if (normalized.includes("api.deepseek.com")) {
+    return {
+      provider: "deepseek",
+      model: model || "deepseek-v4-pro",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://api.deepseek.com/v1"),
+      env: {
+        DEEPSEEK_API_KEY: apiKey,
+        DEEPSEEK_BASE_URL: normalizedBaseUrl(baseUrl, "https://api.deepseek.com/v1")
+      }
+    };
+  }
+  if (normalized.includes("api.openai.com")) {
+    return {
+      provider: "openai-api",
+      model: model || "gpt-5.5",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://api.openai.com/v1"),
+      env: {
+        OPENAI_API_KEY: apiKey,
+        OPENAI_BASE_URL: normalizedBaseUrl(baseUrl, "https://api.openai.com/v1")
+      }
+    };
+  }
+  if (normalized.includes("api.anthropic.com")) {
+    return {
+      provider: "anthropic",
+      model: model || "claude-sonnet-4-20250514",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://api.anthropic.com"),
+      env: {
+        ANTHROPIC_API_KEY: apiKey,
+        ANTHROPIC_BASE_URL: normalizedBaseUrl(baseUrl, "https://api.anthropic.com")
+      }
+    };
+  }
+  if (normalized.includes("generativelanguage.googleapis.com")) {
+    return {
+      provider: "gemini",
+      model: model || "gemini-3.5-flash",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://generativelanguage.googleapis.com/v1beta"),
+      env: {
+        GOOGLE_API_KEY: apiKey,
+        GEMINI_BASE_URL: normalizedBaseUrl(baseUrl, "https://generativelanguage.googleapis.com/v1beta")
+      }
+    };
+  }
+  if (normalized.includes("api.z.ai") || normalized.includes("open.bigmodel.cn")) {
+    return {
+      provider: "zai",
+      model: model || "glm-4-flash",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://api.z.ai/api/paas/v4"),
+      env: {
+        GLM_API_KEY: apiKey,
+        GLM_BASE_URL: normalizedBaseUrl(baseUrl, "https://api.z.ai/api/paas/v4")
+      }
+    };
+  }
+  if (normalized.includes("moonshot") || normalized.includes("api.kimi.com")) {
+    return {
+      provider: "kimi-coding",
+      model: model || "kimi-k2.6",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://api.moonshot.ai/v1"),
+      env: {
+        KIMI_API_KEY: apiKey,
+        KIMI_BASE_URL: normalizedBaseUrl(baseUrl, "https://api.moonshot.ai/v1")
+      }
+    };
+  }
+  if (normalized.includes("dashscope") || normalized.includes("aliyuncs.com")) {
+    return {
+      provider: "alibaba",
+      model: model || "qwen-plus",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+      env: {
+        DASHSCOPE_API_KEY: apiKey,
+        DASHSCOPE_BASE_URL: normalizedBaseUrl(baseUrl, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+      }
+    };
+  }
+  if (normalized.includes("openrouter.ai")) {
+    return {
+      provider: "openrouter",
+      model: model || "openai/gpt-4o-mini",
+      baseUrl: normalizedBaseUrl(baseUrl, "https://openrouter.ai/api/v1"),
+      env: {
+        OPENROUTER_API_KEY: apiKey
+      }
+    };
+  }
+  return undefined;
+}
+
+function normalizedBaseUrl(baseUrl: string, fallback: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  return trimmed || fallback;
+}
+
+function upsertHermesModelConfig(current: string, config: HermesInferenceProviderConfig): string {
+  const lines = current.replace(/\r\n/g, "\n").split("\n");
+  const output: string[] = [];
+  let inModel = false;
+  let sawModel = false;
+  let wroteDefault = false;
+  let wroteProvider = false;
+  let wroteBaseUrl = false;
+
+  for (const line of lines) {
+    if (/^model:\s*$/.test(line)) {
+      inModel = true;
+      sawModel = true;
+      output.push(line);
+      continue;
+    }
+    if (inModel && /^[A-Za-z_][\w-]*:\s*/.test(line)) {
+      if (!wroteDefault) output.push(`  default: "${config.model}"`);
+      if (!wroteProvider) output.push(`  provider: "${config.provider}"`);
+      if (config.baseUrl && !wroteBaseUrl) output.push(`  base_url: "${config.baseUrl}"`);
+      inModel = false;
+    }
+    if (inModel && /^\s*default:\s*/.test(line) && !wroteDefault) {
+      output.push(`  default: "${config.model}"`);
+      wroteDefault = true;
+      continue;
+    }
+    if (inModel && /^\s*provider:\s*/.test(line) && !wroteProvider) {
+      output.push(`  provider: "${config.provider}"`);
+      wroteProvider = true;
+      continue;
+    }
+    if (inModel && /^\s*base_url:\s*/.test(line) && !wroteBaseUrl) {
+      if (config.baseUrl) output.push(`  base_url: "${config.baseUrl}"`);
+      wroteBaseUrl = true;
+      continue;
+    }
+    output.push(line);
+  }
+
+  if (!sawModel) {
+    output.unshift(
+      "model:",
+      `  default: "${config.model}"`,
+      `  provider: "${config.provider}"`,
+      ...(config.baseUrl ? [`  base_url: "${config.baseUrl}"`] : []),
+      ""
+    );
+  } else if (inModel) {
+    if (!wroteDefault) output.push(`  default: "${config.model}"`);
+    if (!wroteProvider) output.push(`  provider: "${config.provider}"`);
+    if (config.baseUrl && !wroteBaseUrl) output.push(`  base_url: "${config.baseUrl}"`);
+  }
+
+  return `${output.join("\n").replace(/\n+$/g, "")}\n`;
 }
 
 function resolveApiPort(port?: number): number {

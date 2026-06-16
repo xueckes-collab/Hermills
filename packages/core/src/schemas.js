@@ -214,7 +214,7 @@ export const OutreachLeadSchema = z.object({
     contactTitle: OptionalTrimmedString(160),
     email: OptionalTrimmedString(320),
     need: z.string().trim().max(2000).default(""),
-    notes: z.string().trim().max(4000).default(""),
+    notes: z.string().trim().max(20000).default(""),
     tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
     source: z.string().trim().min(1).max(64).default("manual"),
     status: z.enum(["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]).default("new"),
