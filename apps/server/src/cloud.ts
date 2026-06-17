@@ -30,7 +30,7 @@ export const CloudEmailBodySchema = z.object({
 
 export const CloudVerifySignupCodeBodySchema = z.object({
   email: z.string().trim().email().max(320),
-  token: z.string().trim().regex(/^\d{6}$/, "验证码必须是 6 位数字")
+  token: z.string().trim().regex(/^\d{6,8}$/, "验证码必须是邮箱里的 6-8 位数字")
 }).strict();
 
 export const CloudAdminUserStatusBodySchema = z.object({

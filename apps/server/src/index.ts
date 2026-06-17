@@ -8498,7 +8498,7 @@ async function polishOutreachDraft(input: {
   signatureBlock?: string;
   maxRepairAttempts?: number;
 }): Promise<PolishedOutreachDraft> {
-  const maxRepairAttempts = input.maxRepairAttempts ?? 2;
+  const maxRepairAttempts = input.maxRepairAttempts ?? 4;
   const initial = finalizeCopyReadyOutreachEmail({
     subject: input.candidate.subject,
     body: input.candidate.body,
@@ -8553,7 +8553,8 @@ async function polishOutreachDraft(input: {
     signatureBlock: input.signatureBlock
   });
   const fallbackReview = reviewOutreachEmail({ subject: fallback.subject, body: fallback.body, lead: input.lead, research: input.research });
-  if (fallbackReview.score >= best.qualityReview.score && fallbackReview.passed && !looksLikeLocalOutreachSkeleton(fallback.subject, fallback.body)) {
+  const fallbackBeatsWeakDraft = best.qualityReview.score < 80 && fallbackReview.score >= best.qualityReview.score;
+  if ((fallbackReview.passed || fallbackBeatsWeakDraft) && !looksLikeLocalOutreachSkeleton(fallback.subject, fallback.body)) {
     return {
       subject: fallback.subject,
       body: fallback.body,
@@ -8642,12 +8643,14 @@ function fallbackOutreachDraftFromBrief(lead: OutreachLead, brief: OutreachGener
   const openingReason = buyerReasonForSentence(reason);
   const implication = fallbackBuyerImplication(brief);
   const offer = fallbackMicroOfferPhrase(brief);
+  const uspHeadline = brief.selectedUsp.headline || "A small proof-backed comparison";
+  const valueBridge = brief.selectedUsp.buyerAngle || brief.selectedUsp.proof || "it gives your team a clearer comparison before sampling";
   return {
     subject: truncatePlain(subjectBase || `Backup options for ${company}`, 50),
     body: [
-      `${company} ${openingReason}; ${implication}.`,
-      `We can prepare a short ${offer} for your team to compare without a broad catalog.`,
-      "Would 2-3 relevant specs be worth a quick look?"
+      `I noticed ${company} ${openingReason}, so ${implication}.`,
+      `${uspHeadline} may be relevant because ${lowercaseFirstBusinessPhrase(valueBridge)}.`,
+      `Would a short ${offer} with 2-3 matched options be useful for a first check?`
     ].join("\n")
   };
 }

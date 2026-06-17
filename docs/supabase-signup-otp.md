@@ -7,13 +7,13 @@ In Supabase Dashboard:
 
 1. Open Authentication -> Email Templates.
 2. Edit the "Confirm signup" template.
-3. Use `{{ .Token }}` in the email body so the user receives a 6 digit code.
+3. Use `{{ .Token }}` in the email body so the user receives a numeric code.
 4. Do not make the primary action a `{{ .ConfirmationURL }}` link.
 
 Suggested subject:
 
 ```text
-{{ .Token }} is your Hermills verification code
+Hermills 邮箱验证码
 ```
 
 Suggested body:

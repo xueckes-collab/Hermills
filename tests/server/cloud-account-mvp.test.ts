@@ -69,7 +69,7 @@ describe("Hermills cloud account MVP", () => {
     expect(calls.some((call) => call.url.includes("/rest/v1/event_logs"))).toBe(true);
   });
 
-  it("verifies signup with a 6 digit email code inside Hermills", async () => {
+  it("verifies signup with the numeric email code inside Hermills", async () => {
     const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
     const service = new HermillsCloudService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
@@ -88,7 +88,7 @@ describe("Hermills cloud account MVP", () => {
 
     const status = await service.verifySignupCode({
       email: "buyer@example.com",
-      token: "123456"
+      token: "12345678"
     });
 
     expect(status.authenticated).toBe(true);
@@ -100,7 +100,7 @@ describe("Hermills cloud account MVP", () => {
     const verify = calls.find((call) => call.url.endsWith("/auth/v1/verify"));
     expect(verify?.body).toEqual({
       email: "buyer@example.com",
-      token: "123456",
+      token: "12345678",
       type: "email"
     });
   });

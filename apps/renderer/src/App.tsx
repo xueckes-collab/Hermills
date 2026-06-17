@@ -332,6 +332,9 @@ const featureOptions: Array<{ id: OnboardingFeatureId; icon: LucideIcon }> = [
 ]
 
 const defaultOnboardingFeatures: OnboardingFeatureId[] = ['chat', 'files', 'memory', 'assistants']
+const cloudAutoSyncDelayMs = 8_000
+const cloudAutoSyncIntervalMs = 2 * 60_000
+const cloudAutoSyncMinGapMs = 20_000
 
 const fallbackOnboarding: OnboardingState = {
   completed: false,
@@ -553,6 +556,10 @@ export default function App() {
   const [advancedPanel, setAdvancedPanel] = useState<AdvancedPanel>('setup')
   const [uiMode, setUiMode] = useState<UiModeId>(() => (['simple', 'expert'] as UiModeId[])[0])
   const cloudAutoSyncedRef = useRef(false)
+  const cloudAutoSyncTimerRef = useRef<number | undefined>(undefined)
+  const cloudAutoSyncInFlightRef = useRef(false)
+  const cloudAutoSyncFingerprintRef = useRef('')
+  const cloudAutoSyncAttemptedAtRef = useRef(0)
   const appState = useEndpoint(api.appState, fallback.appState)
   const runtime = useEndpoint(api.runtimeStatus, fallback.runtime)
   const localDeploymentComplete = !appState.data.shouldShowFirstDeploy
@@ -574,6 +581,24 @@ export default function App() {
   const outreachLeads = useEndpoint(api.outreachLeads, fallback.outreachLeads, chatEnabled)
   const outreachCampaigns = useEndpoint(api.outreachCampaigns, fallback.outreachCampaigns, chatEnabled)
   const outreachSenders = useEndpoint(api.outreachSenderAccounts, fallback.outreachSenderAccounts, chatEnabled)
+  const cloudSyncFingerprint = useMemo(() => JSON.stringify({
+    companyProfile: companyProfile.data,
+    leads: outreachLeads.data.map((lead) => ({
+      id: lead.id,
+      status: lead.status,
+      currentState: lead.currentState,
+      replyStatus: lead.replyStatus,
+      updatedAt: lead.updatedAt,
+      email: lead.email,
+      website: lead.website
+    })),
+    campaigns: outreachCampaigns.data.map((campaign) => ({
+      id: campaign.id,
+      status: campaign.status,
+      updatedAt: campaign.updatedAt,
+      stats: campaign.stats
+    }))
+  }), [companyProfile.data, outreachLeads.data, outreachCampaigns.data])
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
@@ -589,17 +614,77 @@ export default function App() {
   useEffect(() => {
     if (!chatEnabled || !cloudStatus.data.authenticated) {
       cloudAutoSyncedRef.current = false
+      cloudAutoSyncFingerprintRef.current = ''
+      if (cloudAutoSyncTimerRef.current) {
+        window.clearTimeout(cloudAutoSyncTimerRef.current)
+        cloudAutoSyncTimerRef.current = undefined
+      }
       return
     }
-    if (cloudAutoSyncedRef.current) return
-    cloudAutoSyncedRef.current = true
-    void api.cloudSync().then(cloudStatus.setData).catch((error) => {
-      cloudStatus.setData({
-        ...cloudStatus.data,
-        lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+    let disposed = false
+    const runCloudSync = async (force = false) => {
+      const now = Date.now()
+      if (!force && now - cloudAutoSyncAttemptedAtRef.current < cloudAutoSyncMinGapMs) return
+      if (cloudAutoSyncInFlightRef.current) return
+      cloudAutoSyncAttemptedAtRef.current = now
+      cloudAutoSyncInFlightRef.current = true
+      try {
+        const next = await api.cloudSync(force)
+        if (disposed) return
+        cloudAutoSyncFingerprintRef.current = cloudSyncFingerprint
+        cloudStatus.setData(next)
+      } catch (error) {
+        if (disposed) return
+        cloudStatus.setData((current) => ({
+          ...current,
+          lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+        }))
+      } finally {
+        cloudAutoSyncInFlightRef.current = false
+      }
+    }
+
+    if (!cloudAutoSyncedRef.current) {
+      cloudAutoSyncedRef.current = true
+      void runCloudSync(true)
+      return () => {
+        disposed = true
+      }
+    }
+
+    if (cloudAutoSyncFingerprintRef.current !== cloudSyncFingerprint) {
+      if (cloudAutoSyncTimerRef.current) window.clearTimeout(cloudAutoSyncTimerRef.current)
+      cloudAutoSyncTimerRef.current = window.setTimeout(() => {
+        cloudAutoSyncTimerRef.current = undefined
+        void runCloudSync(false)
+      }, cloudAutoSyncDelayMs)
+    }
+
+    return () => {
+      disposed = true
+    }
+  }, [chatEnabled, cloudStatus.data.authenticated, cloudSyncFingerprint, copy])
+
+  useEffect(() => {
+    if (!chatEnabled || !cloudStatus.data.authenticated) return
+    const interval = window.setInterval(() => {
+      if (cloudAutoSyncInFlightRef.current) return
+      cloudAutoSyncInFlightRef.current = true
+      cloudAutoSyncAttemptedAtRef.current = Date.now()
+      void api.cloudSync(false).then((next) => {
+        cloudAutoSyncFingerprintRef.current = cloudSyncFingerprint
+        cloudStatus.setData(next)
+      }).catch((error) => {
+        cloudStatus.setData((current) => ({
+          ...current,
+          lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+        }))
+      }).finally(() => {
+        cloudAutoSyncInFlightRef.current = false
       })
-    })
-  }, [chatEnabled, cloudStatus.data.authenticated])
+    }, cloudAutoSyncIntervalMs)
+    return () => window.clearInterval(interval)
+  }, [chatEnabled, cloudStatus.data.authenticated, cloudSyncFingerprint, copy])
 
   async function refreshAfterDeploy() {
     runtime.setData(await api.runtimeStatus())
@@ -803,8 +888,8 @@ function CloudLoginPage({
         setError('先填写邮箱。')
         return
       }
-      if (!/^\d{6}$/.test(token)) {
-        setError('验证码需要是 6 位数字。')
+      if (!/^\d{6,8}$/.test(token)) {
+        setError('请输入邮箱里的完整数字验证码。')
         return
       }
       setBusy(mode)
@@ -849,7 +934,7 @@ function CloudLoginPage({
         setSignupPendingEmail(email.trim())
         setSignupCode('')
         setMode('verifySignup')
-        setNotice('账号已创建。请打开邮箱，复制 6 位验证码，在这里输入后就能登录。')
+        setNotice('账号已创建。请打开邮箱，复制数字验证码，在这里输入后就能登录。')
       }
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -870,7 +955,7 @@ function CloudLoginPage({
       await api.cloudResendSignupConfirmation(targetEmail)
       setSignupPendingEmail(targetEmail)
       setMode('verifySignup')
-      setNotice('验证码已重新发送。请打开邮箱复制 6 位验证码，不需要点击网页链接。')
+      setNotice('验证码已重新发送。请打开邮箱复制数字验证码，不需要点击网页链接。')
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -910,7 +995,7 @@ function CloudLoginPage({
         <div>
           <p className="cloud-auth-eyebrow">账号登录</p>
           <h1>{mode === 'signup' ? '创建 Hermills 账号' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
-          <p>{mode === 'verifySignup' ? '邮箱里会有 6 位数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
+          <p>{mode === 'verifySignup' ? '邮箱里会有一串数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
         </div>
         {serviceError ? <div className="letter-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
         {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
@@ -930,8 +1015,8 @@ function CloudLoginPage({
         </label>
         {mode === 'verifySignup' ? (
           <label>
-            <span>6 位验证码</span>
-            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="输入邮箱里的 6 位数字" maxLength={6} required />
+            <span>邮箱验证码</span>
+            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="输入邮箱里的数字验证码" maxLength={8} required />
           </label>
         ) : (
           <label>
@@ -4130,7 +4215,7 @@ function DevelopmentLetterPage({
   const cloudSidebarStatus = cloudStatus.lastSyncError
     ? { className: 'warning', label: '云端同步失败' }
     : cloudStatus.authenticated
-      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '学习规则已更新' : cloudStatus.lastSyncAt ? '云端数据已同步' : '云端大脑已连接' }
+      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '自动学习已更新' : cloudStatus.lastSyncAt ? '自动学习同步中' : '云端大脑已连接' }
       : cloudStatus.configured
         ? { className: 'warning', label: '云端大脑待登录' }
         : { className: 'muted', label: '云端大脑未启用' }
@@ -4176,7 +4261,7 @@ function DevelopmentLetterPage({
           <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
           {cloudStatus.authenticated ? (
             <button type="button" onClick={syncCloudNow} disabled={busy === 'cloudSync'}>
-              <RefreshCw size={15} /> {busy === 'cloudSync' ? '学习同步中' : '同步学习数据'}
+              <RefreshCw size={15} /> {busy === 'cloudSync' ? '同步中' : '立即同步'}
             </button>
           ) : null}
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
