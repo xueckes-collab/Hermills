@@ -3,6 +3,7 @@ dist/
 release/
 coverage/
 tmp/
+supabase/.temp/
 build/icon.ico
 build/hermills-cloud.json
 build/hermills-engines/
