@@ -69,6 +69,42 @@ describe("Hermills cloud account MVP", () => {
     expect(calls.some((call) => call.url.includes("/rest/v1/event_logs"))).toBe(true);
   });
 
+  it("verifies signup with a 6 digit email code inside Hermills", async () => {
+    const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
+    const service = new HermillsCloudService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
+      env: cloudEnv(),
+      fetchImpl: mockSupabase(calls, {
+        account: {
+          user_id: "user-1",
+          email: "buyer@example.com",
+          display_name: "Eckes",
+          nickname: "Eckes",
+          status: "active",
+          email_verified: true
+        }
+      })
+    });
+
+    const status = await service.verifySignupCode({
+      email: "buyer@example.com",
+      token: "123456"
+    });
+
+    expect(status.authenticated).toBe(true);
+    expect(status.account).toMatchObject({
+      userId: "user-1",
+      status: "active",
+      emailVerified: true
+    });
+    const verify = calls.find((call) => call.url.endsWith("/auth/v1/verify"));
+    expect(verify?.body).toEqual({
+      email: "buyer@example.com",
+      token: "123456",
+      type: "email"
+    });
+  });
+
   it("blocks disabled accounts after password login", async () => {
     const service = new HermillsCloudService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
@@ -114,7 +150,7 @@ function mockSupabase(
     const body = parseBody(init?.body);
     calls.push({ url, method, body });
 
-    if (url.endsWith("/auth/v1/signup") || url.endsWith("/auth/v1/token?grant_type=password")) {
+    if (url.endsWith("/auth/v1/signup") || url.endsWith("/auth/v1/token?grant_type=password") || url.endsWith("/auth/v1/verify")) {
       return json({
         access_token: "access-token",
         refresh_token: "refresh-token",

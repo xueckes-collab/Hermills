@@ -780,12 +780,13 @@ function CloudLoginPage({
   setStatus: (status: CloudStatus) => void
 }) {
   const copy = getUiCopy('zh-CN')
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<'login' | 'signup' | 'verifySignup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
+  const [signupCode, setSignupCode] = useState('')
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -795,6 +796,29 @@ function CloudLoginPage({
     event.preventDefault()
     setError('')
     setNotice('')
+    if (mode === 'verifySignup') {
+      const targetEmail = signupPendingEmail || email.trim()
+      const token = signupCode.trim()
+      if (!targetEmail) {
+        setError('先填写邮箱。')
+        return
+      }
+      if (!/^\d{6}$/.test(token)) {
+        setError('验证码需要是 6 位数字。')
+        return
+      }
+      setBusy(mode)
+      try {
+        const next = await api.cloudVerifySignupCode({ email: targetEmail, token })
+        setStatus(next)
+        if (!next.authenticated) setError('验证码已提交，但还没有登录成功。请重新获取验证码再试一次。')
+      } catch (err) {
+        setError(humanizeErrorMessage(err, copy, 'message'))
+      } finally {
+        setBusy('')
+      }
+      return
+    }
     if (mode === 'signup') {
       if (password.length < 8) {
         setError('注册密码至少需要 8 位。')
@@ -823,8 +847,9 @@ function CloudLoginPage({
       setStatus(next)
       if (!next.authenticated && mode === 'signup') {
         setSignupPendingEmail(email.trim())
-        setMode('login')
-        setNotice('账号已创建，但还不能进入。请先打开邮箱里的验证邮件，点完成验证后，再回来点击登录。')
+        setSignupCode('')
+        setMode('verifySignup')
+        setNotice('账号已创建。请打开邮箱，复制 6 位验证码，在这里输入后就能登录。')
       }
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -844,7 +869,8 @@ function CloudLoginPage({
     try {
       await api.cloudResendSignupConfirmation(targetEmail)
       setSignupPendingEmail(targetEmail)
-      setNotice('验证邮件已重新发送。请打开邮箱点验证链接，然后回来登录。')
+      setMode('verifySignup')
+      setNotice('验证码已重新发送。请打开邮箱复制 6 位验证码，不需要点击网页链接。')
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -883,8 +909,8 @@ function CloudLoginPage({
         <div className="cloud-auth-icon"><KeyRound size={22} /></div>
         <div>
           <p className="cloud-auth-eyebrow">账号登录</p>
-          <h1>{mode === 'signup' ? '创建 Hermills 账号' : '登录 Hermills'}</h1>
-          <p>登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。</p>
+          <h1>{mode === 'signup' ? '创建 Hermills 账号' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
+          <p>{mode === 'verifySignup' ? '邮箱里会有 6 位数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
         </div>
         {serviceError ? <div className="letter-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
         {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
@@ -897,12 +923,22 @@ function CloudLoginPage({
         ) : null}
         <label>
           <span>邮箱</span>
-          <input autoFocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" required />
+          <input autoFocus type="email" value={signupPendingEmail || email} onChange={(event) => {
+            setEmail(event.target.value)
+            if (mode !== 'verifySignup') setSignupPendingEmail('')
+          }} placeholder="you@company.com" readOnly={mode === 'verifySignup' && Boolean(signupPendingEmail)} required />
         </label>
-        <label>
-          <span>密码</span>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === 'signup' ? '至少 8 位密码' : '输入密码'} minLength={mode === 'signup' ? 8 : 6} required />
-        </label>
+        {mode === 'verifySignup' ? (
+          <label>
+            <span>6 位验证码</span>
+            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="输入邮箱里的 6 位数字" maxLength={6} required />
+          </label>
+        ) : (
+          <label>
+            <span>密码</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === 'signup' ? '至少 8 位密码' : '输入密码'} minLength={mode === 'signup' ? 8 : 6} required />
+          </label>
+        )}
         {mode === 'signup' ? (
           <>
             <label>
@@ -916,21 +952,22 @@ function CloudLoginPage({
           </>
         ) : null}
         <button className="letter-primary" type="submit" disabled={Boolean(busy)}>
-          {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号' : '登录'}
+          {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号并发送验证码' : mode === 'verifySignup' ? '验证并登录' : '登录'}
           <ChevronRight size={16} />
         </button>
         <div className="cloud-auth-actions">
           <button type="button" onClick={() => {
-            setMode(mode === 'signup' ? 'login' : 'signup')
+            setMode(mode === 'signup' || mode === 'verifySignup' ? 'login' : 'signup')
             setNotice('')
             setError('')
             setConfirmPassword('')
+            setSignupCode('')
           }}>
-            {mode === 'signup' ? '已有账号，去登录' : '没有账号，去注册'}
+            {mode === 'signup' || mode === 'verifySignup' ? '已有账号，去登录' : '没有账号，去注册'}
           </button>
-          {signupPendingEmail ? (
+          {signupPendingEmail || mode === 'verifySignup' ? (
             <button type="button" onClick={resendSignupConfirmation} disabled={busy === 'resendSignup'}>
-              {busy === 'resendSignup' ? '重发中...' : '重发验证邮件'}
+              {busy === 'resendSignup' ? '重发中...' : '重发验证码'}
             </button>
           ) : null}
           <button type="button" onClick={resetPassword} disabled={busy === 'reset'}>

@@ -137,6 +137,7 @@ import {
   CloudSignupBodySchema,
   CloudSummarizeLearningRulesBodySchema,
   CloudSyncBodySchema,
+  CloudVerifySignupCodeBodySchema,
   HermillsCloudService
 } from "./cloud.js";
 
@@ -807,6 +808,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/auth/accept-terms", async () => cloud.acceptTerms());
   server.post("/api/auth/password-reset", async (request) => cloud.resetPassword(CloudEmailBodySchema.parse(request.body ?? {}).email));
   server.post("/api/auth/resend-signup-confirmation", async (request) => cloud.resendSignupConfirmation(CloudEmailBodySchema.parse(request.body ?? {}).email));
+  server.post("/api/auth/verify-signup-code", async (request) => cloud.verifySignupCode(CloudVerifySignupCodeBodySchema.parse(request.body ?? {})));
   server.get("/api/admin/users", async () => cloud.adminUsers());
   server.patch("/api/admin/users/:id/status", async (request: FastifyRequest<{ Params: { id: string } }>) => {
     const params = z.object({ id: z.string().min(1) }).parse(request.params ?? {});

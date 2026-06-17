@@ -1412,6 +1412,12 @@ export const api = {
       body: JSON.stringify({ email })
     });
   },
+  async cloudVerifySignupCode(input: { email: string; token: string }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/verify-signup-code", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
   async adminUsers(): Promise<CloudAccountProfile[]> {
     return request<CloudAccountProfile[]>("/api/admin/users");
   },

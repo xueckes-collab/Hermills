@@ -28,6 +28,11 @@ export const CloudEmailBodySchema = z.object({
   email: z.string().trim().email().max(320)
 }).strict();
 
+export const CloudVerifySignupCodeBodySchema = z.object({
+  email: z.string().trim().email().max(320),
+  token: z.string().trim().regex(/^\d{6}$/, "验证码必须是 6 位数字")
+}).strict();
+
 export const CloudAdminUserStatusBodySchema = z.object({
   status: z.enum(["active", "disabled"])
 }).strict();
@@ -349,6 +354,33 @@ export class HermillsCloudService {
       body: { type: "signup", email }
     });
     return { ok: true };
+  }
+
+  async verifySignupCode(input: z.infer<typeof CloudVerifySignupCodeBodySchema>): Promise<CloudStatus> {
+    this.assertConfigured();
+    const response = await this.authRequest("/auth/v1/verify", {
+      method: "POST",
+      body: {
+        email: input.email,
+        token: input.token,
+        type: "email"
+      }
+    });
+    await this.saveSession(response);
+    const session = await this.requireSession();
+    const now = new Date().toISOString();
+    const account = await this.upsertAccountFromSession(session, {
+      email_verified: true,
+      last_login_at: now,
+      last_seen_at: now
+    }).catch(() => undefined);
+    if (account?.status === "disabled") {
+      await this.authStore.clear();
+      throw new CloudError("这个账号已被管理员停用。", "CLOUD_ACCOUNT_DISABLED", 403);
+    }
+    await this.logAuthEvent(session, "user_email_code_verified", { method: "signup_otp" }).catch(() => undefined);
+    await this.logAuthEvent(session, "user_logged_in", { method: "signup_otp" }).catch(() => undefined);
+    return this.status();
   }
 
   async me(): Promise<CloudStatus> {
