@@ -447,8 +447,9 @@ export class HermillsCloudService {
     const learningEvents = snapshot.drafts
       .map((draft) => toLearningEventRow(snapshot.profileId, objectValue(draft)))
       .filter((row): row is Record<string, unknown> => Boolean(row));
-    await this.upsert("learning_events", learningEvents.map(withUser), session.accessToken, "user_id,event_key")
-      .catch(() => this.insert("learning_events", learningEvents.map(withUser), session.accessToken));
+    const learningEventRows = learningEvents.map(withUser);
+    await this.upsert("learning_events", learningEventRows, session.accessToken, "user_id,event_key")
+      .catch((error) => this.insertLearningEventsCompat(learningEventRows, session.accessToken, error));
     await this.upsert("hermills_redacted_events", learningEvents.map((row) => withUser(toRedactedEventRow(snapshot.profileId, row))), session.accessToken, "user_id,source_type,source_local_id,event_type")
       .catch(() => undefined);
     await this.insert("event_logs", [withUser({
@@ -472,6 +473,14 @@ export class HermillsCloudService {
       forceSync: false
     }).catch(() => undefined);
     return this.status();
+  }
+
+  private async insertLearningEventsCompat(rows: Array<Record<string, unknown>>, token: string, error: unknown): Promise<void> {
+    if (isMissingSupabaseColumn(error, "event_key") || isMissingSupabaseColumn(error, "source_local_id") || isMissingSupabaseColumn(error, "source_type")) {
+      await this.insert("learning_events", rows.map(withoutModernLearningEventColumns), token);
+      return;
+    }
+    await this.insert("learning_events", rows, token);
   }
 
   async summarizeLearningRules(input: z.infer<typeof CloudSummarizeLearningRulesBodySchema>): Promise<CloudLearningRuleSummary> {
@@ -1151,6 +1160,16 @@ function normalizeLearningEventForRules(row: Record<string, unknown>): Normalize
     replied: booleanValue(row.replied) || booleanValue(payload.replied),
     bounced: booleanValue(row.bounced) || booleanValue(payload.bounced)
   };
+}
+
+function withoutModernLearningEventColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const { event_key: _eventKey, source_type: _sourceType, source_local_id: _sourceLocalId, ...rest } = row;
+  return rest;
+}
+
+function isMissingSupabaseColumn(error: unknown, column: string): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("PGRST204") && message.includes(`'${column}' column`);
 }
 
 function buildLearningRuleCandidates(events: NormalizedLearningEvent[], windowDays: number, minEvidence: number): CloudLearningRuleCandidate[] {
