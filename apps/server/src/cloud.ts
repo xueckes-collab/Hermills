@@ -7,6 +7,7 @@ import { getDataHome, redactSecrets } from "@hermills/core";
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const URL_RE = /\bhttps?:\/\/[^\s"'<>]+/gi;
+const BARE_DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|co|io|cn|de|fr|es|it|nl|pl|us|uk|ca|au|jp|kr|in|br|mx|ru|tr|ae|sa|za|biz|info|shop|store)\b/gi;
 const SECRET_RE = /\b(?:sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|[A-Za-z0-9_-]{32,})\b/g;
 
 export const CloudAuthBodySchema = z.object({
@@ -21,6 +22,14 @@ export const CloudEmailBodySchema = z.object({
 
 export const CloudSyncBodySchema = z.object({
   force: z.boolean().default(false)
+}).strict();
+
+export const CloudSummarizeLearningRulesBodySchema = z.object({
+  profileId: z.string().min(1).optional(),
+  windowDays: z.coerce.number().int().min(7).max(365).default(90),
+  minEvidence: z.coerce.number().int().min(3).max(500).default(5),
+  dryRun: z.boolean().default(false),
+  forceSync: z.boolean().default(true)
 }).strict();
 
 export type CloudUser = {
@@ -67,6 +76,7 @@ export type CloudStatus = {
   lastSyncAt?: string;
   syncQueued: number;
   learningPackVersion?: string;
+  learningRulesUpdatedAt?: string;
   message: string;
 };
 
@@ -75,6 +85,7 @@ type CloudSyncState = {
   lastSyncAt?: string;
   syncQueued: number;
   learningPackVersion?: string;
+  learningRulesUpdatedAt?: string;
   localToCloud: Record<string, string>;
 };
 
@@ -125,6 +136,40 @@ export type CloudSyncSnapshot = {
   feedback: Array<unknown>;
 };
 
+export type CloudLearningRuleCandidate = {
+  scope: "user" | "company" | "global_anonymous";
+  ruleType: string;
+  ruleKey: string;
+  condition: Record<string, unknown>;
+  recommendation: string;
+  confidence: number;
+  evidenceCount: number;
+  stats: {
+    sent: number;
+    replied: number;
+    bounced: number;
+    replyRate: number;
+    bounceRate: number;
+    baselineReplyRate: number;
+    lift: number;
+    windowDays: number;
+  };
+};
+
+export type CloudLearningRuleSummary = {
+  ok: true;
+  generatedAt: string;
+  scope: "user";
+  scanned: {
+    redactedEvents: number;
+    legacyEvents: number;
+  };
+  candidates: number;
+  upserted: number;
+  skipped: Array<{ reason: string; count: number }>;
+  rules: CloudLearningRuleCandidate[];
+};
+
 export class HermillsCloudService {
   private readonly authStore: CloudAuthStore;
   private readonly syncStore: CloudSyncStore;
@@ -156,6 +201,7 @@ export class HermillsCloudService {
         authenticated: false,
         syncQueued: sync.syncQueued,
         lastSyncAt: sync.lastSyncAt,
+        learningRulesUpdatedAt: sync.learningRulesUpdatedAt,
         message: "Hermills Cloud is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY before publishing."
       };
     }
@@ -169,6 +215,7 @@ export class HermillsCloudService {
       syncQueued: sync.syncQueued,
       lastSyncAt: sync.lastSyncAt,
       learningPackVersion: sync.learningPackVersion,
+      learningRulesUpdatedAt: sync.learningRulesUpdatedAt,
       message: session?.accessToken ? "Hermills Cloud is connected." : "Sign in to enable cloud memory and Learning Pack."
     };
   }
@@ -248,11 +295,14 @@ export class HermillsCloudService {
     const learningEvents = snapshot.drafts
       .map((draft) => toLearningEventRow(snapshot.profileId, objectValue(draft)))
       .filter((row): row is Record<string, unknown> => Boolean(row));
-    await this.insert("learning_events", learningEvents, session.accessToken);
-    await this.insert("event_logs", [{
+    await this.upsert("learning_events", learningEvents.map(withUser), session.accessToken, "user_id,event_key")
+      .catch(() => this.insert("learning_events", learningEvents.map(withUser), session.accessToken));
+    await this.upsert("hermills_redacted_events", learningEvents.map((row) => withUser(toRedactedEventRow(snapshot.profileId, row))), session.accessToken, "user_id,source_type,source_local_id,event_type")
+      .catch(() => undefined);
+    await this.insert("event_logs", [withUser({
       event_type: "cloud_sync",
       event_data: {
-        profileId: snapshot.profileId,
+        profileId: stableHash(`profile:${snapshot.profileId}`),
         leads: snapshot.leads.length,
         drafts: snapshot.drafts.length,
         workflows: snapshot.workflows.length,
@@ -260,9 +310,110 @@ export class HermillsCloudService {
         feedback: snapshot.feedback.length
       },
       created_at: now
-    }], session.accessToken);
+    })], session.accessToken);
     await this.syncStore.update({ lastSyncAt: now, syncQueued: 0 });
+    await this.summarizeLearningRules({
+      profileId: snapshot.profileId,
+      windowDays: 90,
+      minEvidence: 3,
+      dryRun: false,
+      forceSync: false
+    }).catch(() => undefined);
     return this.status();
+  }
+
+  async summarizeLearningRules(input: z.infer<typeof CloudSummarizeLearningRulesBodySchema>): Promise<CloudLearningRuleSummary> {
+    if (!this.isConfigured()) throw new CloudError("Hermills Cloud is not configured.", "CLOUD_NOT_CONFIGURED");
+    const session = await this.requireSession();
+    const generatedAt = new Date().toISOString();
+    const windowStart = new Date(Date.now() - input.windowDays * 24 * 60 * 60 * 1000).toISOString();
+    const profileKey = input.profileId ? stableHash(`profile:${input.profileId}`) : "";
+    const redactedRows = await this.select("hermills_redacted_events", session.accessToken, [
+      "select=*",
+      `recorded_at=gte.${encodeURIComponent(windowStart)}`,
+      "order=recorded_at.desc",
+      "limit=2000"
+    ].join("&")).catch(() => [] as Record<string, unknown>[]);
+    const legacyRows = redactedRows.length
+      ? []
+      : await this.select("learning_events", session.accessToken, [
+        "select=*",
+        `created_at=gte.${encodeURIComponent(windowStart)}`,
+        "order=created_at.desc",
+        "limit=2000"
+      ].join("&")).catch(() => [] as Record<string, unknown>[]);
+    const events = [...redactedRows, ...legacyRows]
+      .map(normalizeLearningEventForRules)
+      .filter((event) => !profileKey || !event.profileKey || event.profileKey === profileKey);
+    const rules = buildLearningRuleCandidates(events, input.windowDays, input.minEvidence);
+    let upserted = 0;
+    if (!input.dryRun && rules.length) {
+      await this.upsert("learning_rules", rules.map((rule) => ({
+        user_id: session.user.id,
+        scope: rule.scope,
+        rule_type: rule.ruleType,
+        rule_key: rule.ruleKey,
+        condition: rule.condition,
+        recommendation: rule.recommendation,
+        confidence: rule.confidence,
+        evidence_count: rule.evidenceCount,
+        stats: rule.stats,
+        updated_at: generatedAt
+      })), session.accessToken, "user_id,rule_key").catch(async () => {
+        await this.insert("learning_rules", rules.map((rule) => ({
+          user_id: session.user.id,
+          scope: rule.scope,
+          rule_type: rule.ruleType,
+          condition: rule.condition,
+          recommendation: rule.recommendation,
+          confidence: rule.confidence,
+          evidence_count: rule.evidenceCount
+        })), session.accessToken);
+      });
+      upserted = rules.length;
+      await this.upsert("hermills_rule_summaries", [{
+        user_id: session.user.id,
+        local_profile_id: profileKey,
+        scope: "user",
+        summary_type: "learning_rules",
+        summary_key: `rules:${profileKey || "all"}:${input.windowDays}`,
+        summary_text: rules.map((rule) => rule.recommendation).slice(0, 8).join("\n"),
+        summary_payload: { rules, windowDays: input.windowDays, minEvidence: input.minEvidence },
+        source_event_count: events.length,
+        confidence: average(rules.map((rule) => rule.confidence)),
+        evidence_count: rules.reduce((sum, rule) => sum + rule.evidenceCount, 0),
+        event_window_start: windowStart,
+        event_window_end: generatedAt,
+        status: "active",
+        generated_at: generatedAt,
+        updated_at: generatedAt
+      }], session.accessToken, "user_id,summary_key").catch(() => undefined);
+      const packHash = stableHash(JSON.stringify(rules));
+      await this.upsert("hermills_learning_pack_versions", [{
+        user_id: session.user.id,
+        local_profile_id: profileKey,
+        pack_version: `cloud-${generatedAt.slice(0, 10)}-${packHash.slice(0, 8)}`,
+        pack_hash: packHash,
+        source_event_count: events.length,
+        source_rule_ids: [],
+        source_rule_summary_ids: [],
+        rules_fingerprint: stableHash(rules.map((rule) => rule.ruleKey).join("|")),
+        pack_payload: { ruleCount: rules.length, windowDays: input.windowDays },
+        is_current: true,
+        generated_at: generatedAt
+      }], session.accessToken, "user_id,local_profile_id,pack_version").catch(() => undefined);
+    }
+    if (!input.dryRun) await this.syncStore.update({ learningRulesUpdatedAt: generatedAt });
+    return {
+      ok: true,
+      generatedAt,
+      scope: "user",
+      scanned: { redactedEvents: redactedRows.length, legacyEvents: legacyRows.length },
+      candidates: rules.length,
+      upserted,
+      skipped: events.length < input.minEvidence ? [{ reason: "not_enough_evidence", count: events.length }] : [],
+      rules
+    };
   }
 
   async learningPack(input: LearningPackInput): Promise<CloudLearningPack> {
@@ -470,6 +621,7 @@ const CloudSyncStateSchema = z.object({
   lastSyncAt: z.string().datetime().optional(),
   syncQueued: z.number().int().nonnegative().default(0),
   learningPackVersion: z.string().optional(),
+  learningRulesUpdatedAt: z.string().optional(),
   localToCloud: z.record(z.string()).default({})
 }).strict();
 
@@ -539,14 +691,14 @@ function defaultLearningPack(input: LearningPackInput): CloudLearningPack {
 
 function toSellerProfileRow(profileId: string, profile: Record<string, unknown>): Record<string, unknown> {
   return {
-    source_local_id: `seller:${profileId}`,
-    company_name: sanitizePrivateText(stringValue(profile.name)),
-    website: sanitizePrivateText(stringValue(profile.website)),
-    main_products: sanitizedStringArray(profile.mainProducts).join("\n"),
-    target_markets: sanitizedStringArray(profile.markets).join("\n"),
-    certifications: sanitizedStringArray(profile.certifications).join("\n"),
-    payment_terms: sanitizedStringArray(profile.paymentTerms).join("\n"),
-    shipping_terms: sanitizedStringArray(profile.shippingTerms).join("\n"),
+    source_local_id: `seller:${stableHash(profileId)}`,
+    company_name: pseudonym("seller-company", stringValue(profile.name) || profileId),
+    website: stringValue(profile.website) ? "[url]" : "",
+    main_products: listFeatureSummary(profile.mainProducts),
+    target_markets: listFeatureSummary(profile.markets),
+    certifications: listFeatureSummary(profile.certifications),
+    payment_terms: listFeatureSummary(profile.paymentTerms),
+    shipping_terms: listFeatureSummary(profile.shippingTerms),
     brand_tone: sanitizePrivateText(stringValue(profile.brandVoice)),
     updated_at: new Date().toISOString()
   };
@@ -554,9 +706,9 @@ function toSellerProfileRow(profileId: string, profile: Record<string, unknown>)
 
 function toCustomerRow(profileId: string, lead: Record<string, unknown>): Record<string, unknown> {
   return {
-    source_local_id: `lead:${stringValue(lead.id)}`,
-    company_name: sanitizePrivateText(stringValue(lead.companyName)),
-    website: sanitizePrivateText(stringValue(lead.website)),
+    source_local_id: `lead:${stableHash(`${profileId}:${stringValue(lead.id)}`)}`,
+    company_name: pseudonym("customer-company", stringValue(lead.companyName) || stringValue(lead.id)),
+    website: stringValue(lead.website) ? "[url]" : "",
     country: sanitizePrivateText(stringValue(lead.country)),
     customer_type: sanitizePrivateText(nestedString(lead.leadFitScore, "customerType")),
     industry: sanitizePrivateText(stringValue(lead.industry)),
@@ -565,16 +717,18 @@ function toCustomerRow(profileId: string, lead: Record<string, unknown>): Record
     fit_score: sanitizePrivateText(nestedString(lead.leadFitScore, "score")),
     recommended_angle: sanitizePrivateText(nestedString(lead.leadFitScore, "primaryAngle")),
     updated_at: new Date().toISOString(),
-    local_profile_id: profileId
+    local_profile_id: stableHash(`profile:${profileId}`)
   };
 }
 
 function toEmailGenerationRow(profileId: string, draft: Record<string, unknown>): Record<string, unknown> {
+  const subject = stringValue(draft.subject);
+  const body = stringValue(draft.body);
   return {
-    source_local_id: `draft:${stringValue(draft.id)}`,
-    local_customer_id: stringValue(draft.leadId),
-    subject: sanitizePrivateText(stringValue(draft.subject)),
-    email_body: sanitizePrivateText(stringValue(draft.body)).slice(0, 20000),
+    source_local_id: `draft:${stableHash(`${profileId}:${stringValue(draft.id)}`)}`,
+    local_customer_id: stableHash(`${profileId}:${stringValue(draft.leadId)}`),
+    subject: patternizeSubject(subject),
+    email_body: JSON.stringify(summarizeEmailForCloudLearning(subject, body)),
     angle: sanitizePrivateText(nestedString(draft.strategyMatch, "selectedUsp") || nestedString(draft.leadFitScore, "primaryAngle")),
     cta_type: sanitizePrivateText(nestedString(draft.valueMatch, "cta")),
     customer_type: sanitizePrivateText(nestedString(draft.learningSignal, "customerType")),
@@ -583,7 +737,7 @@ function toEmailGenerationRow(profileId: string, draft: Record<string, unknown>)
     risk_score: riskScore(draft.sendRiskReview),
     prompt_version: stringValue(draft.writingEngine),
     model_name: stringValue(draft.modelUsed) || stringValue(draft.model),
-    local_profile_id: profileId,
+    local_profile_id: stableHash(`profile:${profileId}`),
     created_at: stringValue(draft.createdAt) || new Date().toISOString()
   };
 }
@@ -592,8 +746,12 @@ function toLearningEventRow(profileId: string, draft: Record<string, unknown>): 
   const signal = objectValue(draft.learningSignal);
   const subject = stringValue(signal.subject) || stringValue(draft.subject);
   if (!subject) return undefined;
+  const sourceLocalId = `draft:${stableHash(`${profileId}:${stringValue(draft.id)}`)}`;
   return {
-    local_profile_id: profileId,
+    event_key: `learning:${sourceLocalId}`,
+    source_type: "draft",
+    source_local_id: sourceLocalId,
+    local_profile_id: stableHash(`profile:${profileId}`),
     industry: stringValue(signal.customerIndustry),
     customer_type: stringValue(signal.customerType) || nestedString(draft.leadFitScore, "customerType"),
     country_region: stringValue(signal.customerCountry),
@@ -611,6 +769,47 @@ function toLearningEventRow(profileId: string, draft: Record<string, unknown>): 
   };
 }
 
+function toRedactedEventRow(profileId: string, event: Record<string, unknown>): Record<string, unknown> {
+  const sourceLocalId = stringValue(event.source_local_id) || stringValue(event.event_key) || stableHash(JSON.stringify(event));
+  return {
+    local_profile_id: stableHash(`profile:${profileId}`),
+    source_type: stringValue(event.source_type) || "draft",
+    source_local_id: sourceLocalId,
+    event_type: "learning_signal",
+    schema_version: 1,
+    redaction_version: "hermills-cloud-v2",
+    redaction_status: "aggregate_only",
+    payload_hash: stableHash(JSON.stringify(event)),
+    redacted_payload: {
+      subjectPattern: stringValue(event.subject_pattern),
+      ctaType: stringValue(event.cta_type),
+      developmentAngle: stringValue(event.development_angle),
+      emailWordCount: Math.round(numberValue(event.email_word_count)),
+      qualityScore: numberValue(event.quality_score),
+      sent: Boolean(event.sent),
+      replied: Boolean(event.replied),
+      bounced: Boolean(event.bounced)
+    },
+    pii_detected: { rawTextUploaded: false },
+    customer_type: sanitizePrivateText(stringValue(event.customer_type)),
+    industry: sanitizePrivateText(stringValue(event.industry)),
+    country_region: sanitizePrivateText(stringValue(event.country_region)),
+    development_angle: sanitizePrivateText(stringValue(event.development_angle)),
+    subject_pattern: patternizeSubject(stringValue(event.subject_pattern)),
+    cta_type: sanitizePrivateText(stringValue(event.cta_type)),
+    first_line_type: sanitizePrivateText(stringValue(event.first_line_type)),
+    value_point_pattern: sanitizePrivateText(stringValue(event.value_point_pattern)),
+    email_word_count: Math.round(numberValue(event.email_word_count)),
+    quality_score: numberValue(event.quality_score),
+    sent: Boolean(event.sent),
+    replied: Boolean(event.replied),
+    bounced: Boolean(event.bounced),
+    reply_type: sanitizePrivateText(stringValue(event.reply_type)),
+    occurred_at: stringValue(event.created_at) || new Date().toISOString(),
+    recorded_at: new Date().toISOString()
+  };
+}
+
 function patternizeSubject(value: string): string {
   return sanitizePrivateText(value)
     .replace(/\b\d+(?:[.,]\d+)?\b/g, "{number}")
@@ -622,8 +821,164 @@ function sanitizePrivateText(value: string): string {
   return redactSecrets(value)
     .replace(EMAIL_RE, "[email]")
     .replace(URL_RE, "[url]")
+    .replace(BARE_DOMAIN_RE, "[domain]")
     .replace(SECRET_RE, "[secret]")
     .trim();
+}
+
+function summarizeEmailForCloudLearning(subject: string, body: string): Record<string, unknown> {
+  const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return {
+    redaction: "body_not_uploaded",
+    subjectPattern: patternizeSubject(subject),
+    wordCount: wordCount(body),
+    lineCount: lines.length,
+    hasQuestion: /\?/.test(body),
+    hasSignature: /\b(?:regards|best|sincerely|thanks|thank you)\b/i.test(body),
+    firstLineType: classifyFirstLine(lines[0] ?? "")
+  };
+}
+
+function classifyFirstLine(value: string): string {
+  const text = value.toLowerCase();
+  if (!text) return "empty";
+  if (text.includes("i noticed") || text.includes("saw that") || text.includes("noticed")) return "customer_observation";
+  if (text.includes("hope")) return "generic_greeting";
+  if (text.includes("congrats") || text.includes("congratulations")) return "trigger_event";
+  return "direct";
+}
+
+function wordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function listFeatureSummary(value: unknown): string {
+  const items = stringArray(value);
+  return items.length ? `item_count:${items.length}` : "";
+}
+
+function pseudonym(label: string, value: string): string {
+  return value ? `[${label}:${stableHash(value).slice(0, 10)}]` : "";
+}
+
+function stableHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+type NormalizedLearningEvent = {
+  profileKey: string;
+  customerType: string;
+  industry: string;
+  countryRegion: string;
+  developmentAngle: string;
+  subjectPattern: string;
+  ctaType: string;
+  emailWordCount: number;
+  qualityScore: number;
+  sent: boolean;
+  replied: boolean;
+  bounced: boolean;
+};
+
+function normalizeLearningEventForRules(row: Record<string, unknown>): NormalizedLearningEvent {
+  const payload = objectValue(row.redacted_payload);
+  return {
+    profileKey: stringValue(row.local_profile_id),
+    customerType: sanitizePrivateText(stringValue(row.customer_type)),
+    industry: sanitizePrivateText(stringValue(row.industry)),
+    countryRegion: sanitizePrivateText(stringValue(row.country_region)),
+    developmentAngle: sanitizePrivateText(stringValue(row.development_angle)),
+    subjectPattern: patternizeSubject(stringValue(row.subject_pattern) || stringValue(payload.subjectPattern)),
+    ctaType: sanitizePrivateText(stringValue(row.cta_type) || stringValue(payload.ctaType)),
+    emailWordCount: Math.round(numberValue(row.email_word_count) || numberValue(payload.emailWordCount)),
+    qualityScore: numberValue(row.quality_score) || numberValue(payload.qualityScore),
+    sent: booleanValue(row.sent) || booleanValue(payload.sent),
+    replied: booleanValue(row.replied) || booleanValue(payload.replied),
+    bounced: booleanValue(row.bounced) || booleanValue(payload.bounced)
+  };
+}
+
+function buildLearningRuleCandidates(events: NormalizedLearningEvent[], windowDays: number, minEvidence: number): CloudLearningRuleCandidate[] {
+  const sentEvents = events.filter((event) => event.sent || event.replied || event.bounced);
+  const baseline = rate(sentEvents.filter((event) => event.replied).length, sentEvents.length);
+  const groups = new Map<string, NormalizedLearningEvent[]>();
+  for (const event of sentEvents) {
+    const customerType = event.customerType || "unknown";
+    const industry = event.industry || "unknown";
+    for (const dimension of ["cta", "angle", "length"] as const) {
+      const value = dimension === "cta"
+        ? event.ctaType
+        : dimension === "angle"
+          ? event.developmentAngle
+          : wordBucket(event.emailWordCount);
+      if (!value) continue;
+      const key = `${dimension}|${customerType}|${industry}|${value}`;
+      groups.set(key, [...(groups.get(key) ?? []), event]);
+    }
+  }
+  const rules: CloudLearningRuleCandidate[] = [];
+  for (const [key, group] of groups) {
+    if (group.length < minEvidence) continue;
+    const [dimension, customerType, industry, value] = key.split("|");
+    const sent = group.length;
+    const replied = group.filter((event) => event.replied).length;
+    const bounced = group.filter((event) => event.bounced).length;
+    const replyRate = rate(replied, sent);
+    const bounceRate = rate(bounced, sent);
+    const lift = replyRate - baseline;
+    const quality = average(group.map((event) => event.qualityScore).filter((score) => score > 0)) / 100;
+    if (lift < 0.03 && replyRate < 0.08 && quality < 0.72) continue;
+    const ruleType = dimension === "cta" ? "cta_preference" : dimension === "angle" ? "angle_preference" : "email_length";
+    const condition = {
+      channel: "outreach",
+      customerType,
+      industry,
+      ...(dimension === "cta" ? { ctaType: value } : {}),
+      ...(dimension === "angle" ? { developmentAngle: value } : {}),
+      ...(dimension === "length" ? { emailLength: value } : {})
+    };
+    rules.push({
+      scope: "user",
+      ruleType,
+      ruleKey: stableHash(`${ruleType}:${JSON.stringify(condition)}`).slice(0, 32),
+      condition,
+      recommendation: recommendationForRule(ruleType, customerType, industry, value, replyRate, lift),
+      confidence: Math.max(0.1, Math.min(0.95, 0.45 + lift * 2 + Math.min(0.25, group.length / 100) + quality * 0.15 - bounceRate * 0.4)),
+      evidenceCount: sent,
+      stats: { sent, replied, bounced, replyRate, bounceRate, baselineReplyRate: baseline, lift, windowDays }
+    });
+  }
+  return rules.sort((a, b) => b.confidence - a.confidence).slice(0, 24);
+}
+
+function recommendationForRule(ruleType: string, customerType: string, industry: string, value: string, replyRate: number, lift: number): string {
+  const audience = `${customerType === "unknown" ? "this customer type" : customerType}${industry === "unknown" ? "" : ` in ${industry}`}`;
+  const percent = Math.round(replyRate * 100);
+  const liftText = lift > 0 ? `, about ${Math.round(lift * 100)} points above baseline` : "";
+  if (ruleType === "cta_preference") return `For ${audience}, prefer CTA style "${value}" because it has shown a ${percent}% reply rate${liftText}.`;
+  if (ruleType === "angle_preference") return `For ${audience}, lead with development angle "${value}" when evidence supports it; it has shown a ${percent}% reply rate${liftText}.`;
+  return `For ${audience}, keep the first email in the "${value}" length range; it has shown a ${percent}% reply rate${liftText}.`;
+}
+
+function wordBucket(value: number): string {
+  if (!value) return "";
+  if (value <= 70) return "very_short";
+  if (value <= 120) return "short";
+  if (value <= 180) return "medium";
+  return "long";
+}
+
+function rate(numerator: number, denominator: number): number {
+  return denominator > 0 ? numerator / denominator : 0;
+}
+
+function average(values: number[]): number {
+  const filtered = values.filter((value) => Number.isFinite(value));
+  return filtered.length ? filtered.reduce((sum, value) => sum + value, 0) / filtered.length : 0;
+}
+
+function booleanValue(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
 }
 
 function riskScore(value: unknown): number {

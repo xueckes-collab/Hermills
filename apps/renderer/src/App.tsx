@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from 'react'
+import type { ChangeEvent, Dispatch, FormEvent, KeyboardEvent, ReactNode, SetStateAction } from 'react'
 import { motion } from 'motion/react'
 import {
   AlertCircle,
@@ -921,7 +921,7 @@ function ClientWorkspace({
   outreachLeads: OutreachLead[]
   setOutreachLeads: (leads: OutreachLead[]) => void
   outreachCampaigns: OutreachCampaign[]
-  setOutreachCampaigns: (campaigns: OutreachCampaign[]) => void
+  setOutreachCampaigns: Dispatch<SetStateAction<OutreachCampaign[]>>
   outreachSenders: OutreachSenderAccount[]
   setOutreachSenders: (senders: OutreachSenderAccount[]) => void
   cloudStatus: CloudStatus
@@ -2448,7 +2448,7 @@ function DevelopmentLetterPage({
   leads: OutreachLead[]
   setLeads: (leads: OutreachLead[]) => void
   campaigns: OutreachCampaign[]
-  setCampaigns: (campaigns: OutreachCampaign[]) => void
+  setCampaigns: Dispatch<SetStateAction<OutreachCampaign[]>>
   senderAccounts: OutreachSenderAccount[]
   setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
   cloudStatus: CloudStatus
@@ -2584,7 +2584,7 @@ function DevelopmentLetterPage({
   ))
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
   const singleGenerationRunning = busy === 'generate' || busy === 'auto'
-  const campaignGenerationRunning = busy === 'campaignGenerate'
+  const campaignGenerationRunning = busy === 'campaignGenerate' || busy === 'letterImportGenerate' || busy === 'letterFileGenerate'
   const singleGenerationCompletedAt = generationMode === 'campaign' ? '' : generationCompletedAt
   const campaignGenerationCompletedAt = generationMode === 'campaign' ? generationCompletedAt : ''
   const hasVisibleSingleDraft = Boolean(activeDraftId || draftSubject.trim() || draftBody.trim() || workflow || singleGenerationRunning)
@@ -2862,12 +2862,23 @@ function DevelopmentLetterPage({
   }
 
   function replaceCampaign(campaign: OutreachCampaign) {
-    setCampaigns(campaigns.some((item) => item.id === campaign.id)
-      ? campaigns.map((item) => item.id === campaign.id ? campaign : item)
-      : [campaign, ...campaigns])
+    setCampaigns((current) => current.some((item) => item.id === campaign.id)
+      ? current.map((item) => item.id === campaign.id ? campaign : item)
+      : [campaign, ...current])
     setSelectedCampaignId(campaign.id)
     const reviewCandidate = campaign.recipients.find((recipient) => recipient.status === 'generated' || recipient.status === 'failed') ?? campaign.recipients[0]
     if (reviewCandidate) setSelectedCampaignRecipientId(reviewCandidate.id)
+  }
+
+  async function pollCampaignGeneration(campaignId: string) {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1200))
+      const campaign = await api.outreachCampaign(campaignId)
+      replaceCampaign(campaign)
+      const stillRunning = campaign.status === 'generating' || campaign.recipients.some((recipient) => recipient.status === 'pending' || recipient.status === 'researching')
+      if (!stillRunning) return campaign
+    }
+    return api.outreachCampaign(campaignId)
   }
 
   async function refreshCampaignFollowUps(campaignId = selectedCampaign?.id) {
@@ -3090,7 +3101,10 @@ function DevelopmentLetterPage({
     setError('')
     setNotice('')
     try {
-      const campaign = await api.generateOutreachCampaign(selectedCampaign.id)
+      const started = await api.startOutreachCampaignGeneration(selectedCampaign.id)
+      replaceCampaign(started)
+      setNotice('批量生成已开始，写好一封会自动显示一封。')
+      const campaign = await pollCampaignGeneration(selectedCampaign.id)
       replaceCampaign(campaign)
       setGenerationCompletedAt(new Date().toISOString())
       setNotice(copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
@@ -3392,7 +3406,10 @@ function DevelopmentLetterPage({
       setSelectedCampaignLeadIds([])
       setBulkImportText('')
       setLetterView('automation')
-      const generated = await api.generateOutreachCampaign(created.id)
+      const started = await api.startOutreachCampaignGeneration(created.id)
+      replaceCampaign(started)
+      setNotice(`已导入 ${result.imported.length} 个客户，正在逐封生成，写好一封会自动显示一封。`)
+      const generated = await pollCampaignGeneration(created.id)
       replaceCampaign(generated)
       setGenerationCompletedAt(new Date().toISOString())
       setNotice(`已导入 ${result.imported.length} 个客户，并为 ${ready.length} 个客户逐个生成开发信。`)
@@ -3984,7 +4001,7 @@ function DevelopmentLetterPage({
     try {
       const next = await api.cloudSync(true)
       setCloudStatus(next)
-      setNotice('云端学习数据已同步。')
+      setNotice(next.learningRulesUpdatedAt ? '云端学习数据已同步，写信规则已更新。' : '云端学习数据已同步。')
     } catch (err) {
       const message = humanizeErrorMessage(err, copy, 'message')
       setCloudStatus({ ...cloudStatus, lastSyncError: message })
@@ -4008,7 +4025,7 @@ function DevelopmentLetterPage({
   const cloudSidebarStatus = cloudStatus.lastSyncError
     ? { className: 'warning', label: '云端同步失败' }
     : cloudStatus.authenticated
-      ? { className: 'ready', label: cloudStatus.lastSyncAt ? '云端数据已同步' : '云端大脑已连接' }
+      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '学习规则已更新' : cloudStatus.lastSyncAt ? '云端数据已同步' : '云端大脑已连接' }
       : cloudStatus.configured
         ? { className: 'warning', label: '云端大脑待登录' }
         : { className: 'muted', label: '云端大脑未启用' }
@@ -4054,7 +4071,7 @@ function DevelopmentLetterPage({
           <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
           {cloudStatus.authenticated ? (
             <button type="button" onClick={syncCloudNow} disabled={busy === 'cloudSync'}>
-              <RefreshCw size={15} /> {busy === 'cloudSync' ? '同步中' : '同步数据'}
+              <RefreshCw size={15} /> {busy === 'cloudSync' ? '学习同步中' : '同步学习数据'}
             </button>
           ) : null}
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>

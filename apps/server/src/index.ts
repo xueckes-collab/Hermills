@@ -133,6 +133,7 @@ import {
   CloudAuthBodySchema,
   CloudEmailBodySchema,
   CloudError,
+  CloudSummarizeLearningRulesBodySchema,
   CloudSyncBodySchema,
   HermillsCloudService
 } from "./cloud.js";
@@ -715,6 +716,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const outreachCampaigns = new OutreachCampaignRepository(options.baseDir);
   const outreachFollowUps = new OutreachFollowUpRepository(options.baseDir);
   const outreachFeedback = new OutreachFeedbackRepository(options.baseDir);
+  const customerResearchCache = new CustomerResearchCacheRepository(options.baseDir);
   const profiles = new ProfileRepository(options.baseDir);
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
@@ -758,6 +760,40 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     ]);
     return { profileId, companyProfile: companyProfileRecord, leads, drafts, workflows, campaigns, feedback };
   };
+  const campaignGenerationJobs = new Map<string, Promise<void>>();
+  const startCampaignGeneration = async (campaignId: string) => {
+    const campaign = await outreachCampaigns.require(campaignId);
+    await assertActiveProfile(campaign.profileId);
+    if (!campaignGenerationJobs.has(campaignId)) {
+      const job = generateOutreachCampaignWorkflows({
+        campaignId,
+        runtime,
+        providers,
+        companyProfile,
+        materials,
+        emailSignature: outreachEmailSignature,
+        assets: outreachAssets,
+        leads: outreachLeads,
+        drafts: outreachDrafts,
+        workflows: outreachWorkflows,
+        campaigns: outreachCampaigns,
+        deepResearch,
+        customerResearchCache,
+        cloud
+      }).then(() => undefined).catch(async (error) => {
+        await outreachCampaigns.updateCampaign(campaignId, { status: "failed" }).catch(() => undefined);
+        await logs.create({
+          level: "error",
+          source: "server",
+          message: `Campaign generation failed (${campaignId}): ${redactSecrets(error instanceof Error ? error.message : String(error))}`
+        }).catch(() => undefined);
+      }).finally(() => {
+        campaignGenerationJobs.delete(campaignId);
+      });
+      campaignGenerationJobs.set(campaignId, job);
+    }
+    return outreachCampaigns.requireWithRecipients(campaignId, outreachDrafts);
+  };
 
   server.get("/api/health", async () => ({ ok: true, product: "Hermills" }));
   server.get("/api/cloud/status", async () => cloud.status());
@@ -769,6 +805,13 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     CloudSyncBodySchema.parse(request.body ?? {});
     const snapshot = await buildCloudSyncSnapshot();
     return cloud.syncSnapshot(snapshot);
+  });
+  server.post("/api/cloud/learning-rules/summarize", async (request) => {
+    const body = CloudSummarizeLearningRulesBodySchema.parse(request.body ?? {});
+    if (body.forceSync) {
+      await cloud.syncSnapshot(await buildCloudSyncSnapshot());
+    }
+    return cloud.summarizeLearningRules({ ...body, forceSync: false });
   });
   server.get("/api/learning-pack", async () => {
     const profileId = await resolveProfileId();
@@ -1202,7 +1245,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     const research = lead.website
       ? await researchCustomerWebsite(lead.website, body.researchDepth, {
         email: lead.email,
-        deepResearch
+        deepResearch,
+        cache: customerResearchCache
       })
       : undefined;
     const draft = await generateOutreachDraft({
@@ -1236,6 +1280,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       deepResearch,
+      customerResearchCache,
       cloud,
       profileId: await resolveProfileId(body.profileId)
     });
@@ -1256,6 +1301,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       deepResearch,
+      customerResearchCache,
       cloud,
       profileId: await resolveProfileId(body.profileId)
     });
@@ -1322,8 +1368,14 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       workflows: outreachWorkflows,
       campaigns: outreachCampaigns,
       deepResearch,
+      customerResearchCache,
       cloud
     });
+  });
+  server.post("/api/outreach/campaigns/:id/generate/start", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const campaign = await startCampaignGeneration(id);
+    return reply.code(202).send(campaign);
   });
   server.post("/api/outreach/campaigns/:id/recipients/:recipientId/approve", async (request) => {
     const { id, recipientId } = request.params as { id: string; recipientId: string };
@@ -2712,6 +2764,19 @@ interface OutreachListOptions {
   q?: string;
 }
 
+interface CustomerResearchCacheEntry {
+  key: string;
+  website: string;
+  depth: OutreachResearchDepth;
+  result: CustomerResearchResult;
+  createdAt: string;
+  expiresAt: string;
+}
+
+interface CustomerResearchCacheDocument {
+  entries: CustomerResearchCacheEntry[];
+}
+
 function createWriteLock() {
   let queue: Promise<void> = Promise.resolve();
   return async function withWriteLock<T>(task: () => Promise<T>): Promise<T> {
@@ -2727,6 +2792,59 @@ function createWriteLock() {
       release();
     }
   };
+}
+
+class CustomerResearchCacheRepository {
+  private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "outreach-research-cache.json");
+  }
+
+  async get(key: string): Promise<CustomerResearchResult | undefined> {
+    const now = Date.now();
+    const document = await this.read();
+    const entry = document.entries.find((item) => item.key === key);
+    if (!entry) return undefined;
+    if (new Date(entry.expiresAt).getTime() <= now) {
+      await this.write({ entries: document.entries.filter((item) => item.key !== key) });
+      return undefined;
+    }
+    return entry.result;
+  }
+
+  async set(key: string, website: string, depth: OutreachResearchDepth, result: CustomerResearchResult): Promise<void> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + researchCacheTtlMs(result)).toISOString();
+    await this.withWriteLock(async () => {
+      const document = await this.read();
+      const next: CustomerResearchCacheEntry = {
+        key,
+        website,
+        depth,
+        result,
+        createdAt: now.toISOString(),
+        expiresAt
+      };
+      const active = document.entries.filter((entry) => entry.key !== key && new Date(entry.expiresAt).getTime() > Date.now());
+      await this.write({ entries: [next, ...active].slice(0, 500) });
+    });
+  }
+
+  private async read(): Promise<CustomerResearchCacheDocument> {
+    try {
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as CustomerResearchCacheDocument;
+      return { entries: Array.isArray(parsed.entries) ? parsed.entries : [] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { entries: [] };
+      throw error;
+    }
+  }
+
+  private async write(document: CustomerResearchCacheDocument): Promise<void> {
+    await writePrivateJson(this.filePath, { entries: document.entries });
+  }
 }
 
 class OutreachAssetRepository {
@@ -5223,9 +5341,12 @@ function isPrivateOrLocalIp(host: string): boolean {
   return false;
 }
 
-async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "adaptive", options: { email?: string; deepResearch?: DeepResearchClient } = {}): Promise<CustomerResearchResult> {
+async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResearchDepth = "adaptive", options: { email?: string; deepResearch?: DeepResearchClient; cache?: CustomerResearchCacheRepository } = {}): Promise<CustomerResearchResult> {
   const website = normalizeWebsiteUrl(rawWebsite);
   assertPublicResearchWebsite(website);
+  const cacheKey = customerResearchCacheKey(website, depth);
+  const cached = await options.cache?.get(cacheKey);
+  if (cached) return cached;
   let deepResearchFallbackReason = "";
   const shouldTryDeepResearch = depth === "adaptive" || depth === "deep";
   const localResearchDepth: OutreachResearchDepth = depth === "adaptive" ? "deep" : depth;
@@ -5237,7 +5358,10 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
         maxPages: researchDepthLimits("deep").pages,
         timeoutMs: 30_000
       });
-      if (deepResult) return deepResult;
+      if (deepResult) {
+        await options.cache?.set(cacheKey, website, depth, deepResult).catch(() => undefined);
+        return deepResult;
+      }
     } catch (error) {
       deepResearchFallbackReason = redactSecrets(error instanceof Error ? error.message : String(error));
     }
@@ -5248,9 +5372,9 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
     ? `Deep research sidecar failed (${deepResearchFallbackReason}); used Node website research fallback.`
     : shouldTryDeepResearch
       ? `${depth === "adaptive" ? "Adaptive" : "Deep"} research sidecar was unavailable; used Node website research fallback.`
-    : "";
+      : "";
   if (!initial.html) {
-    return withCustomerResearchBrief({
+    const failedResult = withCustomerResearchBrief({
       website,
       companyName: companyNameFromWebsite(website),
       depth,
@@ -5269,6 +5393,8 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
       textPreview: "",
       error: [fallbackNote, initial.error || "Could not fetch customer website."].filter(Boolean).join(" ")
     });
+    await options.cache?.set(cacheKey, website, depth, failedResult).catch(() => undefined);
+    return failedResult;
   }
 
   const urls = [website, ...pickResearchLinks(website, initial.html, localResearchDepth)].slice(0, limits.pages);
@@ -5286,7 +5412,7 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
   const painSignals = inferPainSignals(textPreview);
   const buyerType = inferBuyerType(textPreview, industry);
   const recommendedAngle = inferRecommendedAngle({ buyerType, industry, inferredNeed, productSignals, buyingSignals, painSignals });
-  return withCustomerResearchBrief({
+  const result = withCustomerResearchBrief({
     website,
     companyName,
     depth,
@@ -5323,6 +5449,24 @@ async function researchCustomerWebsite(rawWebsite: string, depth: OutreachResear
     textPreview,
     error: fallbackNote || undefined
   });
+  await options.cache?.set(cacheKey, website, depth, result).catch(() => undefined);
+  return result;
+}
+
+function customerResearchCacheKey(website: string, depth: OutreachResearchDepth): string {
+  const normalized = normalizeWebsiteUrl(website);
+  const limits = researchDepthLimits(depth === "adaptive" ? "deep" : depth);
+  return `customer-research:v1:${depth}:${limits.pages}:${createHash("sha256").update(normalized).digest("hex")}`;
+}
+
+function researchCacheTtlMs(result: CustomerResearchResult): number {
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (!result.fetchedUrls.length || result.confidenceScore < 20) return 15 * minute;
+  if (result.error) return hour;
+  if (result.confidenceScore >= 60 && result.fetchedUrls.length >= 2) return 14 * day;
+  return 7 * day;
 }
 
 function localResearchEvidence(input: {
@@ -7604,6 +7748,7 @@ async function generateOutreachWorkflow(input: {
   drafts: OutreachDraftRepository;
   workflows: OutreachWorkflowRepository;
   deepResearch?: DeepResearchClient;
+  customerResearchCache?: CustomerResearchCacheRepository;
   cloud?: HermillsCloudService;
   research?: CustomerResearchResult;
   researchDepth?: OutreachResearchDepth;
@@ -7615,7 +7760,8 @@ async function generateOutreachWorkflow(input: {
   const researchDepth = input.researchDepth ?? input.body.researchDepth ?? "adaptive";
   const research = input.research ?? await researchCustomerWebsite(input.body.website, researchDepth, {
     email: input.body.email,
-    deepResearch: input.deepResearch
+    deepResearch: input.deepResearch,
+    cache: input.customerResearchCache
   });
   const lead = input.lead ?? await input.leads.create({
     profileId: input.profileId,
@@ -7887,6 +8033,7 @@ async function generateOutreachCampaignWorkflows(input: {
   workflows: OutreachWorkflowRepository;
   campaigns: OutreachCampaignRepository;
   deepResearch?: DeepResearchClient;
+  customerResearchCache?: CustomerResearchCacheRepository;
   cloud?: HermillsCloudService;
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
@@ -7903,7 +8050,8 @@ async function generateOutreachCampaignWorkflows(input: {
     const recipientEmail = detail.recipients.find((recipient) => normalizeWebsiteUrl(recipient.website) === normalized)?.email;
     const next = researchCustomerWebsite(normalized, campaign.researchDepth, {
       email: recipientEmail,
-      deepResearch: input.deepResearch
+      deepResearch: input.deepResearch,
+      cache: input.customerResearchCache
     });
     researchCache.set(key, next);
     return next;
@@ -7937,6 +8085,7 @@ async function generateOutreachCampaignWorkflows(input: {
         drafts: input.drafts,
         workflows: input.workflows,
         deepResearch: input.deepResearch,
+        customerResearchCache: input.customerResearchCache,
         cloud: input.cloud,
         research,
         researchDepth: campaign.researchDepth

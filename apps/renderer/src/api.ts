@@ -149,6 +149,7 @@ export type CloudStatus = {
   lastSyncAt?: string;
   syncQueued: number;
   learningPackVersion?: string;
+  learningRulesUpdatedAt?: string;
   message: string;
   lastSyncError?: string;
 };
@@ -172,6 +173,14 @@ export type CloudLearningPack = {
     confidence: number;
     evidenceCount: number;
   }>;
+};
+
+export type CloudLearningRuleSummary = {
+  ok: true;
+  generatedAt: string;
+  scanned: { redactedEvents: number; legacyEvents: number };
+  candidates: number;
+  upserted: number;
 };
 
 export type InstallEvent = {
@@ -1381,6 +1390,12 @@ export const api = {
       body: JSON.stringify({ force })
     });
   },
+  async summarizeCloudLearningRules(input: { profileId?: string; windowDays?: number; minEvidence?: number; dryRun?: boolean; forceSync?: boolean } = {}): Promise<CloudLearningRuleSummary> {
+    return request<CloudLearningRuleSummary>("/api/cloud/learning-rules/summarize", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
   async learningPack(): Promise<CloudLearningPack> {
     return request<CloudLearningPack>("/api/learning-pack");
   },
@@ -1843,6 +1858,9 @@ export const api = {
   },
   async generateOutreachCampaign(id: string): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate`, { method: "POST", body: "{}" });
+  },
+  async startOutreachCampaignGeneration(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate/start`, { method: "POST", body: "{}" });
   },
   async approveOutreachCampaignRecipient(campaignId: string, recipientId: string, input: { subject?: string; body?: string } = {}): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/approve`, {
