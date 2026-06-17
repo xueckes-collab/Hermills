@@ -9417,6 +9417,30 @@ button.letter-stat-card { cursor: pointer; }
   outline: 3px solid rgba(37, 99, 235, 0.12);
 }
 
+.cloud-auth-card .cloud-auth-check {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #cfe0f2;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.cloud-auth-card .cloud-auth-check input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: #2563eb;
+}
+
 .cloud-auth-actions {
   display: flex;
   flex-wrap: wrap;

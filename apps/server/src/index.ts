@@ -130,9 +130,11 @@ import {
   type ApiMailCredential
 } from "./mail-transports.js";
 import {
+  CloudAdminUserStatusBodySchema,
   CloudAuthBodySchema,
   CloudEmailBodySchema,
   CloudError,
+  CloudSignupBodySchema,
   CloudSummarizeLearningRulesBodySchema,
   CloudSyncBodySchema,
   HermillsCloudService
@@ -797,11 +799,20 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
 
   server.get("/api/health", async () => ({ ok: true, product: "Hermills" }));
   server.get("/api/cloud/status", async () => cloud.status());
-  server.post("/api/auth/signup", async (request) => cloud.signUp(CloudAuthBodySchema.parse(request.body ?? {})));
+  server.get("/api/auth/me", async () => cloud.me());
+  server.post("/api/auth/signup", async (request) => cloud.signUp(CloudSignupBodySchema.parse(request.body ?? {})));
+  server.post("/api/auth/register", async (request) => cloud.signUp(CloudSignupBodySchema.parse(request.body ?? {})));
   server.post("/api/auth/login", async (request) => cloud.login(CloudAuthBodySchema.parse(request.body ?? {})));
   server.post("/api/auth/logout", async () => cloud.logout());
+  server.post("/api/auth/accept-terms", async () => cloud.acceptTerms());
   server.post("/api/auth/password-reset", async (request) => cloud.resetPassword(CloudEmailBodySchema.parse(request.body ?? {}).email));
   server.post("/api/auth/resend-signup-confirmation", async (request) => cloud.resendSignupConfirmation(CloudEmailBodySchema.parse(request.body ?? {}).email));
+  server.get("/api/admin/users", async () => cloud.adminUsers());
+  server.patch("/api/admin/users/:id/status", async (request: FastifyRequest<{ Params: { id: string } }>) => {
+    const params = z.object({ id: z.string().min(1) }).parse(request.params ?? {});
+    const body = CloudAdminUserStatusBodySchema.parse(request.body ?? {});
+    return cloud.updateAdminUserStatus(params.id, body.status);
+  });
   server.post("/api/cloud/sync", async (request) => {
     CloudSyncBodySchema.parse(request.body ?? {});
     const snapshot = await buildCloudSyncSnapshot();

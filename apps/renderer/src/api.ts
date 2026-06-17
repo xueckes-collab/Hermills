@@ -139,11 +139,27 @@ export type CloudUser = {
   fullName?: string;
 };
 
+export type CloudAccountProfile = {
+  userId: string;
+  email: string;
+  displayName: string;
+  nickname: string;
+  status: 'active' | 'disabled';
+  emailVerified: boolean;
+  termsAcceptedAt?: string;
+  lastLoginAt?: string;
+  lastSeenAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isAdmin?: boolean;
+};
+
 export type CloudStatus = {
   configured: boolean;
   authenticated: boolean;
   required: boolean;
   user?: CloudUser;
+  account?: CloudAccountProfile;
   expiresAt?: string;
   cloudUrl?: string;
   lastSyncAt?: string;
@@ -1363,7 +1379,10 @@ export const api = {
   async cloudStatus(): Promise<CloudStatus> {
     return request<CloudStatus>("/api/cloud/status");
   },
-  async cloudSignup(input: { email: string; password: string; fullName?: string }): Promise<CloudStatus> {
+  async cloudMe(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/me");
+  },
+  async cloudSignup(input: { email: string; password: string; fullName?: string; nickname?: string; termsAccepted?: boolean }): Promise<CloudStatus> {
     return request<CloudStatus>("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify(input)
@@ -1378,6 +1397,9 @@ export const api = {
   async cloudLogout(): Promise<CloudStatus> {
     return request<CloudStatus>("/api/auth/logout", { method: "POST", body: "{}" });
   },
+  async cloudAcceptTerms(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/accept-terms", { method: "POST", body: "{}" });
+  },
   async cloudPasswordReset(email: string): Promise<{ ok: boolean }> {
     return request<{ ok: boolean }>("/api/auth/password-reset", {
       method: "POST",
@@ -1388,6 +1410,15 @@ export const api = {
     return request<{ ok: boolean }>("/api/auth/resend-signup-confirmation", {
       method: "POST",
       body: JSON.stringify({ email })
+    });
+  },
+  async adminUsers(): Promise<CloudAccountProfile[]> {
+    return request<CloudAccountProfile[]>("/api/admin/users");
+  },
+  async updateAdminUserStatus(userId: string, status: 'active' | 'disabled'): Promise<CloudAccountProfile> {
+    return request<CloudAccountProfile>(`/api/admin/users/${encodeURIComponent(userId)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
     });
   },
   async cloudSync(force = false): Promise<CloudStatus> {

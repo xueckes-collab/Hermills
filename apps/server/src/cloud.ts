@@ -16,8 +16,20 @@ export const CloudAuthBodySchema = z.object({
   fullName: z.string().trim().max(160).optional()
 }).strict();
 
+export const CloudSignupBodySchema = z.object({
+  email: z.string().trim().email().max(320),
+  password: z.string().min(8).max(200),
+  fullName: z.string().trim().max(160).optional(),
+  nickname: z.string().trim().max(80).optional(),
+  termsAccepted: z.boolean().default(false)
+}).strict();
+
 export const CloudEmailBodySchema = z.object({
   email: z.string().trim().email().max(320)
+}).strict();
+
+export const CloudAdminUserStatusBodySchema = z.object({
+  status: z.enum(["active", "disabled"])
 }).strict();
 
 export const CloudSyncBodySchema = z.object({
@@ -36,6 +48,21 @@ export type CloudUser = {
   id: string;
   email: string;
   fullName?: string;
+};
+
+export type CloudAccountProfile = {
+  userId: string;
+  email: string;
+  displayName: string;
+  nickname: string;
+  status: "active" | "disabled";
+  emailVerified: boolean;
+  termsAcceptedAt?: string;
+  lastLoginAt?: string;
+  lastSeenAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isAdmin?: boolean;
 };
 
 export type CloudAuthSession = {
@@ -71,6 +98,7 @@ export type CloudStatus = {
   required: boolean;
   authenticated: boolean;
   user?: CloudUser;
+  account?: CloudAccountProfile;
   expiresAt?: string;
   cloudUrl?: string;
   lastSyncAt?: string;
@@ -193,7 +221,7 @@ export class HermillsCloudService {
   }
 
   async status(): Promise<CloudStatus> {
-    const [session, sync] = await Promise.all([this.authStore.get(), this.syncStore.get()]);
+    const [storedSession, sync] = await Promise.all([this.authStore.get(), this.syncStore.get()]);
     if (!this.isConfigured()) {
       return {
         configured: false,
@@ -205,32 +233,66 @@ export class HermillsCloudService {
         message: "Hermills Cloud is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY before publishing."
       };
     }
+    let session = storedSession;
+    if (session?.accessToken && new Date(session.expiresAt).getTime() - Date.now() <= 60_000) {
+      session = await this.requireSession().catch(async () => {
+        await this.authStore.clear();
+        return undefined;
+      });
+    }
+    const account = session?.accessToken
+      ? await this.readAccountProfile(session.accessToken, session.user).catch(() => undefined)
+      : undefined;
+    const accountDisabled = account?.status === "disabled";
     return {
       configured: true,
       required: this.config.required,
-      authenticated: Boolean(session?.accessToken),
+      authenticated: Boolean(session?.accessToken) && !accountDisabled,
       user: session?.user,
+      account,
       expiresAt: session?.expiresAt,
       cloudUrl: this.config.url,
       syncQueued: sync.syncQueued,
       lastSyncAt: sync.lastSyncAt,
       learningPackVersion: sync.learningPackVersion,
       learningRulesUpdatedAt: sync.learningRulesUpdatedAt,
-      message: session?.accessToken ? "Hermills Cloud is connected." : "Sign in to enable cloud memory and Learning Pack."
+      message: accountDisabled
+        ? "这个 Hermills 账号已被管理员停用。"
+        : session?.accessToken ? "Hermills Cloud is connected." : "Sign in to enable cloud memory and Learning Pack."
     };
   }
 
-  async signUp(input: z.infer<typeof CloudAuthBodySchema>): Promise<CloudStatus> {
+  async signUp(input: z.infer<typeof CloudSignupBodySchema>): Promise<CloudStatus> {
     this.assertConfigured();
+    if (!input.termsAccepted) throw new CloudError("请先同意服务条款和隐私政策。", "CLOUD_TERMS_REQUIRED");
+    const now = new Date().toISOString();
+    const displayName = input.fullName || input.nickname || input.email.split("@")[0] || "";
     const response = await this.authRequest("/auth/v1/signup", {
       method: "POST",
       body: {
         email: input.email,
         password: input.password,
-        data: { full_name: input.fullName ?? "" }
+        data: {
+          full_name: displayName,
+          nickname: input.nickname || displayName,
+          terms_accepted: true,
+          terms_accepted_at: now
+        }
       }
     });
-    if (response.access_token) await this.saveSession(response);
+    if (response.access_token) {
+      await this.saveSession(response);
+      const session = await this.requireSession();
+      await this.upsertAccountFromSession(session, {
+        display_name: displayName,
+        nickname: input.nickname || displayName,
+        terms_accepted_at: now,
+        last_login_at: now,
+        last_seen_at: now
+      }).catch(() => undefined);
+      await this.logAuthEvent(session, "user_registered", { termsAccepted: true }).catch(() => undefined);
+      await this.logAuthEvent(session, "user_logged_in", { method: "signup" }).catch(() => undefined);
+    }
     return this.status();
   }
 
@@ -244,12 +306,24 @@ export class HermillsCloudService {
       }
     });
     await this.saveSession(response);
+    const session = await this.requireSession();
+    const now = new Date().toISOString();
+    const account = await this.upsertAccountFromSession(session, {
+      last_login_at: now,
+      last_seen_at: now
+    }).catch(() => undefined);
+    if (account?.status === "disabled") {
+      await this.authStore.clear();
+      throw new CloudError("这个账号已被管理员停用。", "CLOUD_ACCOUNT_DISABLED", 403);
+    }
+    await this.logAuthEvent(session, "user_logged_in", { method: "password" }).catch(() => undefined);
     return this.status();
   }
 
   async logout(): Promise<CloudStatus> {
     const session = await this.authStore.get();
     if (session?.accessToken && this.isConfigured()) {
+      await this.logAuthEvent(session, "user_logged_out", {}).catch(() => undefined);
       await this.fetchImpl(`${this.config.url}/auth/v1/logout`, {
         method: "POST",
         headers: this.authHeaders(session.accessToken)
@@ -275,6 +349,43 @@ export class HermillsCloudService {
       body: { type: "signup", email }
     });
     return { ok: true };
+  }
+
+  async me(): Promise<CloudStatus> {
+    return this.status();
+  }
+
+  async acceptTerms(): Promise<CloudStatus> {
+    const session = await this.requireSession();
+    const now = new Date().toISOString();
+    await this.upsertAccountFromSession(session, {
+      terms_accepted_at: now,
+      last_seen_at: now
+    });
+    await this.logAuthEvent(session, "terms_accepted", {}).catch(() => undefined);
+    return this.status();
+  }
+
+  async adminUsers(): Promise<CloudAccountProfile[]> {
+    const session = await this.requireSession();
+    await this.assertAdmin(session);
+    const rows = await this.select("hermills_accounts", session.accessToken, [
+      "select=user_id,email,display_name,nickname,status,email_verified,terms_accepted_at,last_login_at,last_seen_at,created_at,updated_at",
+      "order=created_at.desc",
+      "limit=500"
+    ].join("&"));
+    return rows.map((row) => toCloudAccountProfile(row));
+  }
+
+  async updateAdminUserStatus(userId: string, status: "active" | "disabled"): Promise<CloudAccountProfile> {
+    const session = await this.requireSession();
+    await this.assertAdmin(session);
+    const rows = await this.patch("hermills_accounts", {
+      status,
+      updated_at: new Date().toISOString()
+    }, session.accessToken, `user_id=eq.${encodeURIComponent(userId)}`);
+    await this.logAuthEvent(session, "admin_user_status_updated", { targetUserId: stableHash(userId), status }).catch(() => undefined);
+    return toCloudAccountProfile(rows[0] ?? { user_id: userId, status });
   }
 
   async requireSession(): Promise<CloudAuthSession> {
@@ -469,6 +580,68 @@ export class HermillsCloudService {
     return formatLearningPackContext(await this.learningPack(input));
   }
 
+  private async readAccountProfile(token: string, user: CloudUser): Promise<CloudAccountProfile> {
+    const fullRows = await this.select("hermills_accounts", token, [
+      "select=user_id,email,display_name,nickname,status,email_verified,terms_accepted_at,last_login_at,last_seen_at,created_at,updated_at",
+      `user_id=eq.${encodeURIComponent(user.id)}`,
+      "limit=1"
+    ].join("&")).catch(async () => this.select("hermills_accounts", token, [
+      "select=user_id,email,display_name,created_at,updated_at",
+      `user_id=eq.${encodeURIComponent(user.id)}`,
+      "limit=1"
+    ].join("&")));
+    const isAdmin = await this.isAdmin(token, user.id).catch(() => false);
+    return toCloudAccountProfile(fullRows[0] ?? {
+      user_id: user.id,
+      email: user.email,
+      display_name: user.fullName ?? ""
+    }, isAdmin);
+  }
+
+  private async upsertAccountFromSession(session: CloudAuthSession, patch: Record<string, unknown> = {}): Promise<CloudAccountProfile> {
+    const baseRow = {
+      user_id: session.user.id,
+      email: session.user.email,
+      display_name: session.user.fullName ?? session.user.email.split("@")[0] ?? "",
+      updated_at: new Date().toISOString(),
+      ...patch
+    };
+    await this.upsert("hermills_accounts", [baseRow], session.accessToken, "user_id").catch(async () => {
+      const legacyRow: Record<string, unknown> = { ...baseRow };
+      delete legacyRow.nickname;
+      delete legacyRow.status;
+      delete legacyRow.email_verified;
+      delete legacyRow.terms_accepted_at;
+      delete legacyRow.last_login_at;
+      delete legacyRow.last_seen_at;
+      await this.upsert("hermills_accounts", [legacyRow], session.accessToken, "user_id");
+    });
+    return this.readAccountProfile(session.accessToken, session.user);
+  }
+
+  private async logAuthEvent(session: CloudAuthSession, eventType: string, eventData: Record<string, unknown>): Promise<void> {
+    await this.insert("event_logs", [{
+      user_id: session.user.id,
+      event_type: eventType,
+      event_data: sanitizeEventData(eventData),
+      created_at: new Date().toISOString()
+    }], session.accessToken);
+  }
+
+  private async isAdmin(token: string, userId: string): Promise<boolean> {
+    const rows = await this.select("hermills_admins", token, [
+      "select=user_id",
+      `user_id=eq.${encodeURIComponent(userId)}`,
+      "limit=1"
+    ].join("&"));
+    return rows.length > 0;
+  }
+
+  private async assertAdmin(session: CloudAuthSession): Promise<void> {
+    if (await this.isAdmin(session.accessToken, session.user.id).catch(() => false)) return;
+    throw new CloudError("需要管理员权限。", "CLOUD_ADMIN_REQUIRED", 403);
+  }
+
   private assertConfigured(): void {
     if (!this.isConfigured()) throw new CloudError("Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.", "CLOUD_NOT_CONFIGURED");
   }
@@ -544,6 +717,20 @@ export class HermillsCloudService {
       body: JSON.stringify(rows)
     });
     if (!response.ok) throw new CloudError(redactSecrets(await response.text()), "CLOUD_DB_FAILED");
+  }
+
+  private async patch(table: string, row: Record<string, unknown>, token: string, filter: string): Promise<Record<string, unknown>[]> {
+    const response = await this.fetchImpl(`${this.config.url}/rest/v1/${table}?${filter}`, {
+      method: "PATCH",
+      headers: {
+        ...this.authHeaders(token),
+        "prefer": "return=representation"
+      },
+      body: JSON.stringify(row)
+    });
+    if (!response.ok) throw new CloudError(redactSecrets(await response.text()), "CLOUD_DB_FAILED");
+    const json = await response.json().catch(() => []);
+    return Array.isArray(json) ? json as Record<string, unknown>[] : [];
   }
 }
 
@@ -649,6 +836,33 @@ function cloudErrorStatus(code: string): number {
   if (code === "CLOUD_AUTH_FAILED" || code === "CLOUD_LOGIN_FAILED") return 401;
   if (code === "CLOUD_DB_FAILED") return 502;
   return 400;
+}
+
+function toCloudAccountProfile(row: Record<string, unknown>, isAdmin = false): CloudAccountProfile {
+  const displayName = stringValue(row.display_name);
+  const nickname = stringValue(row.nickname) || displayName;
+  return {
+    userId: stringValue(row.user_id),
+    email: stringValue(row.email),
+    displayName,
+    nickname,
+    status: stringValue(row.status) === "disabled" ? "disabled" : "active",
+    emailVerified: booleanValue(row.email_verified),
+    termsAcceptedAt: stringValue(row.terms_accepted_at) || undefined,
+    lastLoginAt: stringValue(row.last_login_at) || undefined,
+    lastSeenAt: stringValue(row.last_seen_at) || undefined,
+    createdAt: stringValue(row.created_at) || undefined,
+    updatedAt: stringValue(row.updated_at) || undefined,
+    isAdmin
+  };
+}
+
+function sanitizeEventData(input: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return objectValue(JSON.parse(redactSecrets(JSON.stringify(input))));
+  } catch {
+    return {};
+  }
 }
 
 export function formatLearningPackContext(pack: CloudLearningPack): string {

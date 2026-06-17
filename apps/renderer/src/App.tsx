@@ -783,7 +783,9 @@ function CloudLoginPage({
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -791,13 +793,33 @@ function CloudLoginPage({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setBusy(mode)
     setError('')
     setNotice('')
+    if (mode === 'signup') {
+      if (password.length < 8) {
+        setError('注册密码至少需要 8 位。')
+        return
+      }
+      if (password !== confirmPassword) {
+        setError('两次输入的密码不一样。')
+        return
+      }
+      if (!termsAccepted) {
+        setError('请先同意服务条款和隐私政策。')
+        return
+      }
+    }
+    setBusy(mode)
     try {
       const next = mode === 'signup'
-        ? await api.cloudSignup({ email, password, fullName: fullName.trim() || undefined })
-        : await api.cloudLogin({ email, password })
+        ? await api.cloudSignup({
+          email: email.trim(),
+          password,
+          fullName: fullName.trim() || undefined,
+          nickname: fullName.trim() || undefined,
+          termsAccepted
+        })
+        : await api.cloudLogin({ email: email.trim(), password })
       setStatus(next)
       if (!next.authenticated && mode === 'signup') {
         setSignupPendingEmail(email.trim())
@@ -879,8 +901,20 @@ function CloudLoginPage({
         </label>
         <label>
           <span>密码</span>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位密码" minLength={6} required />
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === 'signup' ? '至少 8 位密码' : '输入密码'} minLength={mode === 'signup' ? 8 : 6} required />
         </label>
+        {mode === 'signup' ? (
+          <>
+            <label>
+              <span>确认密码</span>
+              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="再输入一次密码" minLength={8} required />
+            </label>
+            <label className="cloud-auth-check">
+              <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
+              <span>我同意服务条款和隐私政策。Hermills 可以同步账号资料、客户记录和匿名学习数据；邮箱密码和 API Key 仍只保存在本机。</span>
+            </label>
+          </>
+        ) : null}
         <button className="letter-primary" type="submit" disabled={Boolean(busy)}>
           {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号' : '登录'}
           <ChevronRight size={16} />
@@ -890,6 +924,7 @@ function CloudLoginPage({
             setMode(mode === 'signup' ? 'login' : 'signup')
             setNotice('')
             setError('')
+            setConfirmPassword('')
           }}>
             {mode === 'signup' ? '已有账号，去登录' : '没有账号，去注册'}
           </button>
