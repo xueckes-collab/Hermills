@@ -4215,7 +4215,7 @@ function DevelopmentLetterPage({
   const cloudSidebarStatus = cloudStatus.lastSyncError
     ? { className: 'warning', label: '云端同步失败' }
     : cloudStatus.authenticated
-      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '自动学习已更新' : cloudStatus.lastSyncAt ? '自动学习同步中' : '云端大脑已连接' }
+      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '自动学习已更新' : cloudStatus.lastSyncAt ? '自动学习已同步' : '云端大脑已连接' }
       : cloudStatus.configured
         ? { className: 'warning', label: '云端大脑待登录' }
         : { className: 'muted', label: '云端大脑未启用' }
@@ -4259,9 +4259,9 @@ function DevelopmentLetterPage({
         <div className="letter-sidebar-footer">
           <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
           <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
-          {cloudStatus.authenticated ? (
+          {cloudStatus.authenticated && cloudStatus.lastSyncError ? (
             <button type="button" onClick={syncCloudNow} disabled={busy === 'cloudSync'}>
-              <RefreshCw size={15} /> {busy === 'cloudSync' ? '同步中' : '立即同步'}
+              <RefreshCw size={15} /> {busy === 'cloudSync' ? '重试中' : '重试同步'}
             </button>
           ) : null}
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
