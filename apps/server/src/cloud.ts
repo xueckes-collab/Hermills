@@ -268,6 +268,15 @@ export class HermillsCloudService {
     return { ok: true };
   }
 
+  async resendSignupConfirmation(email: string): Promise<{ ok: true }> {
+    this.assertConfigured();
+    await this.authRequest("/auth/v1/resend", {
+      method: "POST",
+      body: { type: "signup", email }
+    });
+    return { ok: true };
+  }
+
   async requireSession(): Promise<CloudAuthSession> {
     this.assertConfigured();
     const session = await this.authStore.get();

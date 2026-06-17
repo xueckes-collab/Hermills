@@ -1384,6 +1384,12 @@ export const api = {
       body: JSON.stringify({ email })
     });
   },
+  async cloudResendSignupConfirmation(email: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>("/api/auth/resend-signup-confirmation", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+  },
   async cloudSync(force = false): Promise<CloudStatus> {
     return request<CloudStatus>("/api/cloud/sync", {
       method: "POST",

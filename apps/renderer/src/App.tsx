@@ -787,6 +787,7 @@ function CloudLoginPage({
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [signupPendingEmail, setSignupPendingEmail] = useState('')
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -798,7 +799,30 @@ function CloudLoginPage({
         ? await api.cloudSignup({ email, password, fullName: fullName.trim() || undefined })
         : await api.cloudLogin({ email, password })
       setStatus(next)
-      if (!next.authenticated) setNotice('账号已创建。如果你的 Supabase 开启了邮箱验证，请先去邮箱完成验证，再回来登录。')
+      if (!next.authenticated && mode === 'signup') {
+        setSignupPendingEmail(email.trim())
+        setMode('login')
+        setNotice('账号已创建，但还不能进入。请先打开邮箱里的验证邮件，点完成验证后，再回来点击登录。')
+      }
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function resendSignupConfirmation() {
+    const targetEmail = signupPendingEmail || email.trim()
+    if (!targetEmail) {
+      setError('先填写邮箱，再重发验证邮件。')
+      return
+    }
+    setBusy('resendSignup')
+    setError('')
+    try {
+      await api.cloudResendSignupConfirmation(targetEmail)
+      setSignupPendingEmail(targetEmail)
+      setNotice('验证邮件已重新发送。请打开邮箱点验证链接，然后回来登录。')
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -858,13 +882,22 @@ function CloudLoginPage({
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位密码" minLength={6} required />
         </label>
         <button className="letter-primary" type="submit" disabled={Boolean(busy)}>
-          {busy === mode ? '处理中...' : mode === 'signup' ? '注册并登录' : '登录'}
+          {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号' : '登录'}
           <ChevronRight size={16} />
         </button>
         <div className="cloud-auth-actions">
-          <button type="button" onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}>
+          <button type="button" onClick={() => {
+            setMode(mode === 'signup' ? 'login' : 'signup')
+            setNotice('')
+            setError('')
+          }}>
             {mode === 'signup' ? '已有账号，去登录' : '没有账号，去注册'}
           </button>
+          {signupPendingEmail ? (
+            <button type="button" onClick={resendSignupConfirmation} disabled={busy === 'resendSignup'}>
+              {busy === 'resendSignup' ? '重发中...' : '重发验证邮件'}
+            </button>
+          ) : null}
           <button type="button" onClick={resetPassword} disabled={busy === 'reset'}>
             {busy === 'reset' ? '发送中...' : '忘记密码'}
           </button>

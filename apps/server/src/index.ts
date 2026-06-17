@@ -801,6 +801,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/auth/login", async (request) => cloud.login(CloudAuthBodySchema.parse(request.body ?? {})));
   server.post("/api/auth/logout", async () => cloud.logout());
   server.post("/api/auth/password-reset", async (request) => cloud.resetPassword(CloudEmailBodySchema.parse(request.body ?? {}).email));
+  server.post("/api/auth/resend-signup-confirmation", async (request) => cloud.resendSignupConfirmation(CloudEmailBodySchema.parse(request.body ?? {}).email));
   server.post("/api/cloud/sync", async (request) => {
     CloudSyncBodySchema.parse(request.body ?? {});
     const snapshot = await buildCloudSyncSnapshot();
