@@ -18,6 +18,7 @@ describe("chat control API", () => {
   });
 
   afterEach(async () => {
+    delete process.env.HERMILLS_CHAT_RELAY_URL;
     await server.close();
   });
 
@@ -42,6 +43,7 @@ describe("chat control API", () => {
   });
 
   it("creates a scan binding session and verifies the local command chain", async () => {
+    process.env.HERMILLS_CHAT_RELAY_URL = "https://relay.hermills.example";
     const created = await server.inject({
       method: "POST",
       url: "/api/chat-control/bindings",
@@ -54,7 +56,7 @@ describe("chat control API", () => {
       status: "pending"
     });
     expect(created.json().bindingCode).toMatch(/^[A-Z0-9-]+$/);
-    expect(created.json().qrPayload).toContain("chat-control/bind");
+    expect(created.json().qrPayload).toContain("https://relay.hermills.example/chat-control/bind");
     expect(created.json().channelId).toBeTruthy();
 
     const bindings = await server.inject({ method: "GET", url: "/api/chat-control/bindings?kind=dingtalk", headers });
@@ -82,6 +84,24 @@ describe("chat control API", () => {
       rawText: "今日状态",
       status: "completed"
     });
+  });
+
+  it("does not emit a fake scan URL when the chat relay URL is missing or invalid", async () => {
+    process.env.HERMILLS_CHAT_RELAY_URL = "undefined";
+    const created = await server.inject({
+      method: "POST",
+      url: "/api/chat-control/bindings",
+      headers,
+      payload: { platform: "wechat", label: "WeChat official chat control" }
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    expect(created.json()).toMatchObject({
+      platform: "wechat",
+      bindingUrl: "",
+      qrPayload: ""
+    });
+    expect(created.json().relayUrl).toBeUndefined();
+    expect(created.json().resultText).toContain("不能生成手机可扫码二维码");
   });
 
   it("keeps cloud chat polling harmless when cloud relay is not configured", async () => {

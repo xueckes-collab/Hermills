@@ -1001,8 +1001,8 @@ export const ChatControlBindingSessionSchema = z.object({
     channelId: z.string().min(1).optional(),
     status: ChatControlBindingStatusSchema.default("pending"),
     bindingCode: z.string().trim().min(6).max(80),
-    bindingUrl: z.string().trim().min(1).max(2000),
-    qrPayload: z.string().trim().min(1).max(2000),
+    bindingUrl: z.string().trim().max(2000).default(""),
+    qrPayload: z.string().trim().max(2000).default(""),
     relayUrl: z.string().trim().max(1000).optional(),
     linkedAccount: z.object({
         externalUserId: z.string().trim().max(240).default(""),

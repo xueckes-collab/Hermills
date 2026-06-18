@@ -57,7 +57,7 @@ If Supabase is configured and `HERMILLS_CLOUD_REQUIRED` is not `0`, the renderer
 
 The desktop app never exposes its local `127.0.0.1` API to Feishu, DingTalk, WeCom, WeChat, or QQ. Those platforms must call a cloud relay. The relay writes normalized commands into `hermills_chat_commands`; the desktop app polls `/api/chat-control/cloud/poll`, executes the command locally, and writes the result back to the same command row.
 
-If `HERMILLS_CHAT_RELAY_URL` is not configured, the QR code is only a local preview and the UI still offers a local “测试连接” button. Real platform scanning requires:
+If `HERMILLS_CHAT_RELAY_URL` is not configured, Hermills does not emit a fake QR URL; the UI only offers a local “测试连接” button. Real platform scanning requires:
 
 - official platform app/bot credentials in the relay server.
 - the Supabase migration above applied with RLS enabled.

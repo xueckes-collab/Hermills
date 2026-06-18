@@ -327,7 +327,10 @@ function loadCloudConfigEnv() {
 
 function stringConfigValue(value) {
   if (value === undefined || value === null) return undefined;
-  return String(value).trim();
+  const normalized = String(value).trim();
+  if (!normalized) return undefined;
+  if (normalized.toLowerCase() === "undefined" || normalized.toLowerCase() === "null") return undefined;
+  return normalized;
 }
 
 function findOpenPort(startPort) {

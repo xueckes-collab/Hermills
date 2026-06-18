@@ -3140,10 +3140,10 @@ class ChatControlBindingSessionRepository {
       const now = new Date();
       const id = randomUUID();
       const bindingCode = createChatControlBindingCode();
-      const relayUrl = input.relayUrl?.replace(/\/+$/, "");
+      const relayUrl = normalizeChatControlRelayUrl(input.relayUrl);
       const bindingUrl = relayUrl
         ? `${relayUrl}/chat-control/bind/${id}?code=${encodeURIComponent(bindingCode)}`
-        : `hermills://chat-control/bind/${id}?code=${encodeURIComponent(bindingCode)}`;
+        : "";
       const session = ChatControlBindingSessionSchema.parse({
         id,
         profileId: input.profileId,
@@ -3157,7 +3157,7 @@ class ChatControlBindingSessionRepository {
         linkedAccount: {},
         resultText: relayUrl
           ? "等待扫码绑定。"
-          : "当前没有配置 Hermills 云端聊天中转，二维码只能用于本地预览。",
+          : "当前没有配置 Hermills 云端聊天中转，不能生成手机可扫码二维码。请先配置 chatRelayUrl，或使用“测试连接”验证本地命令链路。",
         expiresAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString()
@@ -3188,7 +3188,7 @@ class ChatControlBindingSessionRepository {
   private async read(): Promise<ChatControlBindingSessionStoreDocument> {
     try {
       const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as ChatControlBindingSessionStoreDocument;
-      return { sessions: Array.isArray(parsed.sessions) ? parsed.sessions.map((session) => ChatControlBindingSessionSchema.parse(session)) : [] };
+      return { sessions: Array.isArray(parsed.sessions) ? parsed.sessions.map((session) => normalizeStoredChatControlBindingSession(session)) : [] };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return { sessions: [] };
       throw error;
@@ -3198,6 +3198,26 @@ class ChatControlBindingSessionRepository {
   private async write(document: ChatControlBindingSessionStoreDocument): Promise<void> {
     await writePrivateJson(this.filePath, { sessions: document.sessions.map((session) => ChatControlBindingSessionSchema.parse(session)) });
   }
+}
+
+function normalizeStoredChatControlBindingSession(input: unknown): ChatControlBindingSession {
+  const session = ChatControlBindingSessionSchema.parse(input);
+  const invalidBindingUrl = !session.relayUrl && (
+    session.bindingUrl.toLowerCase().startsWith("undefined/")
+    || session.bindingUrl.toLowerCase().startsWith("null/")
+    || session.qrPayload.toLowerCase().startsWith("undefined/")
+    || session.qrPayload.toLowerCase().startsWith("null/")
+  );
+  if (!invalidBindingUrl) return session;
+  return ChatControlBindingSessionSchema.parse({
+    ...session,
+    status: "failed",
+    bindingUrl: "",
+    qrPayload: "",
+    resultText: "这个绑定二维码是在云端中转地址缺失时生成的，已经失效。请配置 chatRelayUrl 后重新生成。",
+    error: "聊天云端中转地址缺失。",
+    updatedAt: new Date().toISOString()
+  });
 }
 
 interface LogStoreDocument {
@@ -12045,7 +12065,23 @@ function createChatControlRelaySecret(): string {
 }
 
 function chatControlRelayUrl(): string | undefined {
-  return process.env.HERMILLS_CHAT_RELAY_URL?.trim().replace(/\/+$/, "") || undefined;
+  return normalizeChatControlRelayUrl(process.env.HERMILLS_CHAT_RELAY_URL);
+}
+
+function normalizeChatControlRelayUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/\/+$/, "");
+  if (!normalized) return undefined;
+  const lowered = normalized.toLowerCase();
+  if (lowered === "undefined" || lowered === "null") return undefined;
+  if (lowered.includes("your-chat-relay.example.com")) return undefined;
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
 }
 
 function isOfficialChatControlPlatform(platform: ChannelRecord["kind"]): boolean {

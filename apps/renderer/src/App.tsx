@@ -248,6 +248,7 @@ const chatControlPlatformOptions: Array<{ id: ChannelRecord['kind']; label: stri
 ]
 
 function chatControlBindingStatusLabel(binding: ChatControlBindingSession) {
+  if (!binding.relayUrl) return '未配置云端中转，当前只能测试本地命令链路'
   if (binding.status === 'connected') return '连接成功，可以从聊天窗口控制 Hermills'
   if (binding.status === 'testing') return '正在测试连接'
   if (binding.status === 'failed') return binding.error || '连接失败，请重新生成二维码'
@@ -5139,10 +5140,10 @@ function DevelopmentLetterPage({
                     {chatControlQr ? <img src={chatControlQr} alt="聊天助手绑定二维码" /> : <QrCode size={56} />}
                   </div>
                   <div className="chat-binding-copy">
-                    <strong>用手机打开对应平台扫码</strong>
+                    <strong>{activeChatControlBinding.qrPayload ? '用手机打开对应平台扫码' : '暂时不能扫码绑定'}</strong>
                     <span>绑定码：<code>{activeChatControlBinding.bindingCode}</code></span>
-                    <span>{activeChatControlBinding.relayUrl ? '扫码后会自动发送“今日状态”测试。' : '当前没有云端中转地址，先用“测试连接”验证本地命令链路。'}</span>
-                    <small>{activeChatControlBinding.bindingUrl}</small>
+                    <span>{activeChatControlBinding.relayUrl ? '扫码后会自动发送“今日状态”测试。' : '当前安装包没有配置聊天云端中转地址，所以不能生成手机可打开的二维码。先用“测试连接”验证本地命令链路。'}</span>
+                    {activeChatControlBinding.bindingUrl ? <small>{activeChatControlBinding.bindingUrl}</small> : <small>需要在 hermills-cloud.json 里配置 chatRelayUrl 后重新生成二维码。</small>}
                   </div>
                 </div>
               ) : (
