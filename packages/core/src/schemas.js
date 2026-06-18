@@ -928,7 +928,7 @@ export const JobRunRecordSchema = z.object({
     model: z.string().min(1).max(100).optional(),
     providerId: z.string().min(1).optional()
 }).strict();
-export const ChannelKindSchema = z.enum(["telegram", "discord", "slack", "whatsapp", "matrix", "feishu", "wechat", "wecom"]);
+export const ChannelKindSchema = z.enum(["telegram", "discord", "slack", "whatsapp", "matrix", "feishu", "wechat", "wecom", "dingtalk", "qq"]);
 export const ChannelStatusSchema = z.enum(["disabled", "needs-setup", "connected", "failed"]);
 export const ChannelRecordSchema = z.object({
     id: z.string().min(1),
@@ -945,6 +945,77 @@ export const ChannelRecordSchema = z.object({
     lastError: z.string().max(1000).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
+}).strict();
+export const ChatControlActionSchema = z.enum([
+    "help",
+    "status",
+    "generate-outreach-draft",
+    "list-drafts",
+    "review-draft",
+    "rewrite-draft",
+    "send-draft",
+    "check-inbox",
+    "unknown"
+]);
+export const ChatControlCommandStatusSchema = z.enum([
+    "queued",
+    "running",
+    "needs-approval",
+    "completed",
+    "failed",
+    "rejected"
+]);
+export const ChatControlBindingStatusSchema = z.enum([
+    "pending",
+    "linked",
+    "testing",
+    "connected",
+    "failed",
+    "expired"
+]);
+export const ChatControlCommandSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    channelId: z.string().min(1).optional(),
+    platform: ChannelKindSchema,
+    conversationId: z.string().trim().min(1).max(240),
+    senderId: z.string().trim().min(1).max(240),
+    senderDisplayName: z.string().trim().max(160).default(""),
+    rawText: z.string().trim().min(1).max(4000),
+    action: ChatControlActionSchema.default("unknown"),
+    status: ChatControlCommandStatusSchema.default("queued"),
+    payload: z.record(z.unknown()).default({}),
+    resultText: z.string().trim().max(8000).default(""),
+    error: z.string().trim().max(1000).optional(),
+    requiresApproval: z.boolean().default(false),
+    approvalCode: z.string().trim().max(20).optional(),
+    relatedCommandId: z.string().min(1).optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    completedAt: z.string().datetime().optional()
+}).strict();
+export const ChatControlBindingSessionSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    platform: ChannelKindSchema,
+    channelId: z.string().min(1).optional(),
+    status: ChatControlBindingStatusSchema.default("pending"),
+    bindingCode: z.string().trim().min(6).max(80),
+    bindingUrl: z.string().trim().min(1).max(2000),
+    qrPayload: z.string().trim().min(1).max(2000),
+    relayUrl: z.string().trim().max(1000).optional(),
+    linkedAccount: z.object({
+        externalUserId: z.string().trim().max(240).default(""),
+        displayName: z.string().trim().max(160).default(""),
+        conversationId: z.string().trim().max(240).default("")
+    }).default({}),
+    testCommandId: z.string().min(1).optional(),
+    resultText: z.string().trim().max(8000).default(""),
+    error: z.string().trim().max(1000).optional(),
+    expiresAt: z.string().datetime(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    completedAt: z.string().datetime().optional()
 }).strict();
 export const LogLevelSchema = z.enum(["debug", "info", "warn", "error", "done"]);
 export const LogSourceSchema = z.enum(["server", "job", "channel", "gateway", "install"]);

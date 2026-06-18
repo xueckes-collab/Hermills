@@ -304,7 +304,7 @@ async function startServerIfNeeded() {
 }
 
 function loadCloudConfigEnv() {
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) return;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.HERMILLS_CHAT_RELAY_URL) return;
   const candidates = [
     path.join(app.getPath("userData"), "hermills-cloud.json"),
     process.resourcesPath ? path.join(process.resourcesPath, "hermills-cloud.json") : undefined,
@@ -317,6 +317,7 @@ function loadCloudConfigEnv() {
       process.env.SUPABASE_URL ||= stringConfigValue(config.supabaseUrl ?? config.SUPABASE_URL);
       process.env.SUPABASE_ANON_KEY ||= stringConfigValue(config.supabaseAnonKey ?? config.SUPABASE_ANON_KEY);
       process.env.HERMILLS_CLOUD_REQUIRED ||= stringConfigValue(config.cloudRequired ?? config.HERMILLS_CLOUD_REQUIRED) ?? "1";
+      process.env.HERMILLS_CHAT_RELAY_URL ||= stringConfigValue(config.chatRelayUrl ?? config.HERMILLS_CHAT_RELAY_URL);
       return;
     } catch (error) {
       console.warn(`Ignoring invalid Hermills cloud config at ${filePath}: ${error && error.message ? error.message : error}`);

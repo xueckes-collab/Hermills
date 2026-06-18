@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -17,6 +17,8 @@ import {
   CapabilitySchema,
   ChannelKindSchema,
   ChannelRecordSchema,
+  ChatControlBindingSessionSchema,
+  ChatControlCommandSchema,
   ChatMessageSchema,
   ChatSessionSchema,
   getDataHome,
@@ -71,6 +73,8 @@ import {
   type ChannelRecord,
   type ChatMessage,
   type ChatSession,
+  type ChatControlBindingSession,
+  type ChatControlCommand,
   type CompanyProfile,
   type DeepResearchSidecarConfig,
   type InstallEvent,
@@ -138,7 +142,8 @@ import {
   CloudSummarizeLearningRulesBodySchema,
   CloudSyncBodySchema,
   CloudVerifySignupCodeBodySchema,
-  HermillsCloudService
+  HermillsCloudService,
+  type CloudChatControlCommand
 } from "./cloud.js";
 
 export interface ServerOptions {
@@ -407,6 +412,35 @@ const ChannelListQuery = z.object({
   profileId: z.string().min(1).optional(),
   kind: ChannelKindSchema.optional()
 }).strict();
+
+const ChatControlCommandListQuery = z.object({
+  profileId: z.string().min(1).optional(),
+  status: ChatControlCommandSchema.shape.status.optional(),
+  limit: z.coerce.number().int().positive().max(200).optional()
+}).strict();
+
+const CreateChatControlCommandBody = z.object({
+  profileId: z.string().min(1).optional(),
+  channelId: z.string().min(1).optional(),
+  platform: ChannelKindSchema.default("feishu"),
+  conversationId: z.string().trim().min(1).max(240).default("local-preview"),
+  senderId: z.string().trim().min(1).max(240).default("local-user"),
+  senderDisplayName: z.string().trim().max(160).default(""),
+  rawText: z.string().trim().min(1).max(4000),
+  executeNow: z.boolean().default(true)
+}).strict();
+
+const CreateChatControlBindingBody = z.object({
+  profileId: z.string().min(1).optional(),
+  platform: ChannelKindSchema.default("feishu"),
+  label: z.string().trim().max(120).optional()
+}).strict();
+
+const ChatControlWebhookQuery = z.object({
+  token: z.string().trim().min(1).max(4000).optional()
+}).strict();
+
+const ChatControlWebhookBody = z.record(z.unknown());
 
 const LogListQuery = z.object({
   source: LogSourceSchema.optional(),
@@ -697,6 +731,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   if (options.desktopToken) {
     server.addHook("preHandler", async (request, reply) => {
       if (request.url === "/api/health") return;
+      if (request.method === "POST" && request.url.startsWith("/api/chat-control/webhooks/")) return;
       if (request.headers["x-hermills-token"] !== options.desktopToken) {
         await reply.code(401).send(errorBody("UNAUTHORIZED", "Invalid Hermills desktop token."));
       }
@@ -725,6 +760,8 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   const profiles = new ProfileRepository(options.baseDir);
   const jobs = new JobRepository(options.baseDir);
   const channels = new ChannelRepository(options.baseDir);
+  const chatControlCommands = new ChatControlCommandRepository(options.baseDir);
+  const chatControlBindings = new ChatControlBindingSessionRepository(options.baseDir);
   const logs = new LogRepository(options.baseDir);
   const cloud = new HermillsCloudService({ baseDir: options.baseDir, fetchImpl });
   await syncDefaultRuntimeInferenceProvider(runtime, providers, logs);
@@ -752,6 +789,249 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     if (!channel) throw new ClientInputError(`Channel not found: ${id}`);
     await assertActiveProfile(channel.profileId);
     return channel;
+  };
+  const executeChatControlCommand = async (command: ChatControlCommand): Promise<ChatControlCommand> => {
+    const profileId = await resolveProfileId(command.profileId);
+    await chatControlCommands.update(command.id, { status: "running", profileId });
+    const intent = parseChatControlIntent(command.rawText);
+    try {
+      if (intent.action === "help" || intent.action === "unknown") {
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: intent.payload,
+          status: "completed",
+          resultText: chatControlHelpText(),
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "status") {
+        const [leads, drafts, campaigns, senders] = await Promise.all([
+          outreachLeads.list({ profileId }),
+          outreachDrafts.list({ profileId }),
+          outreachCampaigns.list({ profileId }),
+          outreachSenders.list({ profileId })
+        ]);
+        const waitingSend = drafts.filter((draft) => draft.status !== "sent").length;
+        const replyReady = leads.filter((lead) => lead.replyStatus === "reply_received" || lead.status === "reply_received").length;
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: intent.payload,
+          status: "completed",
+          resultText: [
+            `Hermills 今日状态：${leads.length} 个客户，${drafts.length} 封草稿，${waitingSend} 封待发送，${replyReady} 个客户已回复。`,
+            `批量任务：${campaigns.length} 个。已确认发件邮箱：${senders.filter((sender) => sender.enabled && sender.deliveryConfirmedAt).length} 个。`,
+            "可继续发送：写信 客户邮箱 官网，或：查看草稿。"
+          ].join("\n"),
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "generate-outreach-draft") {
+        const website = stringPayload(intent.payload, "website");
+        const email = stringPayload(intent.payload, "email");
+        if (!website || !email) throw new ClientInputError("写开发信需要同时提供客户官网和邮箱。例：给 buyer@company.com https://company.com 写开发信");
+        const research = await researchCustomerWebsite(website, "adaptive", { email, deepResearch, cache: customerResearchCache });
+        const lead = await outreachLeads.create({
+          profileId,
+          companyName: research.companyName || companyNameFromWebsite(research.website) || companyNameFromEmail(email),
+          website: research.website,
+          email,
+          country: "",
+          industry: research.industry || "",
+          contactName: "",
+          contactTitle: "",
+          need: research.inferredNeed || "",
+          notes: formatCustomerResearchNotes(research),
+          tags: ["chat-control", "auto-researched"]
+        });
+        const draft = await generateFastOutreachDraft({
+          lead,
+          body: {
+            language: "English",
+            tone: "professional, warm, concise",
+            generationMode: "deep",
+            researchDepth: "adaptive"
+          },
+          profileId,
+          runtime,
+          providers,
+          companyProfile,
+          materials,
+          emailSignature: outreachEmailSignature,
+          assets: outreachAssets,
+          drafts: outreachDrafts,
+          research
+        });
+        await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: { ...intent.payload, leadId: lead.id, draftId: draft.id },
+          status: "completed",
+          resultText: chatControlDraftSummary(draft),
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "list-drafts") {
+        const drafts = (await outreachDrafts.list({ profileId })).slice(0, 8);
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: intent.payload,
+          status: "completed",
+          resultText: drafts.length ? drafts.map((draft, index) => `${index + 1}. ${draft.id.slice(0, 8)} · ${draft.status} · ${draft.subject}`).join("\n") : "还没有开发信草稿。可以发送：给 buyer@company.com https://company.com 写开发信",
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "review-draft") {
+        const draft = await resolveChatControlDraft(intent.payload, profileId, outreachDrafts);
+        const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
+        const review = reviewOutreachEmail({ subject: draft.subject, body: draft.body, lead });
+        await outreachDrafts.update(draft.id, { qualityReview: review });
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: { ...intent.payload, draftId: draft.id },
+          status: "completed",
+          resultText: `草稿 ${draft.id.slice(0, 8)} 质量分：${review.score} 分。${review.summary || (review.passed ? "可以发送。" : "建议先重写。")}`,
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "rewrite-draft") {
+        const draft = await resolveChatControlDraft(intent.payload, profileId, outreachDrafts);
+        const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
+        const rewritten = await rewriteOutreachDraft({
+          draft,
+          lead,
+          body: {},
+          runtime,
+          providers,
+          companyProfile,
+          materials,
+          assets: outreachAssets,
+          drafts: outreachDrafts
+        });
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: { ...intent.payload, draftId: rewritten.id },
+          status: "completed",
+          resultText: chatControlDraftSummary(rewritten),
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "check-inbox") {
+        const sender = await resolveChatControlSender(profileId, outreachSenders);
+        const result = await checkOutreachInbox({
+          sender,
+          senders: outreachSenders,
+          drafts: outreachDrafts,
+          campaigns: outreachCampaigns,
+          followUps: outreachFollowUps
+        });
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: { ...intent.payload, senderAccountId: sender.id },
+          status: "completed",
+          resultText: `已检查 ${sender.email}：匹配到 ${result.matched.length} 个回复/退信事件，停止跟进 ${result.stopped} 个。${result.message}`,
+          completedAt: new Date().toISOString()
+        });
+      }
+      if (intent.action === "send-draft") {
+        const approvalCode = stringPayload(intent.payload, "approvalCode");
+        if (approvalCode) {
+          const pending = await chatControlCommands.findPendingApproval(approvalCode, profileId);
+          if (!pending) throw new ClientInputError("确认码无效或已过期。请重新发送：发送草稿 草稿ID。");
+          const draft = await resolveChatControlDraft(pending.payload, profileId, outreachDrafts);
+          const sender = await resolveChatControlSender(profileId, outreachSenders);
+          const lead = draft.leadId ? await outreachLeads.get(draft.leadId) : undefined;
+          const sent = await sendOutreachDraft({
+            draft,
+            sender,
+            lead,
+            senders: outreachSenders,
+            drafts: outreachDrafts,
+            emailSignature: outreachEmailSignature,
+            ctaAssets: await outreachAssets.listCtaAssets(profileId),
+            companyKnowledgeContext: await buildCompanyKnowledgeContext(companyProfile, materials)
+          });
+          await chatControlCommands.update(pending.id, {
+            status: "completed",
+            resultText: `已确认并发送：${sent.subject}`,
+            completedAt: new Date().toISOString()
+          });
+          return chatControlCommands.update(command.id, {
+            action: intent.action,
+            payload: { approvalCode, draftId: draft.id, senderAccountId: sender.id },
+            status: "completed",
+            resultText: `已发送给 ${lead?.email || "客户"}：${sent.subject}`,
+            completedAt: new Date().toISOString()
+          });
+        }
+        const draft = await resolveChatControlDraft(intent.payload, profileId, outreachDrafts);
+        const code = createApprovalCode();
+        return chatControlCommands.update(command.id, {
+          action: intent.action,
+          payload: { ...intent.payload, draftId: draft.id },
+          status: "needs-approval",
+          requiresApproval: true,
+          approvalCode: code,
+          resultText: `发送邮件需要确认。草稿：${draft.subject}\n如果确认发送，请回复：确认发送 ${code}`,
+        });
+      }
+      return chatControlCommands.update(command.id, {
+        action: "unknown",
+        payload: intent.payload,
+        status: "completed",
+        resultText: chatControlHelpText(),
+        completedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return chatControlCommands.update(command.id, {
+        action: intent.action,
+        payload: intent.payload,
+        status: "failed",
+        error: message,
+        resultText: `Hermills 没能完成这次请求：${message}`,
+        completedAt: new Date().toISOString()
+      });
+    }
+  };
+  const executeCloudChatControlCommand = async (incoming: CloudChatControlCommand) => {
+    const platform = ChannelKindSchema.safeParse(incoming.platform);
+    if (!platform.success || !isOfficialChatControlPlatform(platform.data)) {
+      await cloud.completeChatControlCommand(incoming.id, {
+        ok: false,
+        error: `Unsupported chat platform: ${incoming.platform}`
+      }).catch(() => undefined);
+      return { ok: false, command: undefined, error: `Unsupported chat platform: ${incoming.platform}` };
+    }
+    const profileId = await resolveProfileId();
+    let channelId = incoming.channelId;
+    if (channelId) {
+      const channel = await channels.get(channelId).catch(() => undefined);
+      if (!channel || channel.profileId !== profileId || channel.kind !== platform.data || !channel.enabled) channelId = undefined;
+    }
+    if (!channelId) {
+      const existing = (await channels.list({ profileId, kind: platform.data })).find((channel) => channel.enabled);
+      channelId = existing?.id;
+    }
+    const command = await chatControlCommands.create({
+      profileId,
+      channelId,
+      platform: platform.data,
+      conversationId: incoming.conversationId,
+      senderId: incoming.senderId,
+      senderDisplayName: incoming.senderDisplayName,
+      rawText: incoming.rawText,
+      payload: {
+        ...incoming.payload,
+        cloudCommandId: incoming.id
+      }
+    });
+    const executed = await executeChatControlCommand(command);
+    await cloud.completeChatControlCommand(incoming.id, {
+      ok: executed.status !== "failed",
+      resultText: executed.resultText,
+      error: executed.error
+    }).catch(() => undefined);
+    return { ok: executed.status !== "failed", command: executed };
   };
   const buildCloudSyncSnapshot = async () => {
     const profileId = await resolveProfileId();
@@ -1063,6 +1343,190 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     await assertChannelProfile(id);
     await channels.remove(id);
     return reply.code(204).send();
+  });
+
+  server.get("/api/chat-control/bindings", async (request) => {
+    const query = ChannelListQuery.parse(request.query ?? {});
+    return chatControlBindings.list({
+      profileId: await resolveProfileId(query.profileId),
+      platform: query.kind
+    });
+  });
+  server.post("/api/chat-control/bindings", async (request) => {
+    const body = CreateChatControlBindingBody.parse(request.body ?? {});
+    const profileId = await resolveProfileId(body.profileId);
+    const existing = (await channels.list({ profileId, kind: body.platform }))[0];
+    const label = body.label?.trim() || `${chatControlPlatformLabel(body.platform)} 聊天控制`;
+    const config = {
+      ...(existing?.config ?? {}),
+      mode: "official-bot",
+      relay: "cloud-binding",
+      accountType: body.platform === "wechat" ? "service_account" : undefined,
+      localWebhookPath: existing ? `/api/chat-control/webhooks/${existing.id}` : undefined,
+      allowedActions: ["status", "generate-outreach-draft", "list-drafts", "review-draft", "rewrite-draft", "check-inbox", "send-draft-with-approval"]
+    };
+    const channel = existing
+      ? await channels.update(existing.id, {
+        label,
+        enabled: true,
+        secret: existing.secretRef ? undefined : createChatControlRelaySecret(),
+        config
+      })
+      : await channels.create({
+        profileId,
+        kind: body.platform,
+        label,
+        enabled: true,
+        secret: createChatControlRelaySecret(),
+        config
+      });
+    const binding = await chatControlBindings.create({
+      profileId,
+      platform: body.platform,
+      channelId: channel.id,
+      relayUrl: chatControlRelayUrl()
+    });
+    await channels.update(channel.id, {
+      config: {
+        ...channel.config,
+        ...config,
+        localWebhookPath: `/api/chat-control/webhooks/${channel.id}`,
+        bindingSessionId: binding.id,
+        bindingUrl: binding.bindingUrl
+      }
+    });
+    return binding;
+  });
+  server.get("/api/chat-control/bindings/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const binding = await chatControlBindings.get(id);
+    if (!binding) throw new ClientInputError(`Chat control binding session not found: ${id}`);
+    await assertActiveProfile(binding.profileId);
+    return binding;
+  });
+  server.post("/api/chat-control/bindings/:id/test", async (request) => {
+    const { id } = request.params as { id: string };
+    const binding = await chatControlBindings.get(id);
+    if (!binding) throw new ClientInputError(`Chat control binding session not found: ${id}`);
+    const profileId = await assertActiveProfile(binding.profileId);
+    if (!binding.channelId) throw new ClientInputError("Chat control binding session is missing its local channel.");
+    await assertChannelProfile(binding.channelId);
+    await chatControlBindings.update(binding.id, { status: "testing", error: undefined, resultText: "正在发送测试命令：今日状态。" });
+    const command = await chatControlCommands.create({
+      profileId,
+      channelId: binding.channelId,
+      platform: binding.platform,
+      conversationId: "binding-test",
+      senderId: "binding-test-user",
+      senderDisplayName: "Binding test",
+      rawText: "今日状态"
+    });
+    const executed = await executeChatControlCommand(command);
+    return chatControlBindings.update(binding.id, {
+      status: executed.status === "failed" ? "failed" : "connected",
+      testCommandId: executed.id,
+      resultText: executed.resultText || "聊天助手连接成功。你现在可以发送“今日状态”或“写开发信”。",
+      error: executed.status === "failed" ? executed.error || "测试命令失败。" : undefined,
+      completedAt: new Date().toISOString()
+    });
+  });
+
+  server.post("/api/chat-control/cloud/poll", async () => {
+    const pulled = await cloud.pullChatControlCommands(10);
+    let executed = 0;
+    let failed = 0;
+    const results: Array<{ id: string; ok: boolean; resultText?: string; error?: string }> = [];
+    for (const incoming of pulled.commands) {
+      try {
+        const result = await executeCloudChatControlCommand(incoming);
+        if (result.ok) executed += 1;
+        else failed += 1;
+        results.push({
+          id: incoming.id,
+          ok: result.ok,
+          resultText: result.command?.resultText,
+          error: result.command?.error ?? result.error
+        });
+      } catch (error) {
+        failed += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        await cloud.completeChatControlCommand(incoming.id, { ok: false, error: message }).catch(() => undefined);
+        results.push({ id: incoming.id, ok: false, error: message });
+      }
+    }
+    return {
+      ok: true,
+      pulled: pulled.pulled,
+      executed,
+      failed,
+      results
+    };
+  });
+
+  server.get("/api/chat-control/commands", async (request) => {
+    const query = ChatControlCommandListQuery.parse(request.query ?? {});
+    return chatControlCommands.list({
+      profileId: await resolveProfileId(query.profileId),
+      status: query.status,
+      limit: query.limit
+    });
+  });
+  server.post("/api/chat-control/commands", async (request) => {
+    const body = CreateChatControlCommandBody.parse(request.body ?? {});
+    const profileId = await resolveProfileId(body.profileId);
+    if (body.channelId) {
+      const channel = await assertChannelProfile(body.channelId);
+      if (channel.kind !== body.platform) throw new ClientInputError("Chat command platform does not match the selected channel.");
+    }
+    const command = await chatControlCommands.create({
+      profileId,
+      channelId: body.channelId,
+      platform: body.platform,
+      conversationId: body.conversationId,
+      senderId: body.senderId,
+      senderDisplayName: body.senderDisplayName,
+      rawText: body.rawText
+    });
+    return body.executeNow ? executeChatControlCommand(command) : command;
+  });
+  server.post("/api/chat-control/commands/:id/run", async (request) => {
+    const { id } = request.params as { id: string };
+    const command = await chatControlCommands.get(id);
+    if (!command) throw new ClientInputError(`Chat control command not found: ${id}`);
+    await assertActiveProfile(command.profileId);
+    return executeChatControlCommand(command);
+  });
+  server.post("/api/chat-control/webhooks/:channelId", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    const query = ChatControlWebhookQuery.parse(request.query ?? {});
+    const body = ChatControlWebhookBody.parse(request.body ?? {});
+    const challenge = extractChatWebhookChallenge(body);
+    if (challenge) return { challenge };
+    const channel = await channels.get(channelId);
+    if (!channel) return reply.code(404).send(errorBody("NOT_FOUND", `Chat control channel not found: ${channelId}`));
+    if (!channel.enabled) return reply.code(403).send(errorBody("CHANNEL_DISABLED", "Chat control channel is disabled."));
+    const secret = await channels.secret(channel.id);
+    if (!secret) return reply.code(403).send(errorBody("CHANNEL_SECRET_REQUIRED", "Chat control channel secret is required."));
+    if (!verifyChatWebhookSecret(secret, request.headers, query.token)) {
+      return reply.code(401).send(errorBody("INVALID_CHANNEL_SECRET", "Invalid chat control webhook secret."));
+    }
+    const rawText = extractChatWebhookText(channel.kind, body);
+    if (!rawText) throw new ClientInputError("Chat webhook payload does not contain a text command.");
+    const command = await chatControlCommands.create({
+      profileId: await resolveProfileId(channel.profileId),
+      channelId: channel.id,
+      platform: channel.kind,
+      conversationId: extractChatWebhookConversationId(channel.kind, body),
+      senderId: extractChatWebhookSenderId(channel.kind, body),
+      senderDisplayName: extractChatWebhookSenderName(channel.kind, body),
+      rawText
+    });
+    const executed = await executeChatControlCommand(command);
+    return {
+      ok: executed.status !== "failed",
+      reply: executed.resultText || executed.error || "Hermills 已收到命令。",
+      command: executed
+    };
   });
 
   server.get("/api/chat/sessions", async (request) => {
@@ -2511,6 +2975,11 @@ class ChannelRepository {
     return { ok, status, message: ok ? "Channel settings are ready." : "Channel is disabled or missing endpoint/secret." };
   }
 
+  async secret(id: string): Promise<string | undefined> {
+    const channel = await this.get(id);
+    return channel?.secretRef ? this.vault.readSecret(channel.secretRef) : undefined;
+  }
+
   async remove(id: string): Promise<void> {
     const document = await this.read();
     const channel = document.channels.find((item) => item.id === id);
@@ -2531,6 +3000,203 @@ class ChannelRepository {
 
   private async write(document: ChannelStoreDocument): Promise<void> {
     await writePrivateJson(this.filePath, { channels: document.channels.map((channel) => ChannelRecordSchema.parse(channel)) });
+  }
+}
+
+interface ChatControlCommandStoreDocument {
+  commands: ChatControlCommand[];
+}
+
+interface ChatControlCommandListOptions {
+  profileId?: string;
+  status?: ChatControlCommand["status"];
+  limit?: number;
+}
+
+class ChatControlCommandRepository {
+  private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "chat-control-commands.json");
+  }
+
+  async list(options: ChatControlCommandListOptions = {}): Promise<ChatControlCommand[]> {
+    const commands = (await this.read()).commands.filter((command) => {
+      if (options.profileId && command.profileId !== options.profileId) return false;
+      if (options.status && command.status !== options.status) return false;
+      return true;
+    });
+    return commands.slice(0, options.limit ?? 100);
+  }
+
+  async get(id: string): Promise<ChatControlCommand | undefined> {
+    return (await this.read()).commands.find((command) => command.id === id);
+  }
+
+  async findPendingApproval(code: string, profileId?: string): Promise<ChatControlCommand | undefined> {
+    const normalized = code.trim();
+    return (await this.read()).commands.find((command) => (
+      command.status === "needs-approval"
+      && command.approvalCode === normalized
+      && (!profileId || command.profileId === profileId)
+    ));
+  }
+
+  async create(input: Omit<ChatControlCommand, "id" | "status" | "action" | "payload" | "resultText" | "requiresApproval" | "createdAt" | "updatedAt"> & Partial<Pick<ChatControlCommand, "status" | "action" | "payload" | "resultText" | "requiresApproval">>): Promise<ChatControlCommand> {
+    return this.withWriteLock(async () => {
+      const now = new Date().toISOString();
+      const command = ChatControlCommandSchema.parse({
+        ...input,
+        id: randomUUID(),
+        status: input.status ?? "queued",
+        action: input.action ?? "unknown",
+        payload: input.payload ?? {},
+        resultText: input.resultText ?? "",
+        requiresApproval: input.requiresApproval ?? false,
+        createdAt: now,
+        updatedAt: now
+      });
+      const document = await this.read();
+      document.commands.unshift(command);
+      await this.write({ commands: document.commands.slice(0, 1000) });
+      return command;
+    });
+  }
+
+  async update(id: string, input: Partial<Omit<ChatControlCommand, "id" | "createdAt">>): Promise<ChatControlCommand> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.commands.findIndex((command) => command.id === id);
+      if (index === -1) throw new ClientInputError(`Chat control command not found: ${id}`);
+      const next = ChatControlCommandSchema.parse({
+        ...document.commands[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.commands[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  private async read(): Promise<ChatControlCommandStoreDocument> {
+    try {
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as ChatControlCommandStoreDocument;
+      return { commands: Array.isArray(parsed.commands) ? parsed.commands.map((command) => ChatControlCommandSchema.parse(command)) : [] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { commands: [] };
+      throw error;
+    }
+  }
+
+  private async write(document: ChatControlCommandStoreDocument): Promise<void> {
+    await writePrivateJson(this.filePath, { commands: document.commands.map((command) => ChatControlCommandSchema.parse(command)) });
+  }
+}
+
+interface ChatControlBindingSessionStoreDocument {
+  sessions: ChatControlBindingSession[];
+}
+
+interface ChatControlBindingSessionListOptions {
+  profileId?: string;
+  platform?: ChannelRecord["kind"];
+}
+
+class ChatControlBindingSessionRepository {
+  private readonly filePath: string;
+  private readonly withWriteLock = createWriteLock();
+
+  constructor(baseDir?: string) {
+    this.filePath = path.join(getDataHome(baseDir), "chat-control-bindings.json");
+  }
+
+  async list(options: ChatControlBindingSessionListOptions = {}): Promise<ChatControlBindingSession[]> {
+    const now = Date.now();
+    const sessions = (await this.read()).sessions.map((session) => (
+      session.status === "pending" && new Date(session.expiresAt).getTime() <= now
+        ? ChatControlBindingSessionSchema.parse({ ...session, status: "expired", updatedAt: new Date().toISOString() })
+        : session
+    ));
+    return sessions.filter((session) => {
+      if (options.profileId && session.profileId !== options.profileId) return false;
+      if (options.platform && session.platform !== options.platform) return false;
+      return true;
+    });
+  }
+
+  async get(id: string): Promise<ChatControlBindingSession | undefined> {
+    return (await this.list()).find((session) => session.id === id);
+  }
+
+  async create(input: {
+    profileId: string;
+    platform: ChannelRecord["kind"];
+    channelId: string;
+    relayUrl?: string;
+  }): Promise<ChatControlBindingSession> {
+    return this.withWriteLock(async () => {
+      const now = new Date();
+      const id = randomUUID();
+      const bindingCode = createChatControlBindingCode();
+      const relayUrl = input.relayUrl?.replace(/\/+$/, "");
+      const bindingUrl = relayUrl
+        ? `${relayUrl}/chat-control/bind/${id}?code=${encodeURIComponent(bindingCode)}`
+        : `hermills://chat-control/bind/${id}?code=${encodeURIComponent(bindingCode)}`;
+      const session = ChatControlBindingSessionSchema.parse({
+        id,
+        profileId: input.profileId,
+        platform: input.platform,
+        channelId: input.channelId,
+        status: "pending",
+        bindingCode,
+        bindingUrl,
+        qrPayload: bindingUrl,
+        relayUrl,
+        linkedAccount: {},
+        resultText: relayUrl
+          ? "等待扫码绑定。"
+          : "当前没有配置 Hermills 云端聊天中转，二维码只能用于本地预览。",
+        expiresAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+      const document = await this.read();
+      document.sessions.unshift(session);
+      await this.write({ sessions: document.sessions.slice(0, 200) });
+      return session;
+    });
+  }
+
+  async update(id: string, input: Partial<Omit<ChatControlBindingSession, "id" | "createdAt">>): Promise<ChatControlBindingSession> {
+    return this.withWriteLock(async () => {
+      const document = await this.read();
+      const index = document.sessions.findIndex((session) => session.id === id);
+      if (index === -1) throw new ClientInputError(`Chat control binding session not found: ${id}`);
+      const next = ChatControlBindingSessionSchema.parse({
+        ...document.sessions[index],
+        ...input,
+        updatedAt: new Date().toISOString()
+      });
+      document.sessions[index] = next;
+      await this.write(document);
+      return next;
+    });
+  }
+
+  private async read(): Promise<ChatControlBindingSessionStoreDocument> {
+    try {
+      const parsed = JSON.parse(await readFile(this.filePath, "utf8")) as ChatControlBindingSessionStoreDocument;
+      return { sessions: Array.isArray(parsed.sessions) ? parsed.sessions.map((session) => ChatControlBindingSessionSchema.parse(session)) : [] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { sessions: [] };
+      throw error;
+    }
+  }
+
+  private async write(document: ChatControlBindingSessionStoreDocument): Promise<void> {
+    await writePrivateJson(this.filePath, { sessions: document.sessions.map((session) => ChatControlBindingSessionSchema.parse(session)) });
   }
 }
 
@@ -11368,6 +12034,251 @@ function estimateNextRunAt(value: string): string {
 function channelStatus(enabled: boolean, hasSecret: boolean, endpoint?: string): ChannelRecord["status"] {
   if (!enabled) return "disabled";
   return hasSecret || endpoint ? "connected" : "needs-setup";
+}
+
+function createChatControlBindingCode(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase();
+}
+
+function createChatControlRelaySecret(): string {
+  return `${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "")}`;
+}
+
+function chatControlRelayUrl(): string | undefined {
+  return process.env.HERMILLS_CHAT_RELAY_URL?.trim().replace(/\/+$/, "") || undefined;
+}
+
+function isOfficialChatControlPlatform(platform: ChannelRecord["kind"]): boolean {
+  return platform === "feishu" || platform === "dingtalk" || platform === "wecom" || platform === "wechat" || platform === "qq";
+}
+
+function chatControlPlatformLabel(platform: ChannelRecord["kind"]): string {
+  if (platform === "feishu") return "飞书";
+  if (platform === "dingtalk") return "钉钉";
+  if (platform === "wecom") return "企业微信";
+  if (platform === "wechat") return "微信官方入口";
+  if (platform === "qq") return "QQ";
+  return platform;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function verifyChatWebhookSecret(secret: string, headers: FastifyRequest["headers"], token?: string): boolean {
+  const authorization = headerString(headers.authorization);
+  const candidates = [
+    token,
+    headerString(headers["x-hermills-channel-secret"]),
+    headerString(headers["x-chat-control-secret"]),
+    authorization?.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : undefined
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  return candidates.some((candidate) => safeEqual(candidate, secret));
+}
+
+function headerString(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function extractChatWebhookChallenge(body: UnknownRecord): string | undefined {
+  return stringFromUnknown(body.challenge) ?? stringFromUnknown(valueAt(body, ["event", "challenge"]));
+}
+
+function extractChatWebhookText(_platform: ChannelRecord["kind"], body: UnknownRecord): string | undefined {
+  return normalizeChatWebhookText(firstNestedValue(body, [
+    ["rawText"],
+    ["command"],
+    ["text"],
+    ["content"],
+    ["message"],
+    ["text", "content"],
+    ["event", "message", "content"],
+    ["event", "message", "text"],
+    ["message", "text", "content"],
+    ["message", "content"],
+    ["conversation", "message", "text"]
+  ]));
+}
+
+function extractChatWebhookConversationId(_platform: ChannelRecord["kind"], body: UnknownRecord): string {
+  return stringFromUnknown(firstNestedValue(body, [
+    ["conversationId"],
+    ["conversation_id"],
+    ["chatId"],
+    ["chat_id"],
+    ["event", "message", "chat_id"],
+    ["conversation", "id"]
+  ])) ?? "chat-webhook";
+}
+
+function extractChatWebhookSenderId(_platform: ChannelRecord["kind"], body: UnknownRecord): string {
+  return stringFromUnknown(firstNestedValue(body, [
+    ["senderId"],
+    ["sender_id"],
+    ["userId"],
+    ["user_id"],
+    ["senderStaffId"],
+    ["event", "sender", "sender_id", "user_id"],
+    ["event", "sender", "sender_id", "open_id"],
+    ["sender", "id"]
+  ])) ?? "chat-user";
+}
+
+function extractChatWebhookSenderName(_platform: ChannelRecord["kind"], body: UnknownRecord): string {
+  return stringFromUnknown(firstNestedValue(body, [
+    ["senderDisplayName"],
+    ["senderName"],
+    ["senderNick"],
+    ["userNick"],
+    ["userName"],
+    ["event", "sender", "sender_id", "union_id"],
+    ["event", "sender", "sender_name"],
+    ["sender", "name"]
+  ])) ?? "";
+}
+
+function firstNestedValue(body: UnknownRecord, paths: string[][]): unknown {
+  for (const pathParts of paths) {
+    const value = valueAt(body, pathParts);
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+function valueAt(value: unknown, pathParts: string[]): unknown {
+  let current = value;
+  for (const part of pathParts) {
+    if (!isRecord(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function normalizeChatWebhookText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        return normalizeChatWebhookText(parsed) ?? trimmed;
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+  if (isRecord(value)) {
+    return normalizeChatWebhookText(firstNestedValue(value, [
+      ["text"],
+      ["content"],
+      ["message"],
+      ["plain_text"]
+    ]));
+  }
+  return undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface ChatControlIntent {
+  action: ChatControlCommand["action"];
+  payload: Record<string, unknown>;
+}
+
+function parseChatControlIntent(rawText: string): ChatControlIntent {
+  const text = rawText.trim();
+  const approvalCode = text.match(/(?:确认发送|confirm\s+send|send\s+confirm)\s*([0-9]{4,8})/i)?.[1];
+  if (approvalCode) return { action: "send-draft", payload: { approvalCode } };
+  if (/^(help|帮助|菜单|可以做什么)\b/i.test(text)) return { action: "help", payload: {} };
+  if (/(状态|概览|今日|dashboard|status|summary)/i.test(text)) return { action: "status", payload: {} };
+  if (/(查回复|检查回复|收件箱|inbox|reply|replies)/i.test(text)) return { action: "check-inbox", payload: {} };
+  if (/(查看草稿|列出草稿|草稿列表|list\s+drafts|drafts)/i.test(text)) return { action: "list-drafts", payload: {} };
+  if (/(评分|审核|review)/i.test(text) && /(草稿|draft)/i.test(text)) return { action: "review-draft", payload: { draftId: extractChatControlId(text) } };
+  if (/(重写|rewrite|改写)/i.test(text) && /(草稿|draft|邮件|email)/i.test(text)) return { action: "rewrite-draft", payload: { draftId: extractChatControlId(text) } };
+  if (/(发送|send)/i.test(text) && /(草稿|draft|邮件|email)/i.test(text)) return { action: "send-draft", payload: { draftId: extractChatControlId(text) } };
+  if (/(写|生成|开发信|cold email|outreach|email)/i.test(text)) {
+    const website = extractChatControlWebsite(text);
+    const email = extractEmail(text);
+    if (website || email) return { action: "generate-outreach-draft", payload: { website, email } };
+  }
+  return { action: "unknown", payload: {} };
+}
+
+function extractEmail(text: string): string | undefined {
+  return text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+}
+
+function extractChatControlWebsite(text: string): string | undefined {
+  const explicit = text.match(/https?:\/\/[^\s，。；,;]+/i)?.[0];
+  if (explicit) return explicit.replace(/[)\]}]+$/, "");
+  const domain = text.match(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+\b/i)?.[0];
+  if (!domain || domain.includes("@")) return undefined;
+  return `https://${domain}`;
+}
+
+function extractChatControlId(text: string): string | undefined {
+  return text.match(/\b[0-9a-f]{6,8}(?:-[0-9a-f-]{8,})?\b/i)?.[0];
+}
+
+function stringPayload(payload: Record<string, unknown>, key: string): string | undefined {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function createApprovalCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function chatControlHelpText(): string {
+  return [
+    "Hermills 聊天控制可以这样用：",
+    "1. 今日状态",
+    "2. 给 buyer@company.com https://company.com 写开发信",
+    "3. 查看草稿",
+    "4. 审核草稿 草稿ID",
+    "5. 重写草稿 草稿ID",
+    "6. 检查回复",
+    "7. 发送草稿 草稿ID（会先给确认码，不会直接发送）"
+  ].join("\n");
+}
+
+function chatControlDraftSummary(draft: OutreachDraft): string {
+  const score = draft.qualityReview?.score;
+  const scoreLine = typeof score === "number" ? `质量分：${score} 分。` : "";
+  return [
+    `已生成开发信草稿 ${draft.id.slice(0, 8)}。${scoreLine}`,
+    `主题：${draft.subject}`,
+    truncatePlain(draft.body, 900),
+    `要发送请回复：发送草稿 ${draft.id.slice(0, 8)}`
+  ].filter(Boolean).join("\n\n");
+}
+
+async function resolveChatControlDraft(payload: Record<string, unknown>, profileId: string, drafts: OutreachDraftRepository): Promise<OutreachDraft> {
+  const draftId = stringPayload(payload, "draftId");
+  const all = await drafts.list({ profileId });
+  const draft = draftId
+    ? all.find((item) => item.id === draftId || item.id.startsWith(draftId))
+    : all[0];
+  if (!draft) throw new ClientInputError("找不到草稿。请先发送：查看草稿，然后带上草稿ID。");
+  return draft;
+}
+
+async function resolveChatControlSender(profileId: string, senders: OutreachSenderRepository): Promise<OutreachSenderAccount> {
+  const sender = (await senders.list({ profileId })).find((item) => item.enabled && item.deliveryConfirmedAt);
+  if (!sender) throw new ClientInputError("还没有已确认的发件邮箱。请先在 Hermills 邮箱页保存并测试邮箱。");
+  return sender;
 }
 
 function inferLogLevel(value: string): LogEntry["level"] {

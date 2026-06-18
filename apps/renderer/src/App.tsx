@@ -31,6 +31,7 @@ import {
   Pencil,
   Play,
   Plus,
+  QrCode,
   RefreshCw,
   Search,
   Send,
@@ -46,6 +47,7 @@ import {
   Zap,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import QRCode from 'qrcode'
 import type { LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,7 +58,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CloudStatus, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatControlBindingSession, ChatControlCommand, ChatMessage, ChatSession, ChannelRecord, CloudStatus, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
@@ -235,6 +237,23 @@ const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: stri
   aliyun: { url: 'https://qiye.aliyun.com/alimail/', smtpLabel: 'smtp.mxhichina.com:465' },
   zoho: { url: 'https://accounts.zoho.com/userdetails#security/app_password', smtpLabel: 'smtp.zoho.com:465' },
   custom: { smtpLabel: 'SMTP' },
+}
+
+const chatControlPlatformOptions: Array<{ id: ChannelRecord['kind']; label: string; detail: string }> = [
+  { id: 'feishu', label: '飞书', detail: '机器人事件订阅，适合单聊和群聊 @Hermills。' },
+  { id: 'dingtalk', label: '钉钉', detail: '企业机器人消息接收，适合团队审批。' },
+  { id: 'wecom', label: '企业微信', detail: '自建应用回调，微信官方体系里最稳定。' },
+  { id: 'wechat', label: '微信官方入口', detail: '公众号/小程序客服入口，不做个人微信外挂。' },
+  { id: 'qq', label: 'QQ', detail: 'QQ 官方机器人，适合频道、群和私信场景。' },
+]
+
+function chatControlBindingStatusLabel(binding: ChatControlBindingSession) {
+  if (binding.status === 'connected') return '连接成功，可以从聊天窗口控制 Hermills'
+  if (binding.status === 'testing') return '正在测试连接'
+  if (binding.status === 'failed') return binding.error || '连接失败，请重新生成二维码'
+  if (binding.status === 'expired') return '二维码已过期，请重新生成'
+  if (binding.status === 'linked') return '账号已绑定，等待测试'
+  return '等待扫码确认'
 }
 
 type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
@@ -2328,7 +2347,7 @@ type SignatureFormDraft = {
 }
 
 type OutreachMode = 'single' | 'campaign'
-type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'assets' | 'mail' | 'signature' | 'profile'
+type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'assets' | 'mail' | 'chatControl' | 'signature' | 'profile'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
 type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
@@ -2728,6 +2747,13 @@ function DevelopmentLetterPage({
   const [uspDraft, setUspDraft] = useState({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
   const [ctaDraft, setCtaDraft] = useState({ name: '', type: 'sample_options' as OutreachCtaAsset['type'], description: '', assetText: '' })
   const [goldenDraft, setGoldenDraft] = useState({ title: '', industry: '', buyerType: '', productLine: '', market: '', subject: '', body: '', tags: '' })
+  const [chatControlChannels, setChatControlChannels] = useState<ChannelRecord[]>([])
+  const [chatControlBindings, setChatControlBindings] = useState<ChatControlBindingSession[]>([])
+  const [chatControlCommands, setChatControlCommands] = useState<ChatControlCommand[]>([])
+  const [chatControlPlatform, setChatControlPlatform] = useState<ChannelRecord['kind']>('feishu')
+  const [chatControlText, setChatControlText] = useState('今日状态')
+  const [chatControlQr, setChatControlQr] = useState('')
+  const chatControlCloudPollInFlightRef = useRef(false)
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2844,6 +2870,9 @@ function DevelopmentLetterPage({
     })
   }, [leads, leadFilter, leadSearch])
   const selectedLetterLeads = useMemo(() => leads.filter((lead) => selectedLetterLeadIds.includes(lead.id)), [leads, selectedLetterLeadIds])
+  const chatControlKinds = useMemo(() => new Set(chatControlPlatformOptions.map((platform) => platform.id)), [])
+  const activeChatControlChannel = chatControlChannels.find((channel) => channel.kind === chatControlPlatform)
+  const activeChatControlBinding = chatControlBindings.find((binding) => binding.platform === chatControlPlatform)
 
   useEffect(() => {
     if (!languageEditedRef.current) setLanguage(copy.devLetter.defaults.language)
@@ -2856,6 +2885,74 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!campaignNameEditedRef.current) setCampaignName(copy.devLetter.batch.defaultName)
   }, [copy.devLetter.batch.defaultName])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!activeChatControlBinding?.qrPayload) {
+      setChatControlQr('')
+      return () => {
+        cancelled = true
+      }
+    }
+    QRCode.toDataURL(activeChatControlBinding.qrPayload, { margin: 1, width: 220, color: { dark: '#082f49', light: '#ffffff' } })
+      .then((url) => {
+        if (!cancelled) setChatControlQr(url)
+      })
+      .catch(() => {
+        if (!cancelled) setChatControlQr('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeChatControlBinding?.qrPayload])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.channels(), api.chatControlBindings(), api.chatControlCommands({ limit: 20 })])
+      .then(([channels, bindings, commands]) => {
+        if (cancelled) return
+        setChatControlChannels(channels.filter((channel) => chatControlKinds.has(channel.kind)))
+        setChatControlBindings(bindings.filter((binding) => chatControlKinds.has(binding.platform)))
+        setChatControlCommands(commands)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setChatControlChannels([])
+        setChatControlBindings([])
+        setChatControlCommands([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chatControlKinds])
+
+  useEffect(() => {
+    if (!cloudStatus.authenticated) return
+    let cancelled = false
+    const pollCloudCommands = async () => {
+      if (chatControlCloudPollInFlightRef.current) return
+      chatControlCloudPollInFlightRef.current = true
+      try {
+        const result = await api.pollChatControlCloudCommands()
+        if (!cancelled && result.pulled > 0) {
+          await refreshChatControl()
+          setNotice(`已处理 ${result.executed} 条聊天平台命令${result.failed ? `，${result.failed} 条失败` : ''}。`)
+        }
+      } catch {
+        // Background polling should never block the local desktop workflow.
+      } finally {
+        chatControlCloudPollInFlightRef.current = false
+      }
+    }
+    void pollCloudCommands()
+    const timer = window.setInterval(() => {
+      void pollCloudCommands()
+    }, 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [cloudStatus.authenticated])
 
   useEffect(() => {
     setSenderDraft((current) => {
@@ -4234,6 +4331,75 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function refreshChatControl() {
+    const [channels, bindings, commands] = await Promise.all([api.channels(), api.chatControlBindings(), api.chatControlCommands({ limit: 20 })])
+    setChatControlChannels(channels.filter((channel) => chatControlKinds.has(channel.kind)))
+    setChatControlBindings(bindings.filter((binding) => chatControlKinds.has(binding.platform)))
+    setChatControlCommands(commands)
+  }
+
+  async function startChatControlBinding(platform: ChannelRecord['kind']) {
+    const option = chatControlPlatformOptions.find((item) => item.id === platform)
+    setBusy(`chatBind:${platform}`)
+    setError('')
+    setNotice('')
+    try {
+      const binding = await api.createChatControlBinding({
+        platform,
+        label: `${option?.label ?? platform} 聊天控制`
+      })
+      await refreshChatControl()
+      setNotice(binding.relayUrl
+        ? `${option?.label ?? platform} 绑定二维码已生成，请用对应平台扫码确认。`
+        : '二维码已生成，但当前安装包还没有配置 Hermills 云端聊天中转；可以先用“测试连接”验证本地执行链路。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function testChatControlBinding(sessionId: string) {
+    setBusy(`chatBindTest:${sessionId}`)
+    setError('')
+    setNotice('')
+    try {
+      const binding = await api.testChatControlBinding(sessionId)
+      await refreshChatControl()
+      setNotice(binding.status === 'connected'
+        ? '聊天助手测试成功。你现在可以发送“今日状态”或“写开发信”。'
+        : binding.error || '聊天助手测试未通过。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runChatControlText() {
+    if (!chatControlText.trim()) return
+    setBusy('chatControl')
+    setError('')
+    setNotice('')
+    try {
+      const command = await api.createChatControlCommand({
+        channelId: activeChatControlChannel?.id,
+        platform: chatControlPlatform,
+        conversationId: 'local-preview',
+        senderId: 'local-user',
+        senderDisplayName: 'Local preview',
+        rawText: chatControlText,
+        executeNow: true
+      })
+      await refreshChatControl()
+      setNotice(command.resultText || command.error || '聊天命令已执行。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
     { id: 'dashboard', label: '今日外联', icon: Clock },
     { id: 'leads', label: '客户', icon: Users },
@@ -4241,6 +4407,7 @@ function DevelopmentLetterPage({
     { id: 'automation', label: '批量写信', icon: Zap },
     { id: 'assets', label: '销售资产', icon: ShieldCheck },
     { id: 'mail', label: '邮箱', icon: Settings },
+    { id: 'chatControl', label: '聊天控制', icon: MessageCircle },
     { id: 'signature', label: '签名Logo', icon: ImageIcon },
     { id: 'profile', label: '公司资料', icon: UserRound },
   ]
@@ -4264,9 +4431,11 @@ function DevelopmentLetterPage({
             ? '维护买家画像、USP 和 CTA 资产，让每封邮件有证据、有卖点、有下一步'
             : letterView === 'mail'
               ? '填写邮箱和授权码，Hermills 自动配置 SMTP 并测试可用性'
-              : letterView === 'signature'
-                ? '保存邮件签名和 Logo，之后所有开发信自动使用'
-                : '维护 AI 写信时使用的公司资料'
+              : letterView === 'chatControl'
+                ? '连接微信官方入口、飞书、钉钉和 QQ，用聊天命令控制 Hermills'
+                : letterView === 'signature'
+                  ? '保存邮件签名和 Logo，之后所有开发信自动使用'
+                  : '维护 AI 写信时使用的公司资料'
 
   return (
     <div className="letter-app-shell">
@@ -4905,6 +5074,125 @@ function DevelopmentLetterPage({
                 <div><span>认证资质</span><strong>{companyProfile.certifications?.join(', ') || '还没填写'}</strong></div>
                 <div><span>公司资料</span><strong>{companyMaterials.length} 个文件</strong></div>
                 <div><span>状态</span><strong>{companyReady ? '已准备好' : '需要补充资料'}</strong></div>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {letterView === 'chatControl' ? (
+          <div className="letter-view chat-control-view">
+            <section className="letter-panel chat-control-panel">
+              <div className="letter-panel-heading">
+                <div>
+                  <h2><MessageCircle size={18} /> 聊天控制</h2>
+                  <p>通过官方机器人/API 接收微信官方入口、飞书、钉钉和 QQ 消息，再让本地 Hermills 执行写信、查回复和审批发送。</p>
+                </div>
+                <button className="letter-secondary compact" type="button" disabled={busy === 'chatRefresh'} onClick={() => void refreshChatControl()}>
+                  <RefreshCw size={15} /> 刷新
+                </button>
+              </div>
+              <div className="chat-control-platform-grid">
+                {chatControlPlatformOptions.map((platform) => {
+                  const channel = chatControlChannels.find((item) => item.kind === platform.id)
+                  const active = chatControlPlatform === platform.id
+                  return (
+                    <button
+                      key={platform.id}
+                      className={`chat-control-platform ${active ? 'active' : ''}`}
+                      type="button"
+                      onClick={() => setChatControlPlatform(platform.id)}
+                    >
+                      <span>
+                        <strong>{platform.label}</strong>
+                        <small>{channel ? (channel.enabled ? '已启用' : '配置已保存') : '未配置'}</small>
+                      </span>
+                      <em>{platform.detail}</em>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="chat-control-setup">
+                <div>
+                  <strong><QrCode size={17} /> {chatControlPlatformOptions.find((item) => item.id === chatControlPlatform)?.label ?? chatControlPlatform} 扫码绑定</strong>
+                  <span>用户只需要扫码确认。后台会把平台消息发到 Hermills 云端中转，再由本机 Hermills 执行命令。</span>
+                  {activeChatControlBinding ? (
+                    <div className={`chat-binding-status ${activeChatControlBinding.status}`}>
+                      <CheckCircle2 size={15} />
+                      <span>{chatControlBindingStatusLabel(activeChatControlBinding)}</span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="chat-binding-actions">
+                  <button className="letter-primary compact" type="button" disabled={busy === `chatBind:${chatControlPlatform}`} onClick={() => void startChatControlBinding(chatControlPlatform)}>
+                    {busy === `chatBind:${chatControlPlatform}` ? '正在生成...' : activeChatControlBinding ? '重新生成二维码' : '生成扫码二维码'}
+                  </button>
+                  {activeChatControlBinding ? (
+                    <button className="letter-secondary compact" type="button" disabled={busy === `chatBindTest:${activeChatControlBinding.id}`} onClick={() => void testChatControlBinding(activeChatControlBinding.id)}>
+                      {busy === `chatBindTest:${activeChatControlBinding.id}` ? '测试中...' : '测试连接'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {activeChatControlBinding ? (
+                <div className="chat-binding-card">
+                  <div className="chat-binding-qr">
+                    {chatControlQr ? <img src={chatControlQr} alt="聊天助手绑定二维码" /> : <QrCode size={56} />}
+                  </div>
+                  <div className="chat-binding-copy">
+                    <strong>用手机打开对应平台扫码</strong>
+                    <span>绑定码：<code>{activeChatControlBinding.bindingCode}</code></span>
+                    <span>{activeChatControlBinding.relayUrl ? '扫码后会自动发送“今日状态”测试。' : '当前没有云端中转地址，先用“测试连接”验证本地命令链路。'}</span>
+                    <small>{activeChatControlBinding.bindingUrl}</small>
+                  </div>
+                </div>
+              ) : (
+                <div className="chat-binding-card empty">
+                  <QrCode size={28} />
+                  <span>选择一个平台，然后点击“生成扫码二维码”。</span>
+                </div>
+              )}
+            </section>
+
+            <section className="letter-grid two">
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><Bot size={18} /> 命令预览</h2>
+                    <p>模拟聊天平台发来的一条消息，测试 Hermills 是否能正确执行。</p>
+                  </div>
+                </div>
+                <label className="letter-field">
+                  聊天消息
+                  <textarea value={chatControlText} onChange={(event) => setChatControlText(event.target.value)} placeholder="给 buyer@company.com https://company.com 写开发信" />
+                </label>
+                <div className="chat-command-examples">
+                  {['今日状态', '查看草稿', '检查回复', '给 buyer@company.com https://company.com 写开发信'].map((example) => (
+                    <button key={example} type="button" onClick={() => setChatControlText(example)}>{example}</button>
+                  ))}
+                </div>
+                <button className="letter-primary full" type="button" disabled={busy === 'chatControl' || !chatControlText.trim()} onClick={() => void runChatControlText()}>
+                  {busy === 'chatControl' ? '正在执行聊天命令...' : '执行聊天命令'}
+                </button>
+              </div>
+
+              <div className="letter-panel">
+                <div className="letter-panel-heading">
+                  <div>
+                    <h2><ListChecks size={18} /> 最近命令</h2>
+                    <p>手机或电脑聊天端发来的命令都会保存在这里，方便排查。</p>
+                  </div>
+                </div>
+                <div className="chat-command-list">
+                  {chatControlCommands.length ? chatControlCommands.slice(0, 8).map((command) => (
+                    <article className={`chat-command-row ${command.status}`} key={command.id}>
+                      <div>
+                        <strong>{command.rawText}</strong>
+                        <span>{command.platform} · {command.action} · {command.status}</span>
+                      </div>
+                      <p>{command.resultText || command.error || '等待执行'}</p>
+                    </article>
+                  )) : <div className="letter-empty small">还没有聊天命令。先在左侧发一条本地预览命令。</div>}
+                </div>
               </div>
             </section>
           </div>

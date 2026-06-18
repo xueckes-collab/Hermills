@@ -353,7 +353,7 @@ export type JobRunRecord = {
 export type ChannelRecord = {
   id: string;
   profileId?: string;
-  kind: "telegram" | "discord" | "slack" | "whatsapp" | "matrix" | "feishu" | "wechat" | "wecom";
+  kind: "telegram" | "discord" | "slack" | "whatsapp" | "matrix" | "feishu" | "wechat" | "wecom" | "dingtalk" | "qq";
   label: string;
   enabled: boolean;
   status: "disabled" | "needs-setup" | "connected" | "failed";
@@ -364,6 +364,60 @@ export type ChannelRecord = {
   lastError?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ChatControlCommand = {
+  id: string;
+  profileId?: string;
+  channelId?: string;
+  platform: ChannelRecord["kind"];
+  conversationId: string;
+  senderId: string;
+  senderDisplayName: string;
+  rawText: string;
+  action: "help" | "status" | "generate-outreach-draft" | "list-drafts" | "review-draft" | "rewrite-draft" | "send-draft" | "check-inbox" | "unknown";
+  status: "queued" | "running" | "needs-approval" | "completed" | "failed" | "rejected";
+  payload: Record<string, unknown>;
+  resultText: string;
+  error?: string;
+  requiresApproval: boolean;
+  approvalCode?: string;
+  relatedCommandId?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
+export type ChatControlBindingSession = {
+  id: string;
+  profileId?: string;
+  platform: ChannelRecord["kind"];
+  channelId?: string;
+  status: "pending" | "linked" | "testing" | "connected" | "failed" | "expired";
+  bindingCode: string;
+  bindingUrl: string;
+  qrPayload: string;
+  relayUrl?: string;
+  linkedAccount: {
+    externalUserId: string;
+    displayName: string;
+    conversationId: string;
+  };
+  testCommandId?: string;
+  resultText: string;
+  error?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
+export type ChatControlCloudPollResult = {
+  ok: boolean;
+  pulled: number;
+  executed: number;
+  failed: number;
+  results: Array<{ id: string; ok: boolean; resultText?: string; error?: string }>;
 };
 
 export type LogEntry = {
@@ -1667,6 +1721,45 @@ export const api = {
   },
   async deleteChannel(id: string): Promise<void> {
     await request<void>(`/api/channels/${id}`, { method: "DELETE" });
+  },
+  async chatControlBindings(query: { platform?: ChannelRecord["kind"] } = {}): Promise<ChatControlBindingSession[]> {
+    const params = new URLSearchParams();
+    if (query.platform) params.set("kind", query.platform);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<ChatControlBindingSession[]>(`/api/chat-control/bindings${suffix}`);
+  },
+  async createChatControlBinding(input: { platform: ChannelRecord["kind"]; label?: string }): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>("/api/chat-control/bindings", { method: "POST", body: JSON.stringify(input) });
+  },
+  async chatControlBinding(id: string): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>(`/api/chat-control/bindings/${id}`);
+  },
+  async testChatControlBinding(id: string): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>(`/api/chat-control/bindings/${id}/test`, { method: "POST", body: "{}" });
+  },
+  async pollChatControlCloudCommands(): Promise<ChatControlCloudPollResult> {
+    return request<ChatControlCloudPollResult>("/api/chat-control/cloud/poll", { method: "POST", body: "{}" });
+  },
+  async chatControlCommands(query: { status?: ChatControlCommand["status"]; limit?: number } = {}): Promise<ChatControlCommand[]> {
+    const params = new URLSearchParams();
+    if (query.status) params.set("status", query.status);
+    if (query.limit) params.set("limit", String(query.limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<ChatControlCommand[]>(`/api/chat-control/commands${suffix}`);
+  },
+  async createChatControlCommand(input: {
+    channelId?: string;
+    platform?: ChannelRecord["kind"];
+    conversationId?: string;
+    senderId?: string;
+    senderDisplayName?: string;
+    rawText: string;
+    executeNow?: boolean;
+  }): Promise<ChatControlCommand> {
+    return request<ChatControlCommand>("/api/chat-control/commands", { method: "POST", body: JSON.stringify(input) });
+  },
+  async runChatControlCommand(id: string): Promise<ChatControlCommand> {
+    return request<ChatControlCommand>(`/api/chat-control/commands/${id}/run`, { method: "POST", body: "{}" });
   },
   async logs(query: { source?: LogEntry["source"]; level?: LogEntry["level"]; q?: string; limit?: number } = {}): Promise<LogEntry[]> {
     const params = new URLSearchParams();

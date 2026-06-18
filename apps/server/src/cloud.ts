@@ -204,6 +204,23 @@ export type CloudLearningRuleSummary = {
   rules: CloudLearningRuleCandidate[];
 };
 
+export type CloudChatControlCommand = {
+  id: string;
+  platform: string;
+  channelId?: string;
+  conversationId: string;
+  senderId: string;
+  senderDisplayName: string;
+  rawText: string;
+  payload: Record<string, unknown>;
+};
+
+export type CloudChatControlPollResult = {
+  ok: true;
+  pulled: number;
+  commands: CloudChatControlCommand[];
+};
+
 export class HermillsCloudService {
   private readonly authStore: CloudAuthStore;
   private readonly syncStore: CloudSyncStore;
@@ -632,6 +649,46 @@ export class HermillsCloudService {
     return formatLearningPackContext(await this.learningPack(input));
   }
 
+  async pullChatControlCommands(limit = 10): Promise<CloudChatControlPollResult> {
+    if (!this.isConfigured()) return { ok: true, pulled: 0, commands: [] };
+    const session = await this.requireSession();
+    const safeLimit = Math.max(1, Math.min(25, Math.floor(limit)));
+    const rows = await this.select("hermills_chat_commands", session.accessToken, [
+      "select=id,platform,local_channel_id,conversation_id,sender_id,sender_display_name,raw_text,payload",
+      "status=eq.queued",
+      "order=created_at.asc",
+      `limit=${safeLimit}`
+    ].join("&")).catch(() => [] as Record<string, unknown>[]);
+    const commands: CloudChatControlCommand[] = [];
+    for (const row of rows) {
+      const id = stringValue(row.id);
+      if (!id) continue;
+      const claimed = await this.patch("hermills_chat_commands", {
+        status: "running",
+        claimed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, session.accessToken, [
+        `id=eq.${encodeURIComponent(id)}`,
+        "status=eq.queued"
+      ].join("&")).catch(() => [] as Record<string, unknown>[]);
+      const command = toCloudChatControlCommand(claimed[0] ?? row);
+      if (command) commands.push(command);
+    }
+    return { ok: true, pulled: commands.length, commands };
+  }
+
+  async completeChatControlCommand(id: string, input: { ok: boolean; resultText?: string; error?: string }): Promise<void> {
+    if (!this.isConfigured()) return;
+    const session = await this.requireSession();
+    await this.patch("hermills_chat_commands", {
+      status: input.ok ? "completed" : "failed",
+      result_text: redactSecrets(input.resultText ?? "").slice(0, 8000),
+      error: redactSecrets(input.error ?? "").slice(0, 1000),
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }, session.accessToken, `id=eq.${encodeURIComponent(id)}`);
+  }
+
   private async readAccountProfile(token: string, user: CloudUser): Promise<CloudAccountProfile> {
     const fullRows = await this.select("hermills_accounts", token, [
       "select=user_id,email,display_name,nickname,status,email_verified,terms_accepted_at,last_login_at,last_seen_at,created_at,updated_at",
@@ -906,6 +963,23 @@ function toCloudAccountProfile(row: Record<string, unknown>, isAdmin = false): C
     createdAt: stringValue(row.created_at) || undefined,
     updatedAt: stringValue(row.updated_at) || undefined,
     isAdmin
+  };
+}
+
+function toCloudChatControlCommand(row: Record<string, unknown>): CloudChatControlCommand | undefined {
+  const id = stringValue(row.id);
+  const platform = stringValue(row.platform);
+  const rawText = stringValue(row.raw_text).slice(0, 4000);
+  if (!id || !platform || !rawText) return undefined;
+  return {
+    id,
+    platform,
+    channelId: stringValue(row.local_channel_id) || undefined,
+    conversationId: stringValue(row.conversation_id) || `cloud-${id}`,
+    senderId: stringValue(row.sender_id) || "cloud-user",
+    senderDisplayName: stringValue(row.sender_display_name) || "Chat user",
+    rawText,
+    payload: objectValue(row.payload)
   };
 }
 

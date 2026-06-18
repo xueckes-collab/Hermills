@@ -5,6 +5,8 @@ import type {
   CapabilitySchema,
   ChatMessageSchema,
   ChatSessionSchema,
+  ChatControlBindingSessionSchema,
+  ChatControlCommandSchema,
   ChannelRecordSchema,
   CompanyMaterialCategorySchema,
   CompanyProfileSchema,
@@ -71,6 +73,8 @@ export type MaterialRecord = z.infer<typeof MaterialRecordSchema>;
 export type RuntimeStatus = z.infer<typeof RuntimeStatusSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatSession = z.infer<typeof ChatSessionSchema>;
+export type ChatControlBindingSession = z.infer<typeof ChatControlBindingSessionSchema>;
+export type ChatControlCommand = z.infer<typeof ChatControlCommandSchema>;
 export type JobRecord = z.infer<typeof JobRecordSchema>;
 export type JobRunRecord = z.infer<typeof JobRunRecordSchema>;
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>;
