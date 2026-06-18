@@ -1,4 +1,5 @@
 import { mkdtemp } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -301,6 +302,43 @@ describe("outreach campaign API", () => {
     });
     expect(readyFollowUpsResponse.json().filter((job: { status: string }) => job.status === "ready")).toHaveLength(3);
 
+    const fakeImap = await createFakeImapServer({
+      replyFrom: firstRecipient.email,
+      subject: "Re: Contractor work light options"
+    });
+    try {
+      const updateInboxSender = await server.inject({
+        method: "PUT",
+        url: `/api/outreach/sender-accounts/${senderResponse.json().id}`,
+        headers,
+        payload: {
+          imapHost: "127.0.0.1",
+          imapPort: fakeImap.port,
+          imapSecure: false,
+          imapUsername: "sales@example.com"
+        }
+      });
+      expect(updateInboxSender.statusCode, updateInboxSender.body).toBe(200);
+
+      const inboxResponse = await server.inject({
+        method: "POST",
+        url: "/api/outreach/inbox/check",
+        headers,
+        payload: { senderAccountId: senderResponse.json().id, campaignId }
+      });
+      expect(inboxResponse.statusCode, inboxResponse.body).toBe(200);
+      expect(inboxResponse.json()).toMatchObject({ ok: true, status: "ready", stopped: 9 });
+      expect(inboxResponse.json().matched[0]).toMatchObject({
+        recipientId: firstRecipient.id,
+        type: "replied",
+        from: `Buyer <${firstRecipient.email}>`
+      });
+      expect(fakeImap.commands.some((command) => /UID SEARCH FROM "buyer@atlas\.example" SINCE /i.test(command))).toBe(true);
+      expect(fakeImap.commands.some((command) => /^UID SEARCH SINCE /i.test(command))).toBe(false);
+    } finally {
+      await fakeImap.close();
+    }
+
     const stopResponse = await server.inject({
       method: "POST",
       url: `/api/outreach/campaigns/${campaignId}/stop`,
@@ -426,4 +464,66 @@ function multipartPayload(boundary: string, fileName: string, contentType: strin
     `--${boundary}--`,
     ""
   ].join("\r\n"));
+}
+
+async function createFakeImapServer(input: { replyFrom: string; subject: string }): Promise<{
+  port: number;
+  commands: string[];
+  close: () => Promise<void>;
+}> {
+  const commands: string[] = [];
+  const server = net.createServer((socket) => {
+    let buffer = "";
+    socket.setEncoding("utf8");
+    socket.write("* OK fake imap ready\r\n");
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const match = line.match(/^(\S+)\s+(.+)$/);
+        if (!match) continue;
+        const [, tag, command] = match;
+        commands.push(command);
+        if (/^LOGIN /i.test(command)) {
+          socket.write(`${tag} OK LOGIN completed\r\n`);
+        } else if (/^SELECT INBOX$/i.test(command)) {
+          socket.write(`* 1 EXISTS\r\n${tag} OK SELECT completed\r\n`);
+        } else if (/^UID SEARCH FROM /i.test(command)) {
+          socket.write(`* SEARCH 42\r\n${tag} OK SEARCH completed\r\n`);
+        } else if (/^UID FETCH /i.test(command)) {
+          const headers = [
+            `From: Buyer <${input.replyFrom}>`,
+            `Subject: ${input.subject}`,
+            "Date: Wed, 17 Jun 2026 10:00:00 +0000",
+            "",
+            ""
+          ].join("\r\n");
+          socket.write(`* 1 FETCH (UID 42 BODY[HEADER.FIELDS (FROM SUBJECT DATE)] {${Buffer.byteLength(headers)}}\r\n${headers})\r\n${tag} OK FETCH completed\r\n`);
+        } else if (/^LOGOUT$/i.test(command)) {
+          socket.write(`* BYE fake imap closing\r\n${tag} OK LOGOUT completed\r\n`);
+          socket.end();
+        } else {
+          socket.write(`${tag} BAD unsupported command\r\n`);
+        }
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Fake IMAP server did not expose a TCP port.");
+  return {
+    port: address.port,
+    commands,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    })
+  };
 }

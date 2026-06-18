@@ -1262,7 +1262,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(parseErrorMessage(text) || `${res.status} ${res.statusText}`);
+    const message = parseErrorMessage(text) || `${res.status} ${res.statusText}`;
+    throw new Error(`Request failed ${path}: ${message}`);
   }
 
   if (res.status === 204) return undefined as T;

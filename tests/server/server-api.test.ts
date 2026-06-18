@@ -937,7 +937,7 @@ describe("Hermills local API", () => {
     expect(sendResponse.json().error.message).toContain("Confirm the sender mailbox");
   });
 
-  it("auto researches a customer website before generating an outreach draft", async () => {
+  it("auto researches a customer website before generating a fast outreach draft", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       const html = href.includes("/about")
@@ -947,16 +947,9 @@ describe("Hermills local API", () => {
     });
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
-      const prompt = request.messages.map((message) => message.content).join("\n");
-      if (prompt.includes("Rewrite this B2B cold email")) {
-        return JSON.stringify({
-          subject: "Work light options",
-          body: "Hello, I saw Preview Buyer imports work lights for industrial lighting channels, so a short supplier comparison may save review time.\nWe can share CE-backed LED work light options with MOQ and lead time notes.\nIf useful, I can send A for fast sampling or B for repeat supply. Which fits better?"
-        });
-      }
       return JSON.stringify({
-        subject: "Work light supply",
-        body: "Hello, I saw Preview Buyer imports industrial lighting. We can support work light supply. Would you like details?"
+        subject: "Work light options",
+        body: "Hi Preview Buyer team,\n\nI saw Preview Buyer imports and distributes work lights for industrial lighting channels, so a quick benchmark may save review time.\n\nEckes Export can share 2-3 LED work light options with MOQ and lead-time notes.\n\nWould a side-by-side table for fast sampling or repeat supply be useful?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
       });
     };
     await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
@@ -985,24 +978,20 @@ describe("Hermills local API", () => {
       qualityReview: { passed: true },
       researchBrief: { fitVerdict: "good-fit", shouldWrite: "yes" }
     });
-    expect(draftResponse.json().body).toContain("A for fast sampling");
-    expect(runtime.requests.at(-1)?.messages.at(-1)?.content).toContain("Would you like details?");
+    expect(draftResponse.json().body).toContain("side-by-side table");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
-    expect(runtimeContent).toContain("--- Customer website research ---");
-    expect(runtimeContent).toContain("Research depth: adaptive");
+    expect(runtimeContent).toContain("Write one first cold outreach email draft.");
+    expect(runtimeContent).toContain("--- Buyer evidence ---");
     expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
-    expect(runtimeContent).toContain("industrial lighting distributor");
+    expect(runtimeContent).toContain("Industrial Lighting Distributor");
     const leadsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads?q=Preview", headers });
     expect(leadsResponse.json()[0]).toMatchObject({
       email: "buyer@preview-buyer.example",
       website: "https://preview-buyer.example/",
-      tags: ["auto-researched"]
+      tags: ["auto-researched", "fast-draft"]
     });
     const workflowsResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Preview", headers });
-    expect(workflowsResponse.json()[0]).toMatchObject({
-      draftId: draftResponse.json().id,
-      research: { depth: "adaptive", brief: { fitVerdict: "good-fit" } }
-    });
+    expect(workflowsResponse.json()).toEqual([]);
   });
 
   it("uses the deep research sidecar for deep workflows and only sends website and email", async () => {

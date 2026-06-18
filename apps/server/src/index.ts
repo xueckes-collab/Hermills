@@ -1282,24 +1282,39 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   });
   server.post("/api/outreach/drafts/auto", async (request) => {
     const body = AutoOutreachDraftBody.parse(request.body ?? {});
-    const workflow = await generateOutreachWorkflow({
-      body,
+    const profileId = await resolveProfileId(body.profileId);
+    const research = await researchCustomerWebsite(body.website, "quick", {
+      email: body.email,
+      cache: customerResearchCache
+    });
+    const lead = await outreachLeads.create({
+      profileId,
+      companyName: research.companyName || companyNameFromWebsite(research.website) || companyNameFromEmail(body.email),
+      website: research.website,
+      email: body.email,
+      country: "",
+      industry: research.industry || "",
+      contactName: "",
+      contactTitle: "",
+      need: research.inferredNeed || "",
+      notes: formatCustomerResearchNotes(research),
+      tags: ["auto-researched", "fast-draft"]
+    });
+    const draft = await generateFastOutreachDraft({
+      lead,
+      body: { ...body, researchDepth: "quick" },
+      profileId,
       runtime,
       providers,
       companyProfile,
       materials,
       emailSignature: outreachEmailSignature,
       assets: outreachAssets,
-      leads: outreachLeads,
       drafts: outreachDrafts,
-      workflows: outreachWorkflows,
-      deepResearch,
-      customerResearchCache,
-      cloud,
-      profileId: await resolveProfileId(body.profileId)
+      research
     });
-    await outreachLeads.update(workflow.leadId, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
-    return outreachDrafts.require(workflow.draftId);
+    await outreachLeads.update(lead.id, { status: "email_drafted", currentState: "waiting_user_send", statusColor: "amber" });
+    return draft;
   });
   server.post("/api/outreach/workflows/auto", async (request) => {
     const body = AutoOutreachDraftBody.parse(request.body ?? {});
@@ -1737,12 +1752,15 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     return reply.send(entries.map((entry) => JSON.stringify(entry)).join("\n"));
   });
 
-  server.setErrorHandler(async (error, _request, reply) => {
+  server.setErrorHandler(async (error, request, reply) => {
     const code = error instanceof CloudError ? error.code : error instanceof z.ZodError || error instanceof ClientInputError ? "VALIDATION_ERROR" : "INTERNAL_ERROR";
     const status = error instanceof CloudError ? error.status : error instanceof z.ZodError || error instanceof ClientInputError ? 400 : 500;
     const message = redactSecrets(error instanceof Error ? error.message : String(error));
     const stack = error instanceof Error ? error.stack : undefined;
-    server.log.error(redactSecrets(stack ?? message));
+    const route = `${request.method} ${request.url}`;
+    const diagnostic = `${route} -> ${code}: ${message}`;
+    server.log.error(redactSecrets(stack ? `${diagnostic}\n${stack}` : diagnostic));
+    await logs.create({ source: "server", level: "error", message: diagnostic }).catch(() => undefined);
     await reply.code(status).send(errorBody(code, message, error instanceof z.ZodError ? error.flatten() : undefined));
   });
 
@@ -7596,6 +7614,120 @@ function researchDepthPromptGuidance(depth: OutreachResearchDepth): string {
   return "Use a balanced buyer profile and practical procurement-trigger reasoning.";
 }
 
+async function generateFastOutreachDraft(input: {
+  lead: OutreachLead;
+  body: {
+    language: string;
+    tone: string;
+    generationMode?: OutreachGenerationMode;
+    researchDepth?: OutreachResearchDepth;
+    providerId?: string;
+    model?: string;
+  };
+  profileId: string;
+  runtime: RuntimeAdapter;
+  providers: ProviderRepository;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  emailSignature: OutreachEmailSignatureRepository;
+  assets: OutreachAssetRepository;
+  drafts: OutreachDraftRepository;
+  research?: CustomerResearchResult;
+}): Promise<OutreachDraft> {
+  await assertCompanyProfileReady(input.companyProfile);
+  const language = normalizeOutreachEmailLanguage(input.body.language);
+  const companyProfileRecord = await input.companyProfile.get();
+  const signatureBlock = await outreachDraftSignatureBlock(input.emailSignature, companyProfileRecord);
+  const providerRecord = await resolveGenerationProvider(input.body.providerId, input.providers);
+  const apiKey = providerRecord ? await input.providers.readApiKey(providerRecord).catch(() => undefined) : undefined;
+  const provider = providerRecord ? {
+    kind: providerRecord.kind,
+    baseUrl: providerRecord.baseUrl,
+    apiKey,
+    defaultModel: providerRecord.defaultModel
+  } : undefined;
+  const model = resolveOutreachModel(input.body.model, providerRecord);
+  const companyKnowledgeContext = await buildCompanyKnowledgeContext(input.companyProfile, input.materials);
+  const generationBrief = buildOutreachGenerationBrief({
+    lead: input.lead,
+    research: input.research,
+    companyKnowledgeContext
+  });
+  const prompt = buildFastOutreachPrompt({
+    lead: input.lead,
+    research: input.research,
+    generationBrief,
+    companyKnowledgeContext,
+    language,
+    tone: input.body.tone,
+    signatureBlock
+  });
+  const replyText = await input.runtime.createHermesReply({
+    messages: [{ id: randomUUID(), role: "user", content: prompt, createdAt: new Date().toISOString() }],
+    model,
+    instructions: outreachFastInstructions(),
+    provider,
+    reasoningEffort: "low",
+    maxOutputTokens: 1200,
+    responseFormat: "json_object"
+  });
+  const parsed = finalizeCopyReadyOutreachEmail({
+    ...parseGeneratedOutreachDraft(replyText),
+    lead: input.lead,
+    signatureBlock
+  });
+  const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead, research: input.research });
+  const ctaAssets = await input.assets.listCtaAssets(input.profileId);
+  const sendRiskReview = reviewOutreachSendRisk({
+    subject: parsed.subject,
+    body: parsed.body,
+    qualityReview,
+    lead: input.lead,
+    research: input.research,
+    evidenceLock: OutreachEvidenceLockSchema.parse({}),
+    ctaAssets,
+    companyKnowledgeContext
+  });
+  return input.drafts.create({
+    profileId: input.profileId,
+    leadId: input.lead.id,
+    subject: parsed.subject,
+    body: parsed.body,
+    language,
+    tone: input.body.tone,
+    generationMode: input.body.generationMode ?? "deep",
+    promptSnapshot: truncateForContext(prompt, 30_000),
+    providerId: providerRecord?.id,
+    model,
+    modelUsed: model,
+    usage: estimateMessageUsage(prompt, `${parsed.subject}\n${parsed.body}`),
+    leadFitScore: OutreachLeadFitScoreSchema.parse({}),
+    evidenceLock: OutreachEvidenceLockSchema.parse({}),
+    valueMatch: OutreachValueMatchSchema.parse({}),
+    qualityReview,
+    evidenceMap: OutreachEvidenceMapSchema.parse({}),
+    strategyMatch: OutreachStrategyMatchSchema.parse({}),
+    sendRiskReview,
+    writingEngine: "harness-v2",
+    rewriteAttempts: 0,
+    evidenceUsed: [],
+    matchedExampleIds: [],
+    researchBrief: input.research?.brief,
+    generationSummary: [
+      "Fast first draft generated from lightweight website research and saved company knowledge.",
+      `QA score ${qualityReview.score}/100 with no blocking rewrite loop.`
+    ].join(" "),
+    learningSignal: buildOutreachLearningSignal({
+      lead: input.lead,
+      subject: parsed.subject,
+      body: parsed.body,
+      leadFitScore: OutreachLeadFitScoreSchema.parse({}),
+      valueMatch: OutreachValueMatchSchema.parse({}),
+      step: 0
+    })
+  });
+}
+
 async function generateOutreachDraft(input: {
   lead: OutreachLead;
   body: {
@@ -7693,7 +7825,8 @@ async function generateOutreachDraft(input: {
     runtime: input.runtime,
     provider,
     model,
-    signatureBlock
+    signatureBlock,
+    maxRepairAttempts: 1
   });
   const sendRiskReview = reviewOutreachSendRisk({
     subject: polished.subject,
@@ -7869,7 +8002,8 @@ async function generateOutreachWorkflow(input: {
     runtime: input.runtime,
     provider,
     model,
-    signatureBlock
+    signatureBlock,
+    maxRepairAttempts: 1
   });
   const initialQualityReview = polishedInitial.qualityReview;
   const polishedFollowUps = polishWorkflowFollowUps({
@@ -9237,7 +9371,7 @@ async function checkOutreachInbox(input: {
     return { ok: true, status: "ready", message: next.lastInboxCheckMessage ?? "", sender: publicOutreachSender(next), matched: [], stopped: 0 };
   }
   try {
-    const headers = await scanImapRecentHeaders(input.sender, password);
+    const headers = await scanImapTargetedReplyHeaders(input.sender, password, candidates);
     const matched = matchOutreachInboxHeaders(headers, candidates);
     let stopped = 0;
     const seenRecipients = new Set<string>();
@@ -9283,7 +9417,7 @@ async function checkOutreachInbox(input: {
     }
     const message = matched.length
       ? `Checked inbox and stopped follow-ups for ${seenRecipients.size} customer${seenRecipients.size === 1 ? "" : "s"}.`
-      : "Checked inbox. No customer replies or bounces were found.";
+      : "Checked the sent-customer mailboxes. No customer replies were found.";
     const next = await input.senders.updateInboxState(input.sender.id, { status: "ready", message });
     return { ok: true, status: "ready", message, sender: publicOutreachSender(next), matched, stopped };
   } catch (error) {
@@ -9328,17 +9462,34 @@ function followUpJobKey(job: Pick<OutreachFollowUpJob, "campaignId" | "recipient
   return `${job.campaignId}:${job.recipientId}:${job.step}:${job.draftId}`;
 }
 
-async function scanImapRecentHeaders(sender: OutreachSenderAccount, password: string): Promise<InboxHeader[]> {
+async function scanImapTargetedReplyHeaders(
+  sender: OutreachSenderAccount,
+  password: string,
+  candidates: Array<{ email: string; sentAt?: string }>
+): Promise<InboxHeader[]> {
   const socket = await connectImapSocket(sender);
   try {
     await readImapGreeting(socket);
     await imapCommand(socket, "A1", `LOGIN ${imapQuote(sender.imapUsername ?? sender.username ?? sender.email)} ${imapQuote(password)}`);
     await imapCommand(socket, "A2", "SELECT INBOX");
-    const search = await imapCommand(socket, "A3", `UID SEARCH SINCE ${imapSinceDate(45)}`);
-    const uids = parseImapSearchUids(search).slice(-200);
-    if (!uids.length) return [];
-    const fetch = await imapCommand(socket, "A4", `UID FETCH ${uids.join(",")} (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])`);
-    return parseImapHeaders(fetch);
+    const headers: InboxHeader[] = [];
+    const seenUids = new Set<string>();
+    const targets = uniqueInboxReplyTargets(candidates);
+    let tag = 3;
+    for (const target of targets) {
+      const from = target.email.trim().toLowerCase();
+      if (!from) continue;
+      const since = imapSinceDateForSentAt(target.sentAt);
+      const search = await imapCommand(socket, `A${tag++}`, `UID SEARCH FROM ${imapQuote(from)} SINCE ${since}`);
+      const uids = parseImapSearchUids(search)
+        .filter((uid) => !seenUids.has(uid))
+        .slice(-20);
+      for (const uid of uids) seenUids.add(uid);
+      if (!uids.length) continue;
+      const fetch = await imapCommand(socket, `A${tag++}`, `UID FETCH ${uids.join(",")} (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])`);
+      headers.push(...parseImapHeaders(fetch));
+    }
+    return headers;
   } finally {
     try {
       await imapCommand(socket, "A9", "LOGOUT");
@@ -9348,6 +9499,27 @@ async function scanImapRecentHeaders(sender: OutreachSenderAccount, password: st
     socket.end();
     socket.destroy();
   }
+}
+
+function uniqueInboxReplyTargets(candidates: Array<{ email: string; sentAt?: string }>): Array<{ email: string; sentAt?: string }> {
+  const byEmail = new Map<string, { email: string; sentAt?: string }>();
+  for (const candidate of candidates) {
+    const email = candidate.email.trim().toLowerCase();
+    if (!email) continue;
+    const existing = byEmail.get(email);
+    if (!existing || earlierIso(candidate.sentAt, existing.sentAt)) {
+      byEmail.set(email, { email, sentAt: candidate.sentAt });
+    }
+  }
+  return Array.from(byEmail.values());
+}
+
+function earlierIso(left?: string, right?: string): boolean {
+  const leftTime = left ? Date.parse(left) : Number.NaN;
+  const rightTime = right ? Date.parse(right) : Number.NaN;
+  if (!Number.isFinite(leftTime)) return false;
+  if (!Number.isFinite(rightTime)) return true;
+  return leftTime < rightTime;
 }
 
 function connectImapSocket(sender: OutreachSenderAccount): Promise<net.Socket | tls.TLSSocket> {
@@ -9420,7 +9592,19 @@ function imapQuote(value: string): string {
 }
 
 function imapSinceDate(daysBack: number): string {
-  const date = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  return formatImapDate(new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000));
+}
+
+function imapSinceDateForSentAt(sentAt?: string): string {
+  const fallback = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+  const sentTime = sentAt ? Date.parse(sentAt) : Number.NaN;
+  if (!Number.isFinite(sentTime)) return formatImapDate(fallback);
+  const dayBeforeSent = new Date(sentTime - 24 * 60 * 60 * 1000);
+  const notBeforeSentOrWindow = dayBeforeSent.getTime() < fallback.getTime() ? fallback : dayBeforeSent;
+  return formatImapDate(notBeforeSentOrWindow);
+}
+
+function formatImapDate(date: Date): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${date.getUTCDate()}-${months[date.getUTCMonth()]}-${date.getUTCFullYear()}`;
 }
@@ -9684,6 +9868,16 @@ function outreachInstructions(): string {
   ].join("\n");
 }
 
+function outreachFastInstructions(): string {
+  return [
+    "You are Hermills Outreach Fast Draft.",
+    "Write one concise English B2B cold email from the supplied buyer clues and seller profile.",
+    "Prioritize speed, clear buyer relevance, and a low-friction next step.",
+    "Do not expose reasoning. Do not invent facts.",
+    "Return only valid JSON with keys subject and body."
+  ].join("\n");
+}
+
 function outreachWorkflowInstructions(): string {
   return [
     "You are Hermills Letter App, a senior B2B export sales strategist building Snov-style outreach workflows.",
@@ -9698,6 +9892,64 @@ function outreachWorkflowInstructions(): string {
     "Use only supplied customer research and company knowledge. Do not invent company strengths, certifications, prices, cases, shipping terms, or fake relationship context.",
     "Do not write generic supplier copy, empty benefits, cold-email cliches, filler, vague CTAs, or claims without buyer logic and proof.",
     "Return only valid JSON that matches the requested schema. Do not add fields, markdown, or commentary."
+  ].join("\n");
+}
+
+function buildFastOutreachPrompt(input: {
+  lead: OutreachLead;
+  research?: CustomerResearchResult;
+  generationBrief: OutreachGenerationBrief;
+  companyKnowledgeContext: string;
+  language: string;
+  tone: string;
+  signatureBlock?: string;
+}): string {
+  const evidence = [
+    ...(input.research?.evidence ?? []).slice(0, 5).map((item) => `${item.label}: ${item.value}`),
+    ...(input.research?.productSignals ?? []).slice(0, 5).map((item) => `Product signal: ${item}`),
+    ...(input.research?.buyingSignals ?? []).slice(0, 3).map((item) => `Buying signal: ${item}`),
+    input.research?.recommendedAngle ? `Recommended angle: ${input.research.recommendedAngle}` : "",
+    input.research?.brief?.bestOutreachPath ? `Best outreach path: ${input.research.brief.bestOutreachPath}` : "",
+    input.research?.brief?.bestAngle ? `Best angle: ${input.research.brief.bestAngle}` : ""
+  ].filter(Boolean).join("\n");
+  const leadLines = [
+    `Company: ${input.lead.companyName}`,
+    input.lead.website ? `Website: ${input.lead.website}` : "",
+    input.lead.email ? `Email: ${input.lead.email}` : "",
+    input.lead.industry ? `Industry: ${input.lead.industry}` : "",
+    input.lead.need ? `Need: ${input.lead.need}` : "",
+    input.lead.notes ? `Notes: ${truncateForContext(input.lead.notes, 1200)}` : ""
+  ].filter(Boolean).join("\n");
+  return [
+    "Write one first cold outreach email draft.",
+    `Target language: ${input.language}. Customer-facing email must be English.`,
+    `Tone: ${input.tone}.`,
+    "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
+    "",
+    "Rules:",
+    "- Subject under 55 characters.",
+    "- Body 55-115 words, with greeting and Best regards signature.",
+    "- First sentence must mention one concrete buyer clue from the evidence below.",
+    "- Use one seller value point only; do not list all products.",
+    "- If buyer intent is uncertain, use a cautious comparison/benchmark angle.",
+    "- CTA must be specific and easy: 2-3 options, side-by-side table, MOQ/lead-time reference, or samples.",
+    "- Avoid: hope you are well, reaching out, best price, high quality, one-stop solution, win-win, please kindly.",
+    "- Do not claim the buyer is sourcing or has a problem unless the evidence says so.",
+    "",
+    "--- Buyer ---",
+    leadLines,
+    "",
+    "--- Buyer evidence ---",
+    evidence || "No strong evidence. Keep the email conservative and ask whether a small comparison would help.",
+    "",
+    "--- Strategy brief ---",
+    truncateForContext(formatOutreachGenerationBrief(input.generationBrief), 2500),
+    "",
+    "--- Seller/company knowledge ---",
+    truncateForContext(input.companyKnowledgeContext || "Seller company details are limited. Stay conservative.", 2500),
+    "",
+    "--- Required signature ---",
+    input.signatureBlock || "Best regards,"
   ].join("\n");
 }
 

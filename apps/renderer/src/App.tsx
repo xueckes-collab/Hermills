@@ -335,6 +335,7 @@ const defaultOnboardingFeatures: OnboardingFeatureId[] = ['chat', 'files', 'memo
 const cloudAutoSyncDelayMs = 8_000
 const cloudAutoSyncIntervalMs = 2 * 60_000
 const cloudAutoSyncMinGapMs = 20_000
+const endpointRetryDelaysMs = [1_000, 3_000, 8_000]
 
 const fallbackOnboarding: OnboardingState = {
   completed: false,
@@ -415,30 +416,44 @@ function useEndpoint<T>(loader: () => Promise<T>, fallbackValue: T, enabled = tr
 
   useEffect(() => {
     let alive = true
+    let retryTimer: number | undefined
     if (!enabled) {
       setLoading(false)
       setError('')
       return () => {
         alive = false
+        if (retryTimer) window.clearTimeout(retryTimer)
       }
     }
     setLoading(true)
-    loader()
-      .then((next) => {
-        if (alive) {
-          setData(next)
-          setError('')
-        }
-      })
-      .catch((err: Error) => {
-        if (alive) setError(err.message)
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
+    const run = (attempt = 0) => {
+      loader()
+        .then((next) => {
+          if (alive) {
+            setData(next)
+            setError('')
+            setLoading(false)
+          }
+        })
+        .catch((err: Error) => {
+          if (!alive) return
+          setError(err.message)
+          const delay = endpointRetryDelaysMs[attempt]
+          if (delay === undefined) {
+            setLoading(false)
+            return
+          }
+          retryTimer = window.setTimeout(() => {
+            retryTimer = undefined
+            run(attempt + 1)
+          }, delay)
+        })
+    }
+    run()
 
     return () => {
       alive = false
+      if (retryTimer) window.clearTimeout(retryTimer)
     }
   }, [enabled, loader])
 
@@ -603,9 +618,27 @@ export default function App() {
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
   const cloudLoginRequired = workspaceEnabled && cloudStatus.data.configured && cloudStatus.data.required && !cloudStatus.data.authenticated
-  const serviceWarning = appState.error || runtime.error || cloudStatus.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
-  const serviceWarningMessage = serviceWarning ? copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy)) : ''
+  const serviceWarningEntry = [
+    { label: '应用状态', error: appState.error },
+    { label: 'Hermes 运行时', error: runtime.error },
+    { label: '云同步', error: cloudStatus.error },
+    { label: '初始化', error: onboarding.error },
+    { label: '助手', error: agents.error },
+    { label: '供应商', error: providers.error },
+    { label: '用户资料', error: profiles.error },
+    { label: '用量统计', error: usage.error },
+    { label: '数据统计', error: analytics.error },
+    { label: '对话', error: sessions.error },
+    { label: '文件', error: materials.error },
+    { label: '公司资料', error: companyProfile.error },
+    { label: '公司文件', error: companyMaterials.error },
+    { label: '客户', error: outreachLeads.error },
+    { label: '批量任务', error: outreachCampaigns.error },
+    { label: '邮箱账户', error: outreachSenders.error },
+  ].find((entry) => Boolean(entry.error))
+  const serviceWarning = serviceWarningEntry?.error ?? ''
+  const serviceWarningMessage = serviceWarningEntry ? copy.topbar.serviceWarning(`${serviceWarningEntry.label}：${humanizeErrorMessage(serviceWarningEntry.error, copy)}`) : ''
 
   useEffect(() => {
     document.documentElement.lang = normalizeUiLanguage(onboarding.data.language ?? fallbackOnboarding.language)
@@ -3735,7 +3768,7 @@ function DevelopmentLetterPage({
     setError('')
     setNotice('')
     try {
-      const next = await api.autoGenerateOutreachWorkflow({
+      const next = await api.autoGenerateOutreachDraft({
         website: quickWebsite.trim(),
         email: quickEmail.trim(),
         language,
@@ -3743,7 +3776,7 @@ function DevelopmentLetterPage({
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
         generationMode: 'deep',
-        researchDepth: 'adaptive'
+        researchDepth: 'quick'
       })
       const nextLeads = await api.outreachLeads()
       setLeads(nextLeads)
@@ -3752,12 +3785,12 @@ function DevelopmentLetterPage({
         const researchedLead = nextLeads.find((lead) => lead.id === next.leadId)
         if (researchedLead) setLeadDraft(leadFormFromLead(researchedLead))
       }
-      setDraft(undefined)
-      setWorkflow(next)
-      setSelectedEmailId(next.initialEmail.id)
-      setDraftSubject(next.initialEmail.subject)
-      setDraftBody(next.initialEmail.body)
-      setNotice(copy.devLetter.status.workflowGenerated)
+      setWorkflow(undefined)
+      setSelectedEmailId('')
+      setDraft(next)
+      setDraftSubject(next.subject)
+      setDraftBody(next.body)
+      setNotice(copy.devLetter.status.researched)
       setLetterView('leads')
       setGenerationCompletedAt(new Date().toISOString())
     } catch (err) {
@@ -7979,8 +8012,10 @@ function humanizeErrorMessage(error: unknown, copy: UiCopy, context: ErrorContex
   if (/413|too large|file size|payload/i.test(raw)) return `${friendly.fileTooLarge.message} ${friendly.fileTooLarge.recovery}`
   if (/api key|unauthorized|forbidden|401|403|invalid key|authentication/i.test(raw)) return `${friendly.apiKeyInvalid.message} ${friendly.apiKeyInvalid.recovery}`
   if (/provider|base url|model not found|no model/i.test(raw)) return `${friendly.providerMissing.message} ${friendly.providerMissing.recovery}`
-  if (/body cannot be empty|internal_error|application\/json|empty body/i.test(raw)) return `${friendly.messageFailed.message} ${friendly.messageFailed.recovery}`
   if (/runtime|gateway|not ready|not installed|econnrefused|failed to fetch|network/i.test(raw)) return `${friendly.runtimeUnavailable.message} ${friendly.runtimeUnavailable.recovery}`
+  const backendDetail = visibleBackendRequestError(raw)
+  if (backendDetail) return `${friendly.messageFailed.title} ${copy.errors.withDetail(backendDetail)}`
+  if (/body cannot be empty|internal_error|application\/json|empty body/i.test(raw)) return `${friendly.messageFailed.message} ${friendly.messageFailed.recovery}`
   if (context === 'fileUpload') return `${friendly.fileUploadFailed.message} ${friendly.fileUploadFailed.recovery}`
   if (context === 'assistant') return `${friendly.assistantCreateFailed.message} ${friendly.assistantCreateFailed.recovery}`
   if (context === 'provider') return `${friendly.providerMissing.message} ${friendly.providerMissing.recovery}`
@@ -7996,6 +8031,15 @@ function visibleDiagnosticError(raw: string): string {
     .trim()
   if (!/(email could not be sent|smtp|mailbox|sender account|sendmail|connection closed|unexpected socket close|greeting never received|invalid login|eauth|esocket|econnreset|etimedout|\b5(?:3[45]|50|53|54)\b)/i.test(cleaned)) return ''
   return cleaned.length > 320 ? `${cleaned.slice(0, 319).trimEnd()}...` : cleaned
+}
+
+function visibleBackendRequestError(raw: string): string {
+  const cleaned = raw
+    .replace(/^Error:\s*/i, '')
+    .replace(/^Request failed\s*/i, '')
+    .trim()
+  if (!cleaned || cleaned === raw.trim()) return ''
+  return cleaned.length > 360 ? `${cleaned.slice(0, 359).trimEnd()}...` : cleaned
 }
 
 function localizeRuntimeMessage(message: string | undefined, copy: UiCopy): string {

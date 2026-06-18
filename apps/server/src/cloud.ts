@@ -9,6 +9,7 @@ const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const URL_RE = /\bhttps?:\/\/[^\s"'<>]+/gi;
 const BARE_DOMAIN_RE = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|co|io|cn|de|fr|es|it|nl|pl|us|uk|ca|au|jp|kr|in|br|mx|ru|tr|ae|sa|za|biz|info|shop|store)\b/gi;
 const SECRET_RE = /\b(?:sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|[A-Za-z0-9_-]{32,})\b/g;
+const CLOUD_PRIVACY_SECRET_RE = /\b(?:sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9_]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,})\b/g;
 
 export const CloudAuthBodySchema = z.object({
   email: z.string().trim().email().max(320),
@@ -441,17 +442,26 @@ export class HermillsCloudService {
     const now = new Date().toISOString();
     const withUser = (row: Record<string, unknown>) => ({ user_id: session.user.id, ...row });
     const sellerProfile = toSellerProfileRow(snapshot.profileId, objectValue(snapshot.companyProfile));
-    await this.upsert("seller_profiles", [withUser(sellerProfile)], session.accessToken, "user_id,source_local_id");
-    await this.upsert("customers", snapshot.leads.map((lead) => withUser(toCustomerRow(snapshot.profileId, objectValue(lead)))), session.accessToken, "user_id,source_local_id");
-    await this.upsert("email_generations", snapshot.drafts.map((draft) => withUser(toEmailGenerationRow(snapshot.profileId, objectValue(draft)))), session.accessToken, "user_id,source_local_id");
+    const sellerProfileRows = filterCloudRowsForPrivacy([withUser(sellerProfile)]);
+    const customerRows = filterCloudRowsForPrivacy(snapshot.leads.map((lead) => withUser(toCustomerRow(snapshot.profileId, objectValue(lead)))));
+    const emailGenerationRows = filterCloudRowsForPrivacy(snapshot.drafts.map((draft) => withUser(toEmailGenerationRow(snapshot.profileId, objectValue(draft)))));
+    if (sellerProfileRows.safe.length) await this.upsert("seller_profiles", sellerProfileRows.safe, session.accessToken, "user_id,source_local_id");
+    if (customerRows.safe.length) await this.upsert("customers", customerRows.safe, session.accessToken, "user_id,source_local_id");
+    if (emailGenerationRows.safe.length) await this.upsert("email_generations", emailGenerationRows.safe, session.accessToken, "user_id,source_local_id");
     const learningEvents = snapshot.drafts
       .map((draft) => toLearningEventRow(snapshot.profileId, objectValue(draft)))
       .filter((row): row is Record<string, unknown> => Boolean(row));
-    const learningEventRows = learningEvents.map(withUser);
-    await this.upsert("learning_events", learningEventRows, session.accessToken, "user_id,event_key")
-      .catch((error) => this.insertLearningEventsCompat(learningEventRows, session.accessToken, error));
-    await this.upsert("hermills_redacted_events", learningEvents.map((row) => withUser(toRedactedEventRow(snapshot.profileId, row))), session.accessToken, "user_id,source_type,source_local_id,event_type")
-      .catch(() => undefined);
+    const learningEventRows = filterCloudRowsForPrivacy(learningEvents.map(withUser));
+    const redactedEventRows = filterCloudRowsForPrivacy(learningEvents.map((row) => withUser(toRedactedEventRow(snapshot.profileId, row))));
+    if (learningEventRows.safe.length) {
+      await this.upsert("learning_events", learningEventRows.safe, session.accessToken, "user_id,event_key")
+        .catch((error) => this.insertLearningEventsCompat(learningEventRows.safe, session.accessToken, error));
+    }
+    if (redactedEventRows.safe.length) {
+      await this.upsert("hermills_redacted_events", redactedEventRows.safe, session.accessToken, "user_id,source_type,source_local_id,event_type")
+        .catch(() => undefined);
+    }
+    const privacyBlocked = sellerProfileRows.blocked + customerRows.blocked + emailGenerationRows.blocked + learningEventRows.blocked + redactedEventRows.blocked;
     await this.insert("event_logs", [withUser({
       event_type: "cloud_sync",
       event_data: {
@@ -460,7 +470,8 @@ export class HermillsCloudService {
         drafts: snapshot.drafts.length,
         workflows: snapshot.workflows.length,
         campaigns: snapshot.campaigns.length,
-        feedback: snapshot.feedback.length
+        feedback: snapshot.feedback.length,
+        privacyBlocked
       },
       created_at: now
     })], session.accessToken);
@@ -1016,19 +1027,19 @@ function toLearningEventRow(profileId: string, draft: Record<string, unknown>): 
     source_type: "draft",
     source_local_id: sourceLocalId,
     local_profile_id: stableHash(`profile:${profileId}`),
-    industry: stringValue(signal.customerIndustry),
-    customer_type: stringValue(signal.customerType) || nestedString(draft.leadFitScore, "customerType"),
-    country_region: stringValue(signal.customerCountry),
-    development_angle: stringValue(signal.developmentAngle) || nestedString(draft.leadFitScore, "primaryAngle"),
+    industry: sanitizePrivateText(stringValue(signal.customerIndustry)),
+    customer_type: sanitizePrivateText(stringValue(signal.customerType) || nestedString(draft.leadFitScore, "customerType")),
+    country_region: sanitizePrivateText(stringValue(signal.customerCountry)),
+    development_angle: sanitizePrivateText(stringValue(signal.developmentAngle) || nestedString(draft.leadFitScore, "primaryAngle")),
     subject_pattern: patternizeSubject(subject),
-    cta_type: stringValue(signal.cta),
+    cta_type: sanitizePrivateText(stringValue(signal.cta)),
     email_word_count: Math.round(numberValue(signal.emailWordCount)),
     quality_score: nestedNumber(draft.qualityReview, "score"),
     user_edited: false,
     sent: stringValue(draft.status) === "sent",
     replied: stringValue(signal.replyOutcome) === "positive" || stringValue(signal.replyOutcome) === "referral",
     bounced: stringValue(draft.status) === "failed",
-    reply_type: stringValue(signal.replyOutcome),
+    reply_type: sanitizePrivateText(stringValue(signal.replyOutcome)),
     created_at: new Date().toISOString()
   };
 }
@@ -1088,6 +1099,32 @@ function sanitizePrivateText(value: string): string {
     .replace(BARE_DOMAIN_RE, "[domain]")
     .replace(SECRET_RE, "[secret]")
     .trim();
+}
+
+function filterCloudRowsForPrivacy(rows: Array<Record<string, unknown>>): { safe: Array<Record<string, unknown>>; blocked: number } {
+  const safe: Array<Record<string, unknown>> = [];
+  let blocked = 0;
+  for (const row of rows) {
+    if (rowHasRawPrivateIdentifier(row)) {
+      blocked += 1;
+      continue;
+    }
+    safe.push(row);
+  }
+  return { safe, blocked };
+}
+
+function rowHasRawPrivateIdentifier(row: Record<string, unknown>): boolean {
+  const text = JSON.stringify(row);
+  return testPattern(EMAIL_RE, text)
+    || testPattern(URL_RE, text)
+    || testPattern(BARE_DOMAIN_RE, text)
+    || testPattern(CLOUD_PRIVACY_SECRET_RE, text);
+}
+
+function testPattern(pattern: RegExp, value: string): boolean {
+  pattern.lastIndex = 0;
+  return pattern.test(value);
 }
 
 function summarizeEmailForCloudLearning(subject: string, body: string): Record<string, unknown> {

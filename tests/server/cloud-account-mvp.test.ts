@@ -130,6 +130,70 @@ describe("Hermills cloud account MVP", () => {
       authenticated: false
     });
   });
+
+  it("does not upload raw customer identifiers in cloud learning sync", async () => {
+    const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
+    const service = new HermillsCloudService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
+      env: cloudEnv(),
+      fetchImpl: mockSupabase(calls, {
+        account: {
+          user_id: "user-1",
+          email: "owner@example.com",
+          display_name: "Eckes",
+          nickname: "Eckes",
+          status: "active",
+          email_verified: true
+        }
+      })
+    });
+
+    await service.login({ email: "owner@example.com", password: "secret123" });
+    await service.syncSnapshot({
+      profileId: "profile-1",
+      companyProfile: {
+        name: "Anyway Flooring",
+        website: "https://anywayflooring.com",
+        mainProducts: ["SPC Flooring"]
+      },
+      leads: [{
+        id: "lead-1",
+        companyName: "Czanyway",
+        website: "https://czanyway.com",
+        email: "sherry@czanyway.com",
+        industry: "Flooring importer"
+      }],
+      drafts: [{
+        id: "draft-1",
+        leadId: "lead-1",
+        subject: "Quick question for czanyway.com",
+        body: "Hi Sherry, I saw https://czanyway.com and wanted to email sherry@czanyway.com.",
+        status: "sent",
+        writingEngine: "harness-v2",
+        modelUsed: "deepseek-v4-pro",
+        learningSignal: {
+          customerIndustry: "Flooring importer",
+          customerType: "Distributor at czanyway.com",
+          customerCountry: "US",
+          developmentAngle: "Compare SPC options for sherry@czanyway.com",
+          cta: "Send 2-3 options",
+          emailWordCount: 18,
+          replyOutcome: "unknown"
+        },
+        qualityReview: { score: 91 }
+      }],
+      workflows: [],
+      campaigns: [],
+      feedback: []
+    });
+
+    const syncedBodies = calls
+      .filter((call) => /\/rest\/v1\/(?:customers|email_generations|learning_events|hermills_redacted_events)/.test(call.url))
+      .map((call) => JSON.stringify(call.body));
+    expect(syncedBodies.join("\n")).not.toMatch(/sherry@czanyway\.com/i);
+    expect(syncedBodies.join("\n")).not.toMatch(/https:\/\/czanyway\.com/i);
+    expect(syncedBodies.join("\n")).not.toMatch(/\bczanyway\.com\b/i);
+  });
 });
 
 function cloudEnv(): NodeJS.ProcessEnv {
@@ -176,6 +240,26 @@ function mockSupabase(
     }
 
     if (url.includes("/rest/v1/event_logs")) {
+      return json({}, 201);
+    }
+
+    if (url.includes("/rest/v1/hermills_redacted_events")) {
+      return method === "GET" ? json([]) : json({}, 201);
+    }
+
+    if (url.includes("/rest/v1/learning_events")) {
+      return method === "GET" ? json([]) : json({}, 201);
+    }
+
+    if (url.includes("/rest/v1/learning_rules")) {
+      return method === "GET" ? json([]) : json({}, 201);
+    }
+
+    if (url.includes("/rest/v1/hermills_learning_pack_versions") || url.includes("/rest/v1/learning_summaries")) {
+      return json({}, 201);
+    }
+
+    if (/\/rest\/v1\/(?:seller_profiles|customers|email_generations)/.test(url)) {
       return json({}, 201);
     }
 
