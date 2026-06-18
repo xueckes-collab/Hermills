@@ -3761,7 +3761,7 @@ function DevelopmentLetterPage({
       setError(copy.devLetter.warnings.quickRequired)
       return
     }
-    setGenerationMode('quick')
+    setGenerationMode('single')
     setGenerationOpen(true)
     setGenerationCompletedAt('')
     setBusy('auto')
@@ -3776,7 +3776,7 @@ function DevelopmentLetterPage({
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
         generationMode: 'deep',
-        researchDepth: 'quick'
+        researchDepth: 'adaptive'
       })
       const nextLeads = await api.outreachLeads()
       setLeads(nextLeads)

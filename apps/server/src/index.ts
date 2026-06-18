@@ -200,6 +200,8 @@ const SIGNATURE_LOGO_CID = "hermills-signature-logo";
 const SIGNATURE_LOGO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_OUTREACH_LEAD_NOTES_CHARS = 20_000;
 const OUTREACH_EMAIL_LANGUAGE = "English";
+const OUTREACH_MIN_DELIVERABLE_SCORE = 85;
+const OUTREACH_FAST_REPAIR_ATTEMPTS = 4;
 
 const UpsertAgentBody = z.object({
   displayName: z.string().min(2).max(80),
@@ -1283,8 +1285,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   server.post("/api/outreach/drafts/auto", async (request) => {
     const body = AutoOutreachDraftBody.parse(request.body ?? {});
     const profileId = await resolveProfileId(body.profileId);
-    const research = await researchCustomerWebsite(body.website, "quick", {
+    const research = await researchCustomerWebsite(body.website, body.researchDepth, {
       email: body.email,
+      deepResearch,
       cache: customerResearchCache
     });
     const lead = await outreachLeads.create({
@@ -1302,7 +1305,7 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     });
     const draft = await generateFastOutreachDraft({
       lead,
-      body: { ...body, researchDepth: "quick" },
+      body,
       profileId,
       runtime,
       providers,
@@ -7183,8 +7186,15 @@ function reviewOutreachEmail(input: {
     qualityCheck("twoSecondRead", "Complete 2-second scan", twoSecondPassed, twoSecondScore, twoSecondPassed ? "The email is short, complete, and scan-friendly." : "Keep it like a complete human business email: greeting, 35-125 words, short subject, 1-5 short paragraphs, low-friction CTA, and a real signoff/signature.")
   ];
   const score = Math.max(0, Math.min(100, checks.reduce((sum, check) => sum + check.score, 0)));
-  const hardFailed = !buyerReasonPassed || !humanTonePassed || !personalizedPassed || !nextStepPassed || !twoSecondPassed;
-  const passed = score >= 90 && !hardFailed;
+  const criticalFailed = !buyerReasonPassed
+    || !humanTonePassed
+    || !personalizedPassed
+    || !nextStepPassed
+    || !hasGreeting
+    || !hasBusinessSignature
+    || containsCjk
+    || localSkeleton;
+  const passed = score >= OUTREACH_MIN_DELIVERABLE_SCORE && !criticalFailed;
   const issues = checks.filter((check) => !check.passed).map((check) => check.message).filter(Boolean);
   const rewriteHints = [
     buyerReasonPassed ? "" : "Start with one specific product, channel, procurement, certification, project, or market clue from the buyer website; do not use only a domain, page title, or phrase like 'works around'.",
@@ -7198,13 +7208,22 @@ function reviewOutreachEmail(input: {
   return OutreachEmailQualityReviewSchema.parse({
     score,
     passed,
-    level: passed ? "pass" : hardFailed ? "blocked" : "needs-work",
+    level: passed ? "pass" : criticalFailed ? "blocked" : "needs-work",
     summary: passed ? "Ready: this reads like a buyer-specific human note." : "Needs rewrite before sending.",
     checks,
     issues,
     rewriteHints,
     reviewedAt: new Date().toISOString()
   });
+}
+
+function assertGeneratedDraftQualityReady(review: OutreachEmailQualityReview): void {
+  if (review.passed) return;
+  throw new ClientInputError([
+    `Hermills could not create a draft above the ${OUTREACH_MIN_DELIVERABLE_SCORE}-point quality gate after automatic rewrites.`,
+    review.issues[0] ?? review.summary,
+    "No low-quality draft was saved. Add more company proof or customer website evidence and try again."
+  ].filter(Boolean).join(" "));
 }
 
 function qualityCheck(id: OutreachEmailQualityReview["checks"][number]["id"], label: string, passed: boolean, score: number, message: string): OutreachEmailQualityReview["checks"][number] {
@@ -7667,7 +7686,7 @@ async function generateFastOutreachDraft(input: {
     model,
     instructions: outreachFastInstructions(),
     provider,
-    reasoningEffort: "low",
+    reasoningEffort: "medium",
     maxOutputTokens: 1200,
     responseFormat: "json_object"
   });
@@ -7676,12 +7695,26 @@ async function generateFastOutreachDraft(input: {
     lead: input.lead,
     signatureBlock
   });
-  const qualityReview = reviewOutreachEmail({ subject: parsed.subject, body: parsed.body, lead: input.lead, research: input.research });
+  const polished = await polishOutreachDraft({
+    candidate: parsed,
+    lead: input.lead,
+    research: input.research,
+    brief: generationBrief,
+    language,
+    tone: input.body.tone,
+    companyKnowledgeContext,
+    runtime: input.runtime,
+    provider,
+    model,
+    signatureBlock,
+    maxRepairAttempts: OUTREACH_FAST_REPAIR_ATTEMPTS
+  });
+  assertGeneratedDraftQualityReady(polished.qualityReview);
   const ctaAssets = await input.assets.listCtaAssets(input.profileId);
   const sendRiskReview = reviewOutreachSendRisk({
-    subject: parsed.subject,
-    body: parsed.body,
-    qualityReview,
+    subject: polished.subject,
+    body: polished.body,
+    qualityReview: polished.qualityReview,
     lead: input.lead,
     research: input.research,
     evidenceLock: OutreachEvidenceLockSchema.parse({}),
@@ -7691,8 +7724,8 @@ async function generateFastOutreachDraft(input: {
   return input.drafts.create({
     profileId: input.profileId,
     leadId: input.lead.id,
-    subject: parsed.subject,
-    body: parsed.body,
+    subject: polished.subject,
+    body: polished.body,
     language,
     tone: input.body.tone,
     generationMode: input.body.generationMode ?? "deep",
@@ -7700,27 +7733,27 @@ async function generateFastOutreachDraft(input: {
     providerId: providerRecord?.id,
     model,
     modelUsed: model,
-    usage: estimateMessageUsage(prompt, `${parsed.subject}\n${parsed.body}`),
+    usage: estimateMessageUsage(prompt, `${polished.subject}\n${polished.body}`),
     leadFitScore: OutreachLeadFitScoreSchema.parse({}),
     evidenceLock: OutreachEvidenceLockSchema.parse({}),
     valueMatch: OutreachValueMatchSchema.parse({}),
-    qualityReview,
+    qualityReview: polished.qualityReview,
     evidenceMap: OutreachEvidenceMapSchema.parse({}),
     strategyMatch: OutreachStrategyMatchSchema.parse({}),
     sendRiskReview,
     writingEngine: "harness-v2",
-    rewriteAttempts: 0,
+    rewriteAttempts: polished.repairAttempts,
     evidenceUsed: [],
     matchedExampleIds: [],
     researchBrief: input.research?.brief,
     generationSummary: [
-      "Fast first draft generated from lightweight website research and saved company knowledge.",
-      `QA score ${qualityReview.score}/100 with no blocking rewrite loop.`
+      `Quality-gated first draft generated from ${input.research?.depth ?? "adaptive"} website research and saved company knowledge.`,
+      `QA score ${polished.qualityReview.score}/100 after ${polished.repairAttempts} automatic rewrite attempt(s).`
     ].join(" "),
     learningSignal: buildOutreachLearningSignal({
       lead: input.lead,
-      subject: parsed.subject,
-      body: parsed.body,
+      subject: polished.subject,
+      body: polished.body,
       leadFitScore: OutreachLeadFitScoreSchema.parse({}),
       valueMatch: OutreachValueMatchSchema.parse({}),
       step: 0
@@ -7826,8 +7859,9 @@ async function generateOutreachDraft(input: {
     provider,
     model,
     signatureBlock,
-    maxRepairAttempts: 1
+    maxRepairAttempts: OUTREACH_FAST_REPAIR_ATTEMPTS
   });
+  assertGeneratedDraftQualityReady(polished.qualityReview);
   const sendRiskReview = reviewOutreachSendRisk({
     subject: polished.subject,
     body: polished.body,
@@ -8003,9 +8037,10 @@ async function generateOutreachWorkflow(input: {
     provider,
     model,
     signatureBlock,
-    maxRepairAttempts: 1
+    maxRepairAttempts: OUTREACH_FAST_REPAIR_ATTEMPTS
   });
   const initialQualityReview = polishedInitial.qualityReview;
+  assertGeneratedDraftQualityReady(initialQualityReview);
   const polishedFollowUps = polishWorkflowFollowUps({
     followUps: generated.followUps,
     lead,

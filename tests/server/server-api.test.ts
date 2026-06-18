@@ -880,8 +880,8 @@ describe("Hermills local API", () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
       return JSON.stringify({
-        subject: "Work light sourcing",
-        body: "Hello, I saw your team sources work lights. Would it help if I sent a concise option list?"
+        subject: "Work light option check?",
+        body: "Hi Unconfirmed Buyer team,\n\nI noticed Unconfirmed Buyer is reviewing work light options, so a small spec comparison may be easier than a broad catalog.\n\nEckes Export can share 2-3 LED work light options with MOQ and lead-time notes for a quick first check.\n\nWould that side-by-side table be useful before samples?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
       });
     };
     await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
@@ -992,6 +992,57 @@ describe("Hermills local API", () => {
     });
     const workflowsResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Preview", headers });
     expect(workflowsResponse.json()).toEqual([]);
+  });
+
+  it("auto rewrites low-quality single drafts before saving them", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/products")
+        ? "<html><body><h1>Safety work lights</h1><p>Importer-ready LED work lights for contractor and rental channels.</p></body></html>"
+        : "<html><head><title>Quality Buyer - Contractor Lighting Importer</title><meta name=\"description\" content=\"Quality Buyer imports LED work lights for contractor and rental channels.\"></head><body><a href=\"/products\">Products</a><p>We distribute LED work lights and portable jobsite lighting.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+    let call = 0;
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      call += 1;
+      if (call === 1) {
+        return JSON.stringify({
+          subject: "Quick question",
+          body: "Hello, I would like to learn whether your team handles this product category."
+        });
+      }
+      return JSON.stringify({
+        subject: "Work light spec comparison?",
+        body: "Hi Quality Buyer team,\n\nI noticed your LED work light and portable jobsite lighting range for contractor and rental channels. When buyers compare those lines, MOQ, lead time, and basic compliance proof usually decide whether a second source is worth testing.\n\nEckes Export can share 2-3 matched work light options with CE proof, MOQ, and lead-time notes for a quick side-by-side check.\n\nWould that comparison table be useful before samples?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"]
+    } });
+
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/auto",
+      headers,
+      payload: {
+        website: "quality-buyer.example",
+        email: "buyer@quality-buyer.example",
+        language: "English",
+        tone: "short"
+      }
+    });
+
+    expect(draftResponse.statusCode, draftResponse.body).toBe(200);
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(draftResponse.json().body).toContain("contractor and rental channels");
+    expect(draftResponse.json().body).not.toContain("whether your team handles this product category");
+    expect(draftResponse.json().qualityReview.score).toBeGreaterThanOrEqual(85);
+    expect(draftResponse.json().qualityReview.passed).toBe(true);
+    expect(draftResponse.json().rewriteAttempts).toBeGreaterThanOrEqual(1);
   });
 
   it("uses the deep research sidecar for deep workflows and only sends website and email", async () => {
