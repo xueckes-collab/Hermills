@@ -39,9 +39,9 @@ describe("batch write page redesign contract", () => {
   it("styles the batch page with stable setup and review workspaces", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(stylesSource).toMatch(/\.letter-batch-stats\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-batch-setup-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(300px,\s*1fr\)\)/);
-    expect(stylesSource).toMatch(/\.letter-batch-review-workspace\s*\{[\s\S]*?grid-template-columns:\s*minmax\(260px,\s*0\.46fr\) minmax\(0,\s*1\.54fr\)/);
-    expect(stylesSource).toMatch(/\.letter-batch-recipient-list\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 260px\)/);
+    expect(stylesSource).toMatch(/\.hm-batch-stats\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-batch-setup-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(300px,\s*1fr\)\)/);
+    expect(stylesSource).toMatch(/\.hm-batch-review-workspace\s*\{[\s\S]*?grid-template-columns:\s*minmax\(260px,\s*0\.46fr\) minmax\(0,\s*1\.54fr\)/);
+    expect(stylesSource).toMatch(/\.hm-batch-recipient-list\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 260px\)/);
   });
 });

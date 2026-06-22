@@ -25,7 +25,7 @@ describe("assets and company profile page redesign contract", () => {
     expect(assetsView).toContain("USP 库");
     expect(assetsView).toContain("CTA 资产库");
     expect(assetsView).toContain("黄金邮件样例");
-    expect(assetsView).not.toContain("className=\"letter-panel\"");
+    expect(assetsView).not.toContain("className=\"hm-panel\"");
   });
 
   it("uses outreach components for the company profile overview", async () => {
@@ -44,10 +44,10 @@ describe("assets and company profile page redesign contract", () => {
   it("adds focused layouts for assets and company profile", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(stylesSource).toMatch(/\.letter-assets-workspace\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-assets-stat-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5/);
-    expect(stylesSource).toMatch(/\.letter-assets-form-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
-    expect(stylesSource).toMatch(/\.letter-profile-workspace\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-profile-stat-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
+    expect(stylesSource).toMatch(/\.hm-assets-workspace\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-assets-stat-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5/);
+    expect(stylesSource).toMatch(/\.hm-assets-form-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
+    expect(stylesSource).toMatch(/\.hm-profile-workspace\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-profile-stat-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   });
 });

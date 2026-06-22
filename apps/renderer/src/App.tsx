@@ -1054,7 +1054,7 @@ function CloudLoginPage({
   return (
     <div className="cloud-auth-page">
       <div className="cloud-auth-brand">
-        <div className="letter-logo"><Mail size={18} /></div>
+        <div className="hm-logo"><Mail size={18} /></div>
         <div>
           <strong>Outbound Mail OS</strong>
           <span>Hermills 云端大脑</span>
@@ -1067,9 +1067,9 @@ function CloudLoginPage({
           <h1>{mode === 'signup' ? '创建 Hermills 账号' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
           <p>{mode === 'verifySignup' ? '邮箱里会有一串数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
         </div>
-        {serviceError ? <div className="letter-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
-        {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
-        {error ? <div className="letter-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
+        {serviceError ? <div className="hm-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
+        {notice ? <div className="hm-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+        {error ? <div className="hm-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
         {mode === 'signup' ? (
           <label>
             <span>姓名</span>
@@ -1106,7 +1106,7 @@ function CloudLoginPage({
             </label>
           </>
         ) : null}
-        <button className="letter-primary" type="submit" disabled={Boolean(busy)}>
+        <button className="hm-primary" type="submit" disabled={Boolean(busy)}>
           {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号并发送验证码' : mode === 'verifySignup' ? '验证并登录' : '登录'}
           <ChevronRight size={16} />
         </button>
@@ -2470,16 +2470,16 @@ function LetterGenerationTrace({
   const status = running ? '正在生成' : completedAt ? '已完成' : '准备中'
   const statusText = completedAt && !running ? `${status} · ${new Date(completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : status
   return (
-    <details className="letter-thinking-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
+    <details className="hm-thinking-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
       <summary>
         <span><Brain size={16} /> 生成过程</span>
         <em>{statusText}</em>
       </summary>
-      <div className="letter-thinking-note">这里显示的是可审核的生成步骤和依据，不展示模型内部私密推理链。</div>
-      <ol className="letter-thinking-steps">
+      <div className="hm-thinking-note">这里显示的是可审核的生成步骤和依据，不展示模型内部私密推理链。</div>
+      <ol className="hm-thinking-steps">
         {steps.map((step, index) => (
           <li className={running && index === steps.length - 1 ? 'active' : ''} key={step.title}>
-            <span className="letter-thinking-dot">{index + 1}</span>
+            <span className="hm-thinking-dot">{index + 1}</span>
             <div>
               <strong>{step.title}</strong>
               <p>{step.detail}</p>
@@ -2587,12 +2587,12 @@ function LetterQualitySummary({
       </div>
       {review.summary ? <p>{review.summary}</p> : null}
       {researchBrief ? (
-        <details className={`letter-research-brief ${researchBrief.fitVerdict}`} open>
+        <details className={`hm-research-brief ${researchBrief.fitVerdict}`} open>
           <summary>
             <span>客户判断简报</span>
             <em>{customerFitLabel(researchBrief.fitVerdict)} · {customerWriteModeLabel(researchBrief.shouldWrite)}</em>
           </summary>
-          <div className="letter-research-brief-grid">
+          <div className="hm-research-brief-grid">
             <span><strong>客户类型</strong>{researchBrief.buyerTypeDetail || '暂未判断'}</span>
             <span><strong>最佳切入点</strong>{researchBrief.bestAngle || researchBrief.bestOutreachPath || '暂未判断'}</span>
             <span><strong>采购信号</strong>{researchBrief.purchaseIntentSignal || '暂未找到明确采购信号'}</span>
@@ -2600,7 +2600,7 @@ function LetterQualitySummary({
           </div>
           {researchBrief.bestOutreachPath ? <p>{researchBrief.bestOutreachPath}</p> : null}
           {researchBrief.claimsToAvoid.length ? (
-            <div className="letter-claims-avoid">
+            <div className="hm-claims-avoid">
               <strong>不能这样写</strong>
               <ul>
                 {researchBrief.claimsToAvoid.slice(0, 4).map((claim) => <li key={claim}>{claim}</li>)}
@@ -2610,9 +2610,9 @@ function LetterQualitySummary({
         </details>
       ) : null}
       {leadFitScore || valueMatch || evidenceLock ? (
-        <details className="letter-loop-summary" open>
+        <details className="hm-loop-summary" open>
           <summary>开发 Loop 摘要</summary>
-          <div className="letter-loop-grid">
+          <div className="hm-loop-grid">
             <span><strong>开发评分</strong>{leadFitScore ? `${leadFitScore.score}/100 · ${loopFitLabel(leadFitScore.fit)}` : '未记录'}</span>
             <span><strong>推荐角度</strong>{loopAngleLabel(leadFitScore?.primaryAngle)}</span>
             <span><strong>预计回复率</strong>{leadFitScore?.expectedReplyRate ? `${leadFitScore.expectedReplyRate.minPercent}-${leadFitScore.expectedReplyRate.maxPercent}%` : '未估算'}</span>
@@ -2620,43 +2620,43 @@ function LetterQualitySummary({
           </div>
           {leadFitScore?.recommendedApproach ? <p>{leadFitScore.recommendedApproach}</p> : null}
           {valueMatch ? (
-            <div className="letter-value-match">
+            <div className="hm-value-match">
               <span><strong>只用这个卖点</strong>{valueMatch.specificValue || '未记录'}</span>
               <span><strong>客户问题</strong>{valueMatch.customerConcern || '未记录'}</span>
               <span><strong>CTA</strong>{valueMatch.cta || '未记录'}</span>
             </div>
           ) : null}
           {evidenceLock?.mustNotSay?.length ? (
-            <ul className="letter-loop-risks">
+            <ul className="hm-loop-risks">
               {evidenceLock.mustNotSay.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
             </ul>
           ) : null}
-          {learningSignal?.recordedAt ? <em className="letter-loop-learning">已记录学习信号：{learningSignal.replyOutcome}</em> : null}
+          {learningSignal?.recordedAt ? <em className="hm-loop-learning">已记录学习信号：{learningSignal.replyOutcome}</em> : null}
         </details>
       ) : null}
       {strategy ? (
-        <div className="letter-strategy-summary">
+        <div className="hm-strategy-summary">
           <span><strong>切入点</strong>{strategy.buyerPain || '未记录'}</span>
           <span><strong>匹配 USP</strong>{strategy.selectedUsp || '未记录'}</span>
           <span><strong>CTA 资产</strong>{strategy.microOffer || '未记录'}</span>
         </div>
       ) : null}
       {generationSummary || matchedExampleCount || modelUsed ? (
-        <details className="letter-harness-summary">
+        <details className="hm-harness-summary">
           <summary>为什么这样写</summary>
           {generationSummary ? <p>{generationSummary}</p> : null}
-          <div className="letter-harness-meta">
+          <div className="hm-harness-meta">
             {modelUsed ? <span>模型：{modelUsed}</span> : null}
             {matchedExampleCount ? <span>参考好样例：{matchedExampleCount} 个</span> : <span>还没有参考好样例</span>}
           </div>
         </details>
       ) : null}
       {evidenceUsed?.length ? (
-        <details className="letter-evidence-summary">
+        <details className="hm-evidence-summary">
           <summary>证据来源</summary>
-          <div className="letter-evidence-list">
+          <div className="hm-evidence-list">
             {evidenceUsed.slice(0, 8).map((item) => (
-              <article className="letter-evidence-item" key={item.id}>
+              <article className="hm-evidence-item" key={item.id}>
                 <div>
                   <strong>{item.label}</strong>
                   <span>{item.value}</span>
@@ -2669,7 +2669,7 @@ function LetterQualitySummary({
         </details>
       ) : null}
       {riskReview ? (
-        <div className={`letter-risk-summary ${riskReview.level}`}>
+        <div className={`hm-risk-summary ${riskReview.level}`}>
           <div>
             <ShieldCheck size={14} />
             <strong>发送风控 {riskReview.score}/100</strong>
@@ -4476,16 +4476,16 @@ function DevelopmentLetterPage({
                   : '维护 AI 写信时使用的公司资料'
 
   return (
-    <div className="letter-app-shell">
-      <aside className="letter-sidebar" aria-label="外联导航">
-        <div className="letter-brand">
-          <div className="letter-logo"><Mail size={18} /></div>
+    <div className="hm-outreach-shell">
+      <aside className="hm-sidebar" aria-label="Hermills 外联导航">
+        <div className="hm-brand">
+          <div className="hm-brand-mark"><Mail size={18} /></div>
           <div>
             <strong>Outbound Mail OS</strong>
             <span>Hermills 本地版</span>
           </div>
         </div>
-        <nav className="letter-nav">
+        <nav className="hm-nav">
           {letterNavItems.map((item) => {
             const Icon = item.icon
             return (
@@ -4496,7 +4496,7 @@ function DevelopmentLetterPage({
             )
           })}
         </nav>
-        <div className="letter-sidebar-footer">
+        <div className="hm-sidebar-footer">
           <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
           <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
           {cloudStatus.authenticated && cloudStatus.lastSyncError ? (
@@ -4510,32 +4510,32 @@ function DevelopmentLetterPage({
         </div>
       </aside>
 
-      <main className="letter-main">
-        <header className="letter-page-header">
+      <main className="hm-main">
+        <header className="hm-page-header">
           <div>
             <h1>{letterTitle}</h1>
             <p>{letterSubtitle}</p>
           </div>
           {letterView === 'dashboard' ? (
-            <button className="letter-primary compact" type="button" onClick={() => setLetterView('compose')}>
+            <button className="hm-primary-button compact" type="button" onClick={() => setLetterView('compose')}>
               写单封开发信 <ChevronRight size={16} />
             </button>
           ) : null}
         </header>
 
         {error ? (
-          <div className="letter-alert error">
+          <div className="hm-alert error">
             <AlertCircle size={16} />
             <span>{error}</span>
-            <button className="letter-alert-copy" type="button" onClick={() => void navigator.clipboard?.writeText(error)} aria-label={copy.errors.copyDetails}>
+            <button className="hm-alert-copy" type="button" onClick={() => void navigator.clipboard?.writeText(error)} aria-label={copy.errors.copyDetails}>
               <Copy size={14} /> {copy.errors.copyDetails}
             </button>
           </div>
         ) : null}
-        {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+        {notice ? <div className="hm-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
 
         {letterView === 'dashboard' ? (
-          <div className="letter-view letter-dashboard-workspace">
+          <div className="hm-page hm-today-workspace">
             <OutreachStatusBanner
               tone={cloudStatus.authenticated ? 'success' : cloudStatus.configured ? 'warning' : 'info'}
               title={cloudStatus.authenticated ? '自动学习已开启' : cloudStatus.configured ? '云端大脑待登录' : '本地外联工作台'}
@@ -4546,7 +4546,7 @@ function DevelopmentLetterPage({
                 : '你可以先在本地写信、审核和发送；登录后再同步学习数据。'}
             </OutreachStatusBanner>
 
-            <section className="letter-dashboard-stats" aria-label="客户状态统计">
+            <section className="hm-dashboard-stats" aria-label="客户状态统计">
               {[
                 { label: '总客户', value: letterStats.total, icon: <Users size={20} />, tone: 'orange' as const, view: 'leads' as const },
                 { label: '待生成', value: letterStats.new, icon: <Zap size={20} />, tone: 'blue' as const, view: 'automation' as const },
@@ -4555,22 +4555,22 @@ function DevelopmentLetterPage({
                 { label: '已回复', value: letterStats.replied, icon: <CheckCircle2 size={20} />, tone: 'green' as const, view: 'leads' as const },
               ].map((stat) => {
                 return (
-                  <button className="letter-dashboard-stat-button" type="button" key={stat.label} onClick={() => setLetterView(stat.view)}>
+                  <button className="hm-dashboard-stat-button" type="button" key={stat.label} onClick={() => setLetterView(stat.view)}>
                     <OutreachStatCard label={stat.label} value={stat.value} tone={stat.tone} icon={stat.icon} />
                   </button>
                 )
               })}
             </section>
 
-            <section className="letter-dashboard-actions" aria-label="今日外联快捷入口">
+            <section className="hm-dashboard-actions" aria-label="今日外联快捷入口">
               {[
                 { title: '写单封开发信', detail: '输入一个客户网站和邮箱，生成首封邮件和跟进序列。', icon: <Mail size={18} />, view: 'compose' as const },
                 { title: '整理客户', detail: '筛选待生成、待发送、已回复客户并补齐资料。', icon: <Users size={18} />, view: 'leads' as const },
                 { title: '批量写开发信', detail: '导入客户名单，写好一封就显示一封，逐封审核再发送。', icon: <Zap size={18} />, view: 'automation' as const },
                 { title: '检查邮箱', detail: senderDeliveryReady ? '发件邮箱已确认，可以发送已审核邮件。' : '先保存并测试邮箱，确认收到测试邮件。', icon: <Settings size={18} />, view: 'mail' as const },
               ].map((action) => (
-                <OutreachCard className="letter-dashboard-action-card" key={action.title}>
-                  <button className="letter-dashboard-card-button" type="button" onClick={() => setLetterView(action.view)}>
+                <OutreachCard className="hm-dashboard-action-card" key={action.title}>
+                  <button className="hm-dashboard-card-button" type="button" onClick={() => setLetterView(action.view)}>
                     <span>{action.icon}</span>
                     <strong>{action.title}</strong>
                     <small>{action.detail}</small>
@@ -4593,17 +4593,17 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'compose' ? (
-          <div className="letter-view">
-            <section className="letter-single-compose">
+          <div className="hm-page hm-single-workspace">
+            <section className="hm-single-compose">
               <OutreachCard
                 title="单个客户"
                 description="输入一个客户的网站和邮箱，Hermills 会自动背调官网并生成首封开发信。"
                 icon={<Globe2 size={18} />}
               >
-                <div className="letter-form-grid quick-lead-form" aria-label="新增客户输入">
-                  <OutreachField id="letter-quick-email" label="客户邮箱" error={quickEmailError}>
+                <div className="hm-form-grid quick-lead-form" aria-label="新增客户输入">
+                  <OutreachField id="hm-quick-email" label="客户邮箱" error={quickEmailError}>
                     <OutreachInput
-                      id="letter-quick-email"
+                      id="hm-quick-email"
                       name="quickCustomerEmail"
                       type="email"
                       inputMode="email"
@@ -4614,10 +4614,10 @@ function DevelopmentLetterPage({
                       aria-invalid={quickEmailError ? true : undefined}
                     />
                   </OutreachField>
-                  <OutreachField id="letter-quick-website" label="客户网站" error={quickWebsiteError}>
+                  <OutreachField id="hm-quick-website" label="客户网站" error={quickWebsiteError}>
                     <OutreachInput
                       ref={quickWebsiteRef}
-                      id="letter-quick-website"
+                      id="hm-quick-website"
                       name="quickCustomerWebsite"
                       type="url"
                       inputMode="url"
@@ -4633,7 +4633,7 @@ function DevelopmentLetterPage({
                 <OutreachStatusBanner tone="success" title="自适应深度分析">
                   后台会优先深度抓取官网、产品页和联系页；失败时自动轻量兜底，不需要手动选择模式。
                 </OutreachStatusBanner>
-                <div className="letter-depth-flow" aria-label="自适应深度分析流程">
+                <div className="hm-depth-flow" aria-label="自适应深度分析流程">
                   <span>官网结构</span>
                   <span>高价值页面</span>
                   <span>采购线索</span>
@@ -4642,33 +4642,33 @@ function DevelopmentLetterPage({
                 <OutreachButton variant="primary" className="full" disabled={!quickLeadReady || busy === 'auto'} loading={busy === 'auto'} onClick={autoGenerateDraft}>
                   {busy === 'auto' ? '正在分析客户官网并生成开发信...' : '分析客户官网并生成开发信'}
                 </OutreachButton>
-                {!quickLeadReady ? <p className="letter-form-hint">{quickValidation.disabledHint}</p> : null}
+                {!quickLeadReady ? <p className="hm-form-hint">{quickValidation.disabledHint}</p> : null}
               </OutreachCard>
-              <aside className="letter-single-note">
+              <aside className="hm-single-note">
                 <strong>批量客户请去“批量写信”</strong>
                 <span>单封写信页只处理一个客户，批量导入、逐客户智能体生成、批量审核和跟进都集中在批量写信页。</span>
-                <button className="letter-secondary" type="button" onClick={() => setLetterView('automation')}>打开批量写信 <ChevronRight size={16} /></button>
+                <button className="hm-secondary" type="button" onClick={() => setLetterView('automation')}>打开批量写信 <ChevronRight size={16} /></button>
               </aside>
             </section>
 
             {(singleGenerationRunning || hasVisibleSingleDraft) ? (
-              <section className="letter-single-result" aria-label="单封写信生成结果">
+              <section className="hm-single-result" aria-label="单封写信生成结果">
                 <OutreachStatusBanner
                   tone={singleGenerationRunning ? 'info' : activeQualityReview?.passed ? 'success' : 'warning'}
                   title={singleGenerationRunning ? 'Hermills 正在写这封开发信' : '已生成开发信草稿'}
                 >
                   {singleGenerationRunning ? '你可以看到每一步进度。生成完成后，主题、正文、证据和质量评分会出现在这里。' : '请先审核邮件内容、证据和质量分，确认后再发送。'}
                 </OutreachStatusBanner>
-                <div className="letter-single-result-grid">
+                <div className="hm-single-result-grid">
                   <OutreachCard title="生成过程" description="这里显示可审核的工作步骤，不展示模型内部私密推理链。" icon={<Brain size={18} />}>
                     <OutreachTimeline steps={singleWriteTimelineSteps} />
                   </OutreachCard>
-                  <div className="letter-single-review-panel">
+                  <div className="hm-single-review-panel">
                     <OutreachCard
                       title="开发信草稿"
                       description={draftSubject.trim() || draftBody.trim() ? '你可以直接编辑主题和正文，再保存、检查质量或发送。' : '生成完成后主题和正文会出现在这里。'}
                       icon={<Mail size={18} />}
-                      actions={activeDraftStatus ? <span className="letter-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+                      actions={activeDraftStatus ? <span className="hm-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
                     >
                       {draftSubject.trim() || draftBody.trim() ? (
                         <>
@@ -4693,7 +4693,7 @@ function DevelopmentLetterPage({
                       )}
                     </OutreachCard>
                   </div>
-                  <aside className="letter-single-review-panel">
+                  <aside className="hm-single-review-panel">
                     <LetterQualitySummary
                       review={activeQualityReview}
                       strategy={activeStrategyMatch}
@@ -4718,17 +4718,17 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'leads' ? (
-          <div className="letter-view">
-            <section className="letter-toolbar letter-leads-toolbar">
-              <OutreachField id="letter-lead-search" label="搜索客户">
+          <div className="hm-page hm-customer-workspace">
+            <section className="hm-toolbar hm-leads-toolbar">
+              <OutreachField id="hm-lead-search" label="搜索客户">
                 <OutreachInput
-                  id="letter-lead-search"
+                  id="hm-lead-search"
                   value={leadSearch}
                   onChange={(event) => setLeadSearch(event.currentTarget.value)}
                   placeholder="搜索公司、邮箱、联系人..."
                 />
               </OutreachField>
-              <div className="letter-filter-row">
+              <div className="hm-filter-row">
                 {letterLeadFilters.map((filter) => (
                   <OutreachButton key={filter.id} className={leadFilter === filter.id ? 'active' : ''} variant={leadFilter === filter.id ? 'primary' : 'secondary'} onClick={() => setLeadFilter(filter.id)}>
                     {filter.label}
@@ -4754,16 +4754,16 @@ function DevelopmentLetterPage({
               </OutreachStatusBanner>
             ) : null}
 
-            <section className="letter-leads-workspace">
+            <section className="hm-leads-workspace">
               <OutreachCard
-                className="letter-leads-master"
+                className="hm-leads-master"
                 title="客户列表"
                 description="筛选、选择并打开客户记录；右侧会显示可编辑资料和生成草稿。"
                 icon={<Users size={18} />}
-                actions={<span className="letter-result-count">{filteredLetterLeads.length} 条结果</span>}
+                actions={<span className="hm-result-count">{filteredLetterLeads.length} 条结果</span>}
               >
-                <div className="letter-lead-list">
-                <div className="letter-result-count">{filteredLetterLeads.length} 条结果</div>
+                <div className="hm-lead-list">
+                <div className="hm-result-count">{filteredLetterLeads.length} 条结果</div>
                 {filteredLetterLeads.length ? filteredLetterLeads.map((lead) => (
                   <OutreachLeadRow
                     key={lead.id}
@@ -4789,14 +4789,14 @@ function DevelopmentLetterPage({
                 </div>
               </OutreachCard>
 
-              <aside className="letter-leads-detail">
+              <aside className="hm-leads-detail">
                 <OutreachCard
                   title={selectedLead ? '客户详情' : '新增客户'}
                   description="保存后可以生成开发信，也可以加入批量写信。"
                   icon={<Building2 size={18} />}
                   actions={selectedLead ? <OutreachBadge tone="blue">{letterLeadStatusLabel(selectedLead)}</OutreachBadge> : null}
                 >
-                  <div className="letter-form-grid">
+                  <div className="hm-form-grid">
                     <OutreachField id="lead-company-name" label="公司名称">
                       <OutreachInput id="lead-company-name" value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.currentTarget.value)} />
                     </OutreachField>
@@ -4830,13 +4830,13 @@ function DevelopmentLetterPage({
                 </OutreachCard>
 
                 {hasVisibleSingleDraft ? (
-                  <section className="letter-leads-draft-review" aria-label="生成的开发信草稿">
-                    <div className="letter-draft-heading">
+                  <section className="hm-leads-draft-review" aria-label="生成的开发信草稿">
+                    <div className="hm-draft-heading">
                       <div>
                         <h3><Mail size={17} /> 生成的开发信</h3>
                         <p>生成完成后会显示在这里。你可以修改、复制、检查质量，再决定是否发送。</p>
                       </div>
-                      {activeDraftStatus ? <span className="letter-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+                      {activeDraftStatus ? <span className="hm-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
                     </div>
                     <LetterGenerationTrace
                       mode={generationMode}
@@ -4846,7 +4846,7 @@ function DevelopmentLetterPage({
                       onToggle={setGenerationOpen}
                     />
                     {workflowEmails.length > 1 ? (
-                      <div className="letter-email-sequence-tabs" aria-label="选择邮件序列">
+                      <div className="hm-email-sequence-tabs" aria-label="选择邮件序列">
                         {workflowEmails.map((email) => (
                           <button className={selectedWorkflowEmail?.id === email.id ? 'active' : ''} type="button" key={email.id} onClick={() => selectWorkflowEmail(email)}>
                             {email.step === 0 ? copy.devLetter.results.firstEmail : copy.devLetter.results.followUp(email.step)}
@@ -4900,8 +4900,8 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'automation' ? (
-          <div className="letter-view">
-            <section className="letter-batch-stats">
+          <div className="hm-page hm-batch-workspace">
+            <section className="hm-batch-stats">
               {[
                 { label: '待生成', value: letterStats.new, icon: Users, tone: 'blue' as const },
                 { label: '待发送', value: letterStats.drafted, icon: Mail, tone: 'orange' as const },
@@ -4914,9 +4914,9 @@ function DevelopmentLetterPage({
               })}
             </section>
 
-            <section className="letter-batch-setup-grid">
+            <section className="hm-batch-setup-grid">
               <OutreachCard title="导入批量客户" description="支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。" icon={<Upload size={18} />}>
-                <label className="letter-upload-control">
+                <label className="hm-upload-control">
                   <OutreachUploadDropzone
                     title="点击选择 Excel / CSV 文件"
                     description="支持 .xlsx、.xls、.csv、.txt"
@@ -4924,7 +4924,7 @@ function DevelopmentLetterPage({
                   />
                   <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
                 </label>
-                <label className="letter-upload-control primary">
+                <label className="hm-upload-control primary">
                   <OutreachUploadDropzone
                     title="选择文件并生成开发信"
                     description="一个邮箱一个客户，每个客户单独背调和写信；写好一封会自动显示一封。"
@@ -4932,9 +4932,9 @@ function DevelopmentLetterPage({
                   />
                   <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
                 </label>
-                <OutreachField id="letter-bulk-import-text" label="手动粘贴客户">
+                <OutreachField id="hm-bulk-import-text" label="手动粘贴客户">
                   <OutreachTextarea
-                    id="letter-bulk-import-text"
+                    id="hm-bulk-import-text"
                     value={bulkImportText}
                     onChange={(event) => setBulkImportText(event.currentTarget.value)}
                     placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com"
@@ -4949,12 +4949,12 @@ function DevelopmentLetterPage({
               </OutreachCard>
 
               <OutreachCard title="批量智能体队列" description="选择客户后创建批量写信任务；每个客户都会单独背调并生成一封开发信。" icon={<Zap size={18} />}>
-                <div className="letter-action-row wrap">
+                <div className="hm-action-row wrap">
                   <OutreachButton variant="secondary" onClick={() => setSelectedCampaignLeadIds(leads.filter((lead) => leadMatchesLetterFilter(lead, 'new')).map((lead) => lead.id))}>选择待生成客户 ({letterStats.new})</OutreachButton>
                   <OutreachButton variant="secondary" onClick={() => setSelectedCampaignLeadIds(leads.map((lead) => lead.id))}>选择全部客户</OutreachButton>
                 </div>
-                <OutreachField id="letter-campaign-name" label="Campaign 名称">
-                  <OutreachInput id="letter-campaign-name" value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.currentTarget.value) }} />
+                <OutreachField id="hm-campaign-name" label="Campaign 名称">
+                  <OutreachInput id="hm-campaign-name" value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.currentTarget.value) }} />
                 </OutreachField>
                 <OutreachStickyActionBar>
                   <OutreachButton variant="primary" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} aria-busy={busy === 'campaignCreate'} loading={busy === 'campaignCreate'} onClick={createCampaign}>创建批量写信 ({selectedCampaignLeadIds.length})</OutreachButton>
@@ -4962,21 +4962,21 @@ function DevelopmentLetterPage({
                 </OutreachStickyActionBar>
               </OutreachCard>
 
-              <OutreachCard className="letter-batch-send-card" title="发送和跟进" description="发送前会检查发件邮箱、草稿质量和用户确认。" icon={<Send size={18} />} actions={selectedCampaign ? <OutreachBadge tone="blue">{selectedCampaign.status}</OutreachBadge> : null}>
+              <OutreachCard className="hm-batch-send-card" title="发送和跟进" description="发送前会检查发件邮箱、草稿质量和用户确认。" icon={<Send size={18} />} actions={selectedCampaign ? <OutreachBadge tone="blue">{selectedCampaign.status}</OutreachBadge> : null}>
                 {selectedCampaign ? (
-                  <div className="letter-campaign-summary">
+                  <div className="hm-campaign-summary">
                     <strong>{selectedCampaign.name}</strong>
                     <span>{selectedCampaign.stats.generated} 待审核 · {selectedCampaign.stats.approved} 可发送 · {selectedCampaign.stats.sent} 已发送</span>
                   </div>
                 ) : <OutreachEmptyState title="还没有批量写信任务" description="先导入或选择客户，再创建批量写信任务。" />}
-                <div className="letter-action-row wrap">
+                <div className="hm-action-row wrap">
                   <OutreachButton variant="primary" disabled={!selectedCampaign || busy === 'campaignSend'} aria-busy={busy === 'campaignSend'} loading={busy === 'campaignSend'} onClick={startCampaign}>一键发送</OutreachButton>
                   <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'followUpsSchedule'} aria-busy={busy === 'followUpsSchedule'} loading={busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</OutreachButton>
                   <OutreachButton variant="secondary" disabled={busy === 'followUpsTick'} aria-busy={busy === 'followUpsTick'} loading={busy === 'followUpsTick'} onClick={runFollowUpTick}>检查跟进</OutreachButton>
                   <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'inboxCheck'} aria-busy={busy === 'inboxCheck'} loading={busy === 'inboxCheck'} onClick={checkCampaignInbox}>检查回复</OutreachButton>
                 </div>
                 {nextFollowUps.length ? (
-                  <div className="letter-followup-list">
+                  <div className="hm-followup-list">
                     {nextFollowUps.map((job) => <span key={job.id}>{job.companyName} · {job.status} · {new Date(job.sendAt).toLocaleString()}</span>)}
                   </div>
                 ) : null}
@@ -4984,7 +4984,7 @@ function DevelopmentLetterPage({
             </section>
             {hasVisibleCampaignDraft ? (
               <OutreachCard
-                className="letter-campaign-review-panel"
+                className="hm-campaign-review-panel"
                 title="逐封查看生成邮件"
                 description="批量生成后，每个客户的邮件都会在这里显示；写好一封会自动显示一封，检查通过后才会发送。"
                 icon={<Eye size={18} />}
@@ -4992,8 +4992,8 @@ function DevelopmentLetterPage({
               >
                 <OutreachTimeline steps={campaignTimelineSteps} />
                 {selectedCampaign ? (
-                  <div className="letter-batch-review-workspace">
-                    <div className="letter-batch-recipient-list" aria-label="批量客户邮件列表">
+                  <div className="hm-batch-review-workspace">
+                    <div className="hm-batch-recipient-list" aria-label="批量客户邮件列表">
                       {campaignRecipients.length ? campaignRecipients.map((recipient) => (
                         <OutreachLeadRow
                           key={recipient.id}
@@ -5008,15 +5008,15 @@ function DevelopmentLetterPage({
                         />
                       )) : <OutreachEmptyState title="这批任务里还没有客户" description="先选择客户并创建批量写信任务。" />}
                     </div>
-                    <div className="letter-campaign-draft-view">
+                    <div className="hm-campaign-draft-view">
                       {selectedCampaignRecipient?.draft ? (
                         <>
-                          <div className="letter-draft-heading compact">
+                          <div className="hm-draft-heading compact">
                             <div>
                               <h3>{selectedCampaignRecipient.companyName}</h3>
                               <p>{selectedCampaignRecipient.website} · {selectedCampaignRecipient.email}</p>
                             </div>
-                            <span className="letter-badge">{copy.devLetter.batch.recipientStatus[selectedCampaignRecipient.status]}</span>
+                            <span className="hm-badge">{copy.devLetter.batch.recipientStatus[selectedCampaignRecipient.status]}</span>
                           </div>
                           <OutreachEmailEditor
                             subject={campaignDraftSubject}
@@ -5068,8 +5068,8 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'assets' ? (
-          <div className="letter-view letter-assets-workspace">
-            <section className="letter-assets-stat-grid" aria-label="销售资产统计">
+          <div className="hm-page hm-assets-workspace">
+            <section className="hm-assets-stat-grid" aria-label="销售资产统计">
               {[
                 { label: '买家画像', value: buyerPersonas.length, icon: <Users size={20} />, tone: 'blue' as const },
                 { label: 'USP 库', value: uspAssets.length, icon: <ShieldCheck size={20} />, tone: 'green' as const },
@@ -5081,13 +5081,13 @@ function DevelopmentLetterPage({
               ))}
             </section>
 
-            <section className="letter-assets-grid">
+            <section className="hm-assets-grid">
               <OutreachCard
                 title="买家画像库"
                 description="提前保存常见买家角色，AI 写信时会用它判断买家痛点和采购触发点。"
                 icon={<Users size={18} />}
               >
-                <div className="letter-assets-form-grid">
+                <div className="hm-assets-form-grid">
                   <OutreachField id="asset-persona-name" label="画像名称">
                     <OutreachInput id="asset-persona-name" value={personaDraft.name} onChange={(event) => setPersonaDraft({ ...personaDraft, name: event.currentTarget.value })} placeholder="Flooring importer / Contractor distributor" />
                   </OutreachField>
@@ -5102,9 +5102,9 @@ function DevelopmentLetterPage({
                   </OutreachField>
                 </div>
                 <OutreachButton variant="primary" className="full" disabled={busy === 'assetPersona'} loading={busy === 'assetPersona'} onClick={saveBuyerPersonaAsset}>保存买家画像</OutreachButton>
-                <div className="letter-asset-list">
+                <div className="hm-asset-list">
                   {buyerPersonas.length ? buyerPersonas.slice(0, 6).map((persona) => (
-                    <article className="letter-asset-row" key={persona.id}>
+                    <article className="hm-asset-row" key={persona.id}>
                       <strong>{persona.name}</strong>
                       <span>{persona.companyType || persona.buyerRoles.join(', ') || '未补充类型'}</span>
                     </article>
@@ -5117,7 +5117,7 @@ function DevelopmentLetterPage({
                 description="不要让 AI 瞎编卖点。把真实 USP、证据和适用场景放在这里。"
                 icon={<ShieldCheck size={18} />}
               >
-                <div className="letter-assets-form-grid">
+                <div className="hm-assets-form-grid">
                   <OutreachField id="asset-usp-headline" label="USP 标题">
                     <OutreachInput id="asset-usp-headline" value={uspDraft.headline} onChange={(event) => setUspDraft({ ...uspDraft, headline: event.currentTarget.value })} placeholder="Sample-ready SPC flooring options" />
                   </OutreachField>
@@ -5132,9 +5132,9 @@ function DevelopmentLetterPage({
                   </OutreachField>
                 </div>
                 <OutreachButton variant="primary" className="full" disabled={busy === 'assetUsp'} loading={busy === 'assetUsp'} onClick={saveUspAsset}>保存 USP</OutreachButton>
-                <div className="letter-asset-list">
+                <div className="hm-asset-list">
                   {uspAssets.length ? uspAssets.slice(0, 6).map((usp) => (
-                    <article className="letter-asset-row" key={usp.id}>
+                    <article className="hm-asset-row" key={usp.id}>
                       <strong>{usp.headline}</strong>
                       <span>{usp.buyerAngle || usp.proof || usp.category}</span>
                     </article>
@@ -5143,12 +5143,12 @@ function DevelopmentLetterPage({
               </OutreachCard>
 
               <OutreachCard
-                className="letter-assets-wide"
+                className="hm-assets-wide"
                 title="CTA 资产库"
                 description="低摩擦 CTA 必须真的能交付。比如样品选项、MOQ/交期表、认证包、规格对比。"
                 icon={<FileText size={18} />}
               >
-                <div className="letter-assets-form-grid">
+                <div className="hm-assets-form-grid">
                   <OutreachField id="asset-cta-name" label="资产名称">
                     <OutreachInput id="asset-cta-name" value={ctaDraft.name} onChange={(event) => setCtaDraft({ ...ctaDraft, name: event.currentTarget.value })} placeholder="2-3 sample-ready options" />
                   </OutreachField>
@@ -5173,9 +5173,9 @@ function DevelopmentLetterPage({
                   </OutreachField>
                 </div>
                 <OutreachButton variant="primary" className="full" disabled={busy === 'assetCta'} loading={busy === 'assetCta'} onClick={saveCtaAsset}>保存 CTA 资产</OutreachButton>
-                <div className="letter-asset-list columns">
+                <div className="hm-asset-list columns">
                   {ctaAssets.length ? ctaAssets.slice(0, 8).map((asset) => (
-                    <article className="letter-asset-row" key={asset.id}>
+                    <article className="hm-asset-row" key={asset.id}>
                       <strong>{asset.name}</strong>
                       <span>{asset.type.replace(/_/g, ' ')} · {asset.description || '未补充描述'}</span>
                     </article>
@@ -5184,12 +5184,12 @@ function DevelopmentLetterPage({
               </OutreachCard>
 
               <OutreachCard
-                className="letter-assets-wide"
+                className="hm-assets-wide"
                 title="黄金邮件样例"
                 description="保存你认可的好邮件。以后 AI 写信会参考它的表达方式，但不会照抄客户信息。"
                 icon={<Star size={18} />}
               >
-                <div className="letter-assets-form-grid">
+                <div className="hm-assets-form-grid">
                   <OutreachField id="asset-golden-title" label="样例标题">
                     <OutreachInput id="asset-golden-title" value={goldenDraft.title} onChange={(event) => setGoldenDraft({ ...goldenDraft, title: event.currentTarget.value })} placeholder="SPC importer first email" />
                   </OutreachField>
@@ -5210,9 +5210,9 @@ function DevelopmentLetterPage({
                   </OutreachField>
                 </div>
                 <OutreachButton variant="primary" className="full" disabled={busy === 'assetGolden'} loading={busy === 'assetGolden'} onClick={() => saveGoldenExampleAsset()}>保存黄金样例</OutreachButton>
-                <div className="letter-asset-list columns">
+                <div className="hm-asset-list columns">
                   {goldenExamples.length ? goldenExamples.slice(0, 8).map((example) => (
-                    <article className="letter-asset-row" key={example.id}>
+                    <article className="hm-asset-row" key={example.id}>
                       <strong>{example.title}</strong>
                       <span>{example.subject} · {example.qualityScore ? `${example.qualityScore}/100` : '未评分'}</span>
                     </article>
@@ -5224,7 +5224,7 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'profile' ? (
-          <div className="letter-view letter-profile-workspace">
+          <div className="hm-page hm-company-workspace">
             <OutreachStatusBanner
               tone={companyReady ? 'success' : 'warning'}
               title={companyReady ? '公司资料已准备' : '公司资料还需要补充'}
@@ -5232,7 +5232,7 @@ function DevelopmentLetterPage({
             >
               Hermills 会用这些公司资料匹配客户背调、选择开发角度，并写出更可信的开发信。
             </OutreachStatusBanner>
-            <section className="letter-profile-stat-grid" aria-label="公司资料概览">
+            <section className="hm-profile-stat-grid" aria-label="公司资料概览">
               <OutreachStatCard label="公司资料" value={companyMaterials.length} tone="blue" icon={<FolderOpen size={20} />} />
               <OutreachStatCard label="买家画像" value={buyerPersonas.length} tone="purple" icon={<Users size={20} />} />
               <OutreachStatCard label="可用 USP" value={uspAssets.length} tone="green" icon={<ShieldCheck size={20} />} />
@@ -5243,7 +5243,7 @@ function DevelopmentLetterPage({
               icon={<UserRound size={18} />}
               actions={<OutreachButton variant="secondary" onClick={onOpenCompanyKnowledge}>打开资料库</OutreachButton>}
             >
-              <div className="letter-profile-grid">
+              <div className="hm-profile-grid">
                 <div><span>公司名称</span><strong>{companyProfile.name || '还没填写'}</strong></div>
                 <div><span>公司官网</span><strong>{companyProfile.website || '还没填写'}</strong></div>
                 <div><span>主营产品</span><strong>{companyProfile.mainProducts?.join(', ') || '还没填写'}</strong></div>
@@ -5256,7 +5256,7 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'chatControl' ? (
-          <div className="letter-view chat-control-workspace">
+          <div className="hm-page hm-chat-workspace">
             <OutreachCard
               title="聊天控制"
               description="通过官方机器人/API 接收微信官方入口、飞书、钉钉和 QQ 消息，再让本地 Hermills 执行写信、查回复和审批发送。"
@@ -5361,9 +5361,9 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'signature' ? (
-          <div className="letter-view">
+          <div className="hm-page hm-signature-workspace">
             <OutreachCard
-              className="letter-signature-workspace signature-settings-panel"
+              className="hm-signature-workspace signature-settings-panel"
               title="签名与 Logo"
               description="填写文字签名，上传公司 Logo。保存后所有开发信都会自动带上。"
               icon={<ImageIcon size={18} />}
@@ -5380,8 +5380,8 @@ function DevelopmentLetterPage({
                   placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website"
                 />
               </OutreachField>
-              <div className="letter-signature-logo-upload">
-                <label className="letter-upload-control">
+              <div className="hm-signature-logo-upload">
+                <label className="hm-upload-control">
                   <OutreachUploadDropzone
                     title="上传 Logo"
                     description="支持 PNG / JPG / WebP / GIF，最大 2 MB。"
@@ -5409,9 +5409,9 @@ function DevelopmentLetterPage({
         ) : null}
 
         {letterView === 'mail' ? (
-          <div className="letter-view">
+          <div className="hm-page hm-mail-workspace">
             <OutreachCard
-              className="letter-mail-workspace mail-settings-panel"
+              className="hm-mail-workspace mail-settings-panel"
               title="邮箱"
               description="只填写邮箱、授权码和显示名称。发送参数会在后台自动匹配。"
               icon={<Settings size={18} />}
@@ -5421,7 +5421,7 @@ function DevelopmentLetterPage({
                 <OutreachStatusBanner tone={senderDeliveryReady ? 'success' : senderLoginReady ? 'info' : 'warning'} title={`自动配置：${senderProvider.label} SMTP`}>
                   当前将使用 {senderAuthGuide.smtpLabel}。如果识别不正确，可以展开高级设置手动切换。
                 </OutreachStatusBanner>
-                <div className="letter-form-grid mail-simple-grid">
+                <div className="hm-form-grid mail-simple-grid">
                   <OutreachField id="sender-simple-email" label="你的发件邮箱">
                     <OutreachInput
                       ref={senderEmailRef}
@@ -5453,7 +5453,7 @@ function DevelopmentLetterPage({
                     />
                   </OutreachField>
                 </div>
-                <div className="letter-mail-helper">
+                <div className="hm-mail-helper">
                   <KeyRound size={18} />
                   <div>
                     <strong>不知道授权码在哪里？</strong>
@@ -5502,14 +5502,14 @@ function DevelopmentLetterPage({
                   <span>SMTP 邮箱预设</span>
                   <small>{senderAuthGuide.smtpLabel}</small>
                 </div>
-                <div className="letter-provider-grid">
+                <div className="hm-provider-grid">
                   {senderProviderPresets.map((preset) => (
                     <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
                       <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
                     </button>
                   ))}
                 </div>
-                <div className="letter-form-grid">
+                <div className="hm-form-grid">
                   <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
                   <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
                   <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
@@ -5518,15 +5518,15 @@ function DevelopmentLetterPage({
                     <>
                       <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
                       <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
-                      <label className="letter-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
+                      <label className="hm-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
                     </>
                   ) : null}
                 </div>
-                <div className="letter-action-row wrap sender-action-row">
-                  <button className="letter-secondary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
-                  <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
-                  <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
-                  <button className="letter-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
+                <div className="hm-action-row wrap sender-action-row">
+                  <button className="hm-secondary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
                 </div>
               </details>
             </OutreachCard>

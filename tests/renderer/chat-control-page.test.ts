@@ -23,7 +23,7 @@ describe("chat control page redesign contract", () => {
     expect(chatView).toContain("扫码绑定");
     expect(chatView).toContain("命令预览");
     expect(chatView).toContain("最近命令");
-    expect(chatView).not.toContain("className=\"letter-panel");
+    expect(chatView).not.toContain("className=\"hm-panel");
   });
 
   it("adds a clearer layout for chat control", async () => {

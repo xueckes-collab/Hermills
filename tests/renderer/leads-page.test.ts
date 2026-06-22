@@ -38,9 +38,9 @@ describe("customer management page redesign contract", () => {
   it("styles the customer page as a master-detail workspace with stable scroll regions", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(stylesSource).toMatch(/\.letter-leads-workspace\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-leads-master\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 220px\)/);
-    expect(stylesSource).toMatch(/\.letter-leads-detail\s*\{[\s\S]*?position:\s*sticky/);
-    expect(stylesSource).toMatch(/\.letter-leads-draft-review\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-leads-workspace\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-leads-master\s*\{[\s\S]*?max-height:\s*calc\(100dvh - 220px\)/);
+    expect(stylesSource).toMatch(/\.hm-leads-detail\s*\{[\s\S]*?position:\s*sticky/);
+    expect(stylesSource).toMatch(/\.hm-leads-draft-review\s*\{[\s\S]*?display:\s*grid/);
   });
 });

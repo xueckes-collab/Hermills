@@ -51,9 +51,9 @@ describe("mail and signature page redesign contract", () => {
   it("styles mail and signature as focused setup workspaces", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(stylesSource).toMatch(/\.letter-mail-workspace\s*\{[\s\S]*?max-width:\s*900px/);
-    expect(stylesSource).toMatch(/\.letter-mail-helper\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-signature-workspace\s*\{[\s\S]*?max-width:\s*920px/);
-    expect(stylesSource).toMatch(/\.letter-signature-logo-upload\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-mail-workspace\s*\{[\s\S]*?max-width:\s*900px/);
+    expect(stylesSource).toMatch(/\.hm-mail-helper\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-signature-workspace\s*\{[\s\S]*?max-width:\s*920px/);
+    expect(stylesSource).toMatch(/\.hm-signature-logo-upload\s*\{[\s\S]*?display:\s*grid/);
   });
 });

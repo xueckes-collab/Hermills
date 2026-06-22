@@ -39,8 +39,8 @@ describe("single write page redesign contract", () => {
   it("styles compose results as one clean review workspace", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(stylesSource).toMatch(/\.letter-single-result\s*\{[\s\S]*?display:\s*grid/);
-    expect(stylesSource).toMatch(/\.letter-single-result-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.92fr\) minmax\(280px,\s*0\.38fr\)/);
-    expect(stylesSource).toMatch(/\.letter-single-review-panel\s*\{[\s\S]*?background:\s*#ffffff/);
+    expect(stylesSource).toMatch(/\.hm-single-result\s*\{[\s\S]*?display:\s*grid/);
+    expect(stylesSource).toMatch(/\.hm-single-result-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.92fr\) minmax\(280px,\s*0\.38fr\)/);
+    expect(stylesSource).toMatch(/\.hm-single-review-panel\s*\{[\s\S]*?background:\s*#ffffff/);
   });
 });
