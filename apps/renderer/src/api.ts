@@ -1437,7 +1437,7 @@ export const api = {
   async cloudMe(): Promise<CloudStatus> {
     return request<CloudStatus>("/api/auth/me");
   },
-  async cloudSignup(input: { email: string; password: string; fullName?: string; nickname?: string; termsAccepted?: boolean }): Promise<CloudStatus> {
+  async cloudSignup(input: { email: string; password?: string; fullName?: string; nickname?: string; termsAccepted?: boolean }): Promise<CloudStatus> {
     return request<CloudStatus>("/api/auth/signup", {
       method: "POST",
       body: JSON.stringify(input)

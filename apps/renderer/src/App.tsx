@@ -938,7 +938,6 @@ function CloudLoginPage({
   const [mode, setMode] = useState<'login' | 'signup' | 'verifySignup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [signupCode, setSignupCode] = useState('')
@@ -946,20 +945,30 @@ function CloudLoginPage({
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [signupPendingEmail, setSignupPendingEmail] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  useEffect(() => {
+    if (mode !== 'verifySignup' || resendCooldown <= 0) return undefined
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [mode, resendCooldown])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
     setNotice('')
+    const normalizedEmail = email.trim().toLowerCase()
     if (mode === 'verifySignup') {
-      const targetEmail = signupPendingEmail || email.trim()
-      const token = signupCode.trim()
+      const targetEmail = signupPendingEmail || normalizedEmail
+      const token = signupCode.replace(/\s/g, '').trim()
       if (!targetEmail) {
         setError('先填写邮箱。')
         return
       }
-      if (!/^\d{6,8}$/.test(token)) {
-        setError('请输入邮箱里的完整数字验证码。')
+      if (!/^\d{6}$/.test(token)) {
+        setError('请输入邮箱里的 6 位数字验证码。')
         return
       }
       setBusy(mode)
@@ -974,37 +983,36 @@ function CloudLoginPage({
       }
       return
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('请输入有效邮箱地址。')
+      return
+    }
     if (mode === 'signup') {
-      if (password.length < 8) {
-        setError('注册密码至少需要 8 位。')
-        return
-      }
-      if (password !== confirmPassword) {
-        setError('两次输入的密码不一样。')
-        return
-      }
       if (!termsAccepted) {
         setError('请先同意服务条款和隐私政策。')
         return
       }
+    } else if (password.length < 6) {
+      setError('请输入登录密码。')
+      return
     }
     setBusy(mode)
     try {
       const next = mode === 'signup'
         ? await api.cloudSignup({
-          email: email.trim(),
-          password,
+          email: normalizedEmail,
           fullName: fullName.trim() || undefined,
           nickname: fullName.trim() || undefined,
           termsAccepted
         })
-        : await api.cloudLogin({ email: email.trim(), password })
+        : await api.cloudLogin({ email: normalizedEmail, password })
       setStatus(next)
-      if (!next.authenticated && mode === 'signup') {
-        setSignupPendingEmail(email.trim())
+      if (mode === 'signup') {
+        setSignupPendingEmail(normalizedEmail)
         setSignupCode('')
         setMode('verifySignup')
-        setNotice('账号已创建。请打开邮箱，复制数字验证码，在这里输入后就能登录。')
+        setResendCooldown(60)
+        setNotice('验证码已发送。请打开邮箱，复制 6 位数字验证码，在这里输入后就能登录。')
       }
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -1014,18 +1022,20 @@ function CloudLoginPage({
   }
 
   async function resendSignupConfirmation() {
-    const targetEmail = signupPendingEmail || email.trim()
+    const targetEmail = (signupPendingEmail || email.trim()).toLowerCase()
     if (!targetEmail) {
       setError('先填写邮箱，再重发验证邮件。')
       return
     }
+    if (resendCooldown > 0) return
     setBusy('resendSignup')
     setError('')
     try {
       await api.cloudResendSignupConfirmation(targetEmail)
       setSignupPendingEmail(targetEmail)
       setMode('verifySignup')
-      setNotice('验证码已重新发送。请打开邮箱复制数字验证码，不需要点击网页链接。')
+      setResendCooldown(60)
+      setNotice('验证码已重新发送。请打开邮箱复制 6 位数字验证码，不需要点击网页链接。')
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -1064,8 +1074,8 @@ function CloudLoginPage({
         <div className="cloud-auth-icon"><KeyRound size={22} /></div>
         <div>
           <p className="cloud-auth-eyebrow">账号登录</p>
-          <h1>{mode === 'signup' ? '创建 Hermills 账号' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
-          <p>{mode === 'verifySignup' ? '邮箱里会有一串数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
+          <h1>{mode === 'signup' ? '发送邮箱验证码' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
+          <p>{mode === 'verifySignup' ? '邮箱里会有一串 6 位数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : mode === 'signup' ? '输入邮箱并获取验证码。验证成功后会创建账号并同步客户记录、邮件草稿和匿名学习数据。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
         </div>
         {serviceError ? <div className="hm-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
         {notice ? <div className="hm-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
@@ -1086,28 +1096,22 @@ function CloudLoginPage({
         {mode === 'verifySignup' ? (
           <label>
             <span>邮箱验证码</span>
-            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="输入邮箱里的数字验证码" maxLength={8} required />
+            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="输入邮箱里的 6 位验证码" maxLength={6} required />
           </label>
-        ) : (
+        ) : mode === 'login' ? (
           <label>
             <span>密码</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === 'signup' ? '至少 8 位密码' : '输入密码'} minLength={mode === 'signup' ? 8 : 6} required />
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="输入密码" minLength={6} required />
           </label>
-        )}
+        ) : null}
         {mode === 'signup' ? (
-          <>
-            <label>
-              <span>确认密码</span>
-              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="再输入一次密码" minLength={8} required />
-            </label>
-            <label className="cloud-auth-check">
-              <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
-              <span>我同意服务条款和隐私政策。Hermills 可以同步账号资料、客户记录和匿名学习数据；邮箱密码和 API Key 仍只保存在本机。</span>
-            </label>
-          </>
+          <label className="cloud-auth-check">
+            <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
+            <span>我同意服务条款和隐私政策。Hermills 可以同步账号资料、客户记录和匿名学习数据；邮箱密码和 API Key 仍只保存在本机。</span>
+          </label>
         ) : null}
         <button className="hm-primary" type="submit" disabled={Boolean(busy)}>
-          {busy === mode ? '处理中...' : mode === 'signup' ? '创建账号并发送验证码' : mode === 'verifySignup' ? '验证并登录' : '登录'}
+          {busy === mode ? '处理中...' : mode === 'signup' ? '发送验证码' : mode === 'verifySignup' ? '验证并登录' : '登录'}
           <ChevronRight size={16} />
         </button>
         <div className="cloud-auth-actions">
@@ -1115,14 +1119,15 @@ function CloudLoginPage({
             setMode(mode === 'signup' || mode === 'verifySignup' ? 'login' : 'signup')
             setNotice('')
             setError('')
-            setConfirmPassword('')
             setSignupCode('')
+            setSignupPendingEmail('')
+            setResendCooldown(0)
           }}>
             {mode === 'signup' || mode === 'verifySignup' ? '已有账号，去登录' : '没有账号，去注册'}
           </button>
           {signupPendingEmail || mode === 'verifySignup' ? (
-            <button type="button" onClick={resendSignupConfirmation} disabled={busy === 'resendSignup'}>
-              {busy === 'resendSignup' ? '重发中...' : '重发验证码'}
+            <button type="button" onClick={resendSignupConfirmation} disabled={busy === 'resendSignup' || resendCooldown > 0}>
+              {busy === 'resendSignup' ? '重发中...' : resendCooldown > 0 ? `${resendCooldown}s 后重发` : '重发验证码'}
             </button>
           ) : null}
           <button type="button" onClick={resetPassword} disabled={busy === 'reset'}>

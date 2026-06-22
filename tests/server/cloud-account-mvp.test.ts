@@ -24,7 +24,7 @@ describe("Hermills cloud account MVP", () => {
     expect(calls).toEqual([]);
   });
 
-  it("stores account profile metadata during signup", async () => {
+  it("sends a real Supabase email OTP during signup without authenticating first", async () => {
     const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
     const service = new HermillsCloudService({
       baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
@@ -50,23 +50,19 @@ describe("Hermills cloud account MVP", () => {
       termsAccepted: true
     });
 
-    expect(status.authenticated).toBe(true);
-    expect(status.account).toMatchObject({
-      userId: "user-1",
-      nickname: "Eckes",
-      status: "active",
-      emailVerified: true
-    });
-    const signup = calls.find((call) => call.url.endsWith("/auth/v1/signup"));
-    expect(signup?.body).toMatchObject({
+    expect(status.authenticated).toBe(false);
+    const signupOtp = calls.find((call) => call.url.endsWith("/auth/v1/otp"));
+    expect(signupOtp?.body).toMatchObject({
       email: "buyer@example.com",
+      create_user: true,
       data: {
         full_name: "Eckes",
         nickname: "Eckes",
         terms_accepted: true
       }
     });
-    expect(calls.some((call) => call.url.includes("/rest/v1/event_logs"))).toBe(true);
+    expect(calls.some((call) => call.url.endsWith("/auth/v1/signup"))).toBe(false);
+    expect(calls.some((call) => call.url.includes("/rest/v1/event_logs"))).toBe(false);
   });
 
   it("verifies signup with the numeric email code inside Hermills", async () => {
@@ -88,7 +84,7 @@ describe("Hermills cloud account MVP", () => {
 
     const status = await service.verifySignupCode({
       email: "buyer@example.com",
-      token: "12345678"
+      token: "123456"
     });
 
     expect(status.authenticated).toBe(true);
@@ -100,9 +96,58 @@ describe("Hermills cloud account MVP", () => {
     const verify = calls.find((call) => call.url.endsWith("/auth/v1/verify"));
     expect(verify?.body).toEqual({
       email: "buyer@example.com",
-      token: "12345678",
+      token: "123456",
       type: "email"
     });
+  });
+
+  it("resends signup codes through Supabase email OTP instead of magic-link resend", async () => {
+    const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
+    const service = new HermillsCloudService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
+      env: cloudEnv(),
+      fetchImpl: mockSupabase(calls, {
+        account: {
+          user_id: "user-1",
+          email: "buyer@example.com",
+          display_name: "Eckes",
+          nickname: "Eckes",
+          status: "active",
+          email_verified: true
+        }
+      })
+    });
+
+    await expect(service.resendSignupConfirmation(" Buyer@Example.com ")).resolves.toEqual({ ok: true });
+    expect(calls.find((call) => call.url.endsWith("/auth/v1/otp"))?.body).toEqual({
+      email: "buyer@example.com",
+      create_user: true
+    });
+    expect(calls.some((call) => call.url.endsWith("/auth/v1/resend"))).toBe(false);
+  });
+
+  it("rejects non-6-digit email OTP codes before contacting Supabase", async () => {
+    const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
+    const service = new HermillsCloudService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
+      env: cloudEnv(),
+      fetchImpl: mockSupabase(calls, {
+        account: {
+          user_id: "user-1",
+          email: "buyer@example.com",
+          display_name: "Eckes",
+          nickname: "Eckes",
+          status: "active",
+          email_verified: true
+        }
+      })
+    });
+
+    await expect(service.verifySignupCode({
+      email: "buyer@example.com",
+      token: "12345678"
+    })).rejects.toThrow("6 位数字");
+    expect(calls).toEqual([]);
   });
 
   it("blocks disabled accounts after password login", async () => {
@@ -214,7 +259,11 @@ function mockSupabase(
     const body = parseBody(init?.body);
     calls.push({ url, method, body });
 
-    if (url.endsWith("/auth/v1/signup") || url.endsWith("/auth/v1/token?grant_type=password") || url.endsWith("/auth/v1/verify")) {
+    if (url.endsWith("/auth/v1/otp")) {
+      return json({});
+    }
+
+    if (url.endsWith("/auth/v1/token?grant_type=password") || url.endsWith("/auth/v1/verify")) {
       return json({
         access_token: "access-token",
         refresh_token: "refresh-token",

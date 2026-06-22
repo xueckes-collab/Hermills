@@ -19,7 +19,7 @@ export const CloudAuthBodySchema = z.object({
 
 export const CloudSignupBodySchema = z.object({
   email: z.string().trim().email().max(320),
-  password: z.string().min(8).max(200),
+  password: z.string().min(8).max(200).optional(),
   fullName: z.string().trim().max(160).optional(),
   nickname: z.string().trim().max(80).optional(),
   termsAccepted: z.boolean().default(false)
@@ -31,7 +31,7 @@ export const CloudEmailBodySchema = z.object({
 
 export const CloudVerifySignupCodeBodySchema = z.object({
   email: z.string().trim().email().max(320),
-  token: z.string().trim().regex(/^\d{6,8}$/, "验证码必须是邮箱里的 6-8 位数字")
+  token: z.string().trim().regex(/^\d{6}$/, "验证码必须是邮箱里的 6 位数字")
 }).strict();
 
 export const CloudAdminUserStatusBodySchema = z.object({
@@ -287,45 +287,35 @@ export class HermillsCloudService {
 
   async signUp(input: z.infer<typeof CloudSignupBodySchema>): Promise<CloudStatus> {
     this.assertConfigured();
-    if (!input.termsAccepted) throw new CloudError("请先同意服务条款和隐私政策。", "CLOUD_TERMS_REQUIRED");
+    const parsed = CloudSignupBodySchema.parse(input);
+    if (!parsed.termsAccepted) throw new CloudError("请先同意服务条款和隐私政策。", "CLOUD_TERMS_REQUIRED");
     const now = new Date().toISOString();
-    const displayName = input.fullName || input.nickname || input.email.split("@")[0] || "";
-    const response = await this.authRequest("/auth/v1/signup", {
+    const email = normalizeEmail(parsed.email);
+    const displayName = parsed.fullName || parsed.nickname || email.split("@")[0] || "";
+    await this.authRequest("/auth/v1/otp", {
       method: "POST",
       body: {
-        email: input.email,
-        password: input.password,
+        email,
+        create_user: true,
         data: {
           full_name: displayName,
-          nickname: input.nickname || displayName,
+          nickname: parsed.nickname || displayName,
           terms_accepted: true,
           terms_accepted_at: now
         }
       }
     });
-    if (response.access_token) {
-      await this.saveSession(response);
-      const session = await this.requireSession();
-      await this.upsertAccountFromSession(session, {
-        display_name: displayName,
-        nickname: input.nickname || displayName,
-        terms_accepted_at: now,
-        last_login_at: now,
-        last_seen_at: now
-      }).catch(() => undefined);
-      await this.logAuthEvent(session, "user_registered", { termsAccepted: true }).catch(() => undefined);
-      await this.logAuthEvent(session, "user_logged_in", { method: "signup" }).catch(() => undefined);
-    }
     return this.status();
   }
 
   async login(input: z.infer<typeof CloudAuthBodySchema>): Promise<CloudStatus> {
     this.assertConfigured();
+    const parsed = CloudAuthBodySchema.parse(input);
     const response = await this.authRequest("/auth/v1/token?grant_type=password", {
       method: "POST",
       body: {
-        email: input.email,
-        password: input.password
+        email: normalizeEmail(parsed.email),
+        password: parsed.password
       }
     });
     await this.saveSession(response);
@@ -358,29 +348,32 @@ export class HermillsCloudService {
 
   async resetPassword(email: string): Promise<{ ok: true }> {
     this.assertConfigured();
+    const parsed = CloudEmailBodySchema.parse({ email });
     await this.authRequest("/auth/v1/recover", {
       method: "POST",
-      body: { email }
+      body: { email: normalizeEmail(parsed.email) }
     });
     return { ok: true };
   }
 
   async resendSignupConfirmation(email: string): Promise<{ ok: true }> {
     this.assertConfigured();
-    await this.authRequest("/auth/v1/resend", {
+    const parsed = CloudEmailBodySchema.parse({ email });
+    await this.authRequest("/auth/v1/otp", {
       method: "POST",
-      body: { type: "signup", email }
+      body: { email: normalizeEmail(parsed.email), create_user: true }
     });
     return { ok: true };
   }
 
   async verifySignupCode(input: z.infer<typeof CloudVerifySignupCodeBodySchema>): Promise<CloudStatus> {
     this.assertConfigured();
+    const parsed = CloudVerifySignupCodeBodySchema.parse(input);
     const response = await this.authRequest("/auth/v1/verify", {
       method: "POST",
       body: {
-        email: input.email,
-        token: input.token,
+        email: normalizeEmail(parsed.email),
+        token: normalizeOtpCode(parsed.token),
         type: "email"
       }
     });
@@ -780,7 +773,7 @@ export class HermillsCloudService {
     });
     const json = await response.json().catch(() => ({})) as SupabaseAuthResponse;
     if (!response.ok) {
-      throw new CloudError(redactSecrets(json.error_description || json.msg || json.error || `Supabase auth failed with HTTP ${response.status}.`), "CLOUD_AUTH_FAILED");
+      throw normalizeSupabaseAuthError(json, response.status);
     }
     return json;
   }
@@ -943,8 +936,35 @@ function cloudErrorStatus(code: string): number {
   if (code === "CLOUD_LOGIN_REQUIRED") return 401;
   if (code === "CLOUD_NOT_CONFIGURED") return 503;
   if (code === "CLOUD_AUTH_FAILED" || code === "CLOUD_LOGIN_FAILED") return 401;
+  if (code === "CLOUD_RATE_LIMITED") return 429;
   if (code === "CLOUD_DB_FAILED") return 502;
   return 400;
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function normalizeOtpCode(code: string): string {
+  return code.replace(/\s/g, "").trim();
+}
+
+function normalizeSupabaseAuthError(json: SupabaseAuthResponse, status: number): CloudError {
+  const raw = redactSecrets(json.error_description || json.msg || json.error || `Supabase auth failed with HTTP ${status}.`);
+  const text = raw.toLowerCase();
+  if (status === 429 || /rate|too many|over.*limit|email.*rate/i.test(raw)) {
+    return new CloudError("请求太频繁。请稍等一会儿再重新发送验证码。", "CLOUD_RATE_LIMITED", 429);
+  }
+  if (/otp|token|code|expired|invalid|not found|wrong/i.test(raw)) {
+    return new CloudError("验证码无效或已过期。请检查邮箱里的 6 位数字，或者重新发送验证码。", "CLOUD_AUTH_FAILED", 401);
+  }
+  if (/email.*not.*sent|smtp|provider|mail|sender/i.test(raw)) {
+    return new CloudError("验证码邮件发送失败。请检查 Supabase 邮件模板、SMTP 和发件域名设置。", "CLOUD_AUTH_FAILED", status);
+  }
+  if (/network|fetch failed|timeout|econnreset|enotfound/i.test(text)) {
+    return new CloudError("网络连接失败。请检查网络后再试。", "CLOUD_AUTH_FAILED", status);
+  }
+  return new CloudError(raw, "CLOUD_AUTH_FAILED", status);
 }
 
 function toCloudAccountProfile(row: Record<string, unknown>, isAdmin = false): CloudAccountProfile {
