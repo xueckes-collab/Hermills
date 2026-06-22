@@ -238,16 +238,17 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("签名Logo");
     expect(appSource).toContain("公司资料");
     expect(appSource).toContain("导入批量客户");
-    expect(appSource).toContain("letter-quick-actions");
+    expect(appSource).toContain("letter-dashboard-actions");
     expect(appSource).toContain("onOpenChat");
     expect(appSource).toContain("onOpenSettings");
     expect(appSource).toContain("importLetterFile");
     expect(appSource).toContain("deleteOutreachLeads");
     expect(appSource).toContain("LetterGenerationTrace");
-    expect(appSource).toContain('className="letter-draft-card"');
+    expect(appSource).toContain('className="letter-leads-draft-review"');
+    expect(appSource).toContain('className="letter-single-result"');
     expect(appSource).toContain("api.outreachDrafts");
-    expect(appSource).toContain("letter-campaign-review-grid");
-    const composeView = sourceWindow(appSource, "{letterView === 'compose' ? (", 3600);
+    expect(appSource).toContain("letter-batch-review-workspace");
+    const composeView = sourceWindow(appSource, "{letterView === 'compose' ? (", 5200);
     expect(composeView).toContain('className="letter-single-compose"');
     expect(composeView).toContain("单个客户");
     expect(composeView).toContain("打开批量写信");
@@ -258,7 +259,7 @@ describe("renderer usability contract", () => {
     expect(automationView).toContain("importLetterFile");
     expect(automationView).toContain("importLetterFileAndGenerate");
     expect(automationView).toContain("批量智能体队列");
-    expect(automationView).toContain('className="letter-panel letter-wide-panel"');
+    expect(automationView).toContain('className="letter-batch-send-card"');
     const mailView = sourceWindow(appSource, "{letterView === 'mail' ? (", 8000);
     const visibleMailView = mailView.slice(0, mailView.indexOf('<details className="mail-advanced-settings"'));
     expect(mailView).toContain('className="mail-simple-panel"');
@@ -272,7 +273,7 @@ describe("renderer usability contract", () => {
     expect(visibleMailView).not.toContain("发送通道");
     expect(appSource).toContain("const effectiveSenderChannelId = mailAdvancedOpen ? senderChannelId : 'smtp'");
     expect(appSource).toContain("function saveAndTestSender");
-    const signatureView = sourceWindow(appSource, "{letterView === 'signature' ? (", 2600);
+    const signatureView = sourceWindow(appSource, "{letterView === 'signature' ? (", 5200);
     expect(signatureView).toContain("文字签名");
     expect(signatureView).toContain("上传 Logo");
     expect(signatureView).toContain("保存签名和 Logo");
@@ -283,12 +284,12 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("enabled: Boolean(text || hasLogo)");
     expect(appSource).toContain("html: ''");
     const quickLeadForm = sourceWindow(appSource, 'className="letter-form-grid quick-lead-form"', 1700);
-    expect(quickLeadForm).toContain('htmlFor="letter-quick-email"');
+    expect(quickLeadForm).toContain('OutreachField id="letter-quick-email"');
     expect(quickLeadForm).toContain('id="letter-quick-email"');
     expect(quickLeadForm).toContain('type="email"');
     expect(quickLeadForm).toContain('autoComplete="email"');
     expect(quickLeadForm).toContain('onChange={(event) => setQuickEmail(event.currentTarget.value)}');
-    expect(quickLeadForm).toContain('htmlFor="letter-quick-website"');
+    expect(quickLeadForm).toContain('OutreachField id="letter-quick-website"');
     expect(quickLeadForm).toContain('id="letter-quick-website"');
     expect(quickLeadForm).toContain('type="url"');
     expect(quickLeadForm).toContain('autoComplete="url"');
@@ -306,13 +307,55 @@ describe("renderer usability contract", () => {
     expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?pointer-events:\s*auto/);
     expect(stylesSource).toMatch(/\.letter-form-grid input,[\s\S]*?\.letter-import-textarea\s*\{[\s\S]*?-webkit-app-region:\s*no-drag/);
     expect(stylesSource).toMatch(/\.letter-thinking-panel\s*\{/);
-    expect(stylesSource).toMatch(/\.letter-draft-card\s*\{/);
-    expect(stylesSource).toMatch(/\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*0\.72fr\) minmax\(0,\s*1\.28fr\)/);
+    expect(stylesSource).toMatch(/\.letter-leads-draft-review\s*\{/);
+    expect(stylesSource).toMatch(/\.letter-batch-review-workspace\s*\{[\s\S]*?grid-template-columns:\s*minmax\(260px,\s*0\.46fr\) minmax\(0,\s*1\.54fr\)/);
     expect(stylesSource).toMatch(/\.hermills-crm-shell \.hermills-app-shell\.outreach-home > \.hermills-menu-sidebar\s*\{[\s\S]*?display:\s*none/);
     expect(stylesSource).toMatch(/\.hermills-crm-shell \.hermills-chat-panel\.outreach-active \.mobile-workspace-toolbar\s*\{[\s\S]*?display:\s*none/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-sidebar\s*\{[\s\S]*?display:\s*grid/);
     expect(stylesSource).toMatch(/@container \(max-width:\s*920px\)[\s\S]*?\.letter-brand\s*\{[\s\S]*?padding:\s*0/);
     expect(stylesSource).toMatch(/@media \(max-width:\s*1180px\)[\s\S]*?\.letter-leads-layout,[\s\S]*?\.letter-campaign-review-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  });
+
+  it("uses the SaaS blue outreach design foundation from the UI harness", async () => {
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+    const letterShell = sourceWindow(stylesSource, ".letter-app-shell {\n  --button-primary-bg", 1800);
+    const formControls = sourceWindow(stylesSource, ".letter-form-grid input:focus,", 1300);
+    const primaryButton = sourceWindow(stylesSource, ".letter-primary", 900);
+    const navigation = sourceWindow(stylesSource, ".letter-nav button", 1200);
+    const stats = sourceWindow(stylesSource, ".letter-stat-card i.orange", 900);
+
+    expect(letterShell).toContain("--button-primary-bg: #2563eb");
+    expect(letterShell).toContain("--button-primary-bg-hover: #1d4ed8");
+    expect(letterShell).toContain("--button-secondary-bg: #ffffff");
+    expect(letterShell).toContain("--button-subtle-bg: #eff6ff");
+    expect(letterShell).toContain("--button-subtle-text: #1d4ed8");
+    expect(letterShell).toContain("background: #f3f7fb");
+
+    expect(navigation).toContain("color: #31445f");
+    expect(navigation).toMatch(/\.letter-nav button:hover,[\s\S]*?\.letter-nav button\.active\s*\{[\s\S]*?background:\s*#dff0ff/);
+    expect(navigation).toMatch(/\.letter-nav button:hover,[\s\S]*?\.letter-nav button\.active\s*\{[\s\S]*?color:\s*#075985/);
+
+    expect(formControls).toMatch(/:focus[\s\S]*?border-color:\s*#2563eb/);
+    expect(formControls).toMatch(/:focus[\s\S]*?outline:\s*3px solid rgb\(37 99 235 \/ 0\.12\)/);
+    expect(primaryButton).toContain("box-shadow: 0 8px 18px rgba(37, 99, 235, 0.20)");
+    expect(stats).toContain(".letter-stat-card i.orange { color: #d97706; background: #fff7ed; }");
+  });
+
+  it("marks long-running outreach actions as visibly busy", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
+
+    expect(appSource).toContain("loading={busy === 'auto'}");
+    expect(appSource).toContain("aria-busy={busy === 'campaignCreate'}");
+    expect(appSource).toContain("aria-busy={busy === 'campaignGenerate'}");
+    expect(appSource).toContain("aria-busy={busy === 'campaignSend'}");
+    expect(appSource).toContain("aria-busy={busy === 'followUpsSchedule'}");
+    expect(appSource).toContain("aria-busy={busy === 'followUpsTick'}");
+    expect(appSource).toContain("aria-busy={busy === 'inboxCheck'}");
+    expect(appSource).toContain("aria-busy={busy === 'signature'}");
+    expect(appSource).toContain("aria-busy={busy === 'mailSetup' || busy === 'sender'}");
+    expect(stylesSource).toMatch(/\.letter-primary\[aria-busy="true"\]::before,[\s\S]*?\.letter-secondary\[aria-busy="true"\]::before\s*\{[\s\S]*?animation:\s*letter-spin 0\.8s linear infinite/);
+    expect(stylesSource).toMatch(/@keyframes letter-spin[\s\S]*?transform:\s*rotate\(360deg\)/);
   });
 
   it("keeps onboarding actions reachable by scrolling the content region instead of the whole card", async () => {
@@ -341,7 +384,7 @@ describe("renderer usability contract", () => {
     expect(appSource).toContain("unexpected socket close");
     expect(appSource).toContain("copy.errors.copyDetails");
     expect(appSource).toContain("navigator.clipboard?.writeText(error)");
-    expect(appSource).toContain("letter-sticky-actions");
+    expect(appSource).toContain("OutreachStickyActionBar");
     expect(appSource).toContain("senderTestRecipient");
     expect(appSource).toContain("sendSenderExternalTestEmail");
     expect(appSource).toContain("api.sendOutreachSenderTestEmail(sender.id, target)");
