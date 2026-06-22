@@ -23,7 +23,7 @@ describe("full Hermills UI replacement contract", () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const pageSource = sourceBlock(appSource, "function DevelopmentLetterPage", "function emptyLeadDraft");
 
-    expect(pageSource).toContain('className="hm-outreach-shell"');
+    expect(pageSource).toContain('className="hm-outreach-shell hm-ui-v2"');
     expect(pageSource).not.toContain('className="letter-app-shell"');
     expect(pageSource).not.toContain('className="letter-sidebar"');
     expect(pageSource).not.toContain('className="letter-main"');
@@ -53,6 +53,7 @@ describe("full Hermills UI replacement contract", () => {
 
     expect(stylesSource).toContain("--hm-bg-page: #f3f7fb");
     expect(stylesSource).toContain(".hm-outreach-shell");
+    expect(stylesSource).toContain(".hm-outreach-shell.hm-ui-v2");
     expect(stylesSource).toContain(".hm-sidebar");
     expect(stylesSource).toContain(".hm-primary-button");
     expect(stylesSource).toContain(".hm-ai-timeline");

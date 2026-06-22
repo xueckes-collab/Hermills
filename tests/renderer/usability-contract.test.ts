@@ -209,7 +209,7 @@ describe("renderer usability contract", () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
     expect(appSource).toContain("singleSendBlocker");
-    expect(appSource).toContain('className="hm-outreach-shell"');
+    expect(appSource).toContain('className="hm-outreach-shell hm-ui-v2"');
     expect(appSource).not.toContain('className="outreach-workspace"');
     expect(stylesSource).toMatch(/\.hermills-menu-sidebar,\s*\.hermills-chat-panel,\s*\.hermills-inspector\s*\{[\s\S]*?min-width:\s*0/);
     expect(stylesSource).toMatch(/\.hermills-chat-panel\s*\{[\s\S]*?container-name:\s*hermills-workspace/);
@@ -229,7 +229,7 @@ describe("renderer usability contract", () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 
-    expect(appSource).toContain('className="hm-outreach-shell"');
+    expect(appSource).toContain('className="hm-outreach-shell hm-ui-v2"');
     expect(appSource).toContain("workspaceView === 'outreach' ? 'outreach-active' : ''");
     expect(appSource).toContain("type LetterOutreachView");
     expect(appSource).toContain("今日外联");

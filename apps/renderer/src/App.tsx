@@ -4476,7 +4476,7 @@ function DevelopmentLetterPage({
                   : '维护 AI 写信时使用的公司资料'
 
   return (
-    <div className="hm-outreach-shell">
+    <div className="hm-outreach-shell hm-ui-v2">
       <aside className="hm-sidebar" aria-label="Hermills 外联导航">
         <div className="hm-brand">
           <div className="hm-brand-mark"><Mail size={18} /></div>
