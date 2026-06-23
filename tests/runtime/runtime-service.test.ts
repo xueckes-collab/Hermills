@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anthropicMessagesUrl, buildAnthropicMessages, chatCompletionsUrl, modelsUrl, RuntimeService } from "@hermills/runtime";
+import { anthropicMessagesUrl, buildAnthropicMessages, chatCompletionsUrl, modelsUrl, responsesUrl, RuntimeService } from "@hermills/runtime";
 
 describe("RuntimeService", () => {
   it("resolves the official installer and latest release metadata", async () => {
@@ -217,10 +217,107 @@ fi
     expect(chatCompletionsUrl("https://provider.example/v1/chat/completions")).toBe("https://provider.example/v1/chat/completions");
     expect(chatCompletionsUrl("https://generativelanguage.googleapis.com/v1beta/openai")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
     expect(chatCompletionsUrl("https://open.bigmodel.cn/api/paas/v4")).toBe("https://open.bigmodel.cn/api/paas/v4/chat/completions");
+    expect(responsesUrl("https://api.openai.com/v1")).toBe("https://api.openai.com/v1/responses");
+    expect(responsesUrl("https://api.openai.com/v1/chat/completions")).toBe("https://api.openai.com/v1/responses");
+    expect(responsesUrl("https://api.openai.com/v1/responses")).toBe("https://api.openai.com/v1/responses");
     expect(modelsUrl("https://provider.example/v1/chat/completions")).toBe("https://provider.example/v1/models");
     expect(modelsUrl("https://generativelanguage.googleapis.com/v1beta/openai")).toBe("https://generativelanguage.googleapis.com/v1beta/openai/models");
     expect(anthropicMessagesUrl("https://api.anthropic.com/v1")).toBe("https://api.anthropic.com/v1/messages");
     expect(anthropicMessagesUrl("https://api.anthropic.com")).toBe("https://api.anthropic.com/v1/messages");
+  });
+
+  it("sends official OpenAI providers through the Responses API", async () => {
+    let requestUrl = "";
+    let requestBody: { model?: string; input?: unknown; instructions?: string; store?: boolean; stream?: boolean; reasoning?: { effort?: string } } | undefined;
+    const service = new RuntimeService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-openai-responses-")),
+      fetchImpl: async (url, init) => {
+        requestUrl = String(url);
+        requestBody = JSON.parse(String(init?.body));
+        return Response.json({ output_text: "responses reply" });
+      }
+    });
+
+    await expect(service.createHermesReply({
+      messages: [
+        { id: "m1", role: "system", content: "Hidden context", createdAt: new Date().toISOString() },
+        { id: "m2", role: "user", content: "Write email", createdAt: new Date().toISOString() }
+      ],
+      model: "gpt-5.5",
+      instructions: "Answer as Hermills.",
+      provider: {
+        kind: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: "sk-test"
+      }
+    })).resolves.toBe("responses reply");
+
+    expect(requestUrl).toBe("https://api.openai.com/v1/responses");
+    expect(requestBody?.model).toBe("gpt-5.5");
+    expect(requestBody?.instructions).toBe("Answer as Hermills.\n\nHidden context");
+    expect(requestBody?.input).toEqual([{ role: "user", content: "Write email" }]);
+    expect(requestBody?.store).toBe(false);
+    expect(requestBody?.stream).toBe(false);
+    expect(requestBody?.reasoning?.effort).toBe("medium");
+  });
+
+  it("keeps OpenAI-compatible providers on chat completions", async () => {
+    let requestUrl = "";
+    let requestBody: {
+      model?: string;
+      max_tokens?: number;
+      response_format?: { type?: string };
+      thinking?: { type?: string };
+      reasoning_effort?: string;
+    } | undefined;
+    const service = new RuntimeService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-openai-compatible-")),
+      fetchImpl: async (url, init) => {
+        requestUrl = String(url);
+        requestBody = JSON.parse(String(init?.body));
+        return Response.json({ choices: [{ message: { content: "chat reply" } }] });
+      }
+    });
+
+    await expect(service.createHermesReply({
+      messages: [{ id: "m1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+      model: "deepseek-v4-pro",
+      maxOutputTokens: 4096,
+      responseFormat: "json_object",
+      provider: {
+        kind: "openai-compatible",
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "sk-test"
+      }
+    })).resolves.toBe("chat reply");
+
+    expect(requestUrl).toBe("https://api.deepseek.com/v1/chat/completions");
+    expect(requestBody?.model).toBe("deepseek-v4-pro");
+    expect(requestBody?.max_tokens).toBe(4096);
+    expect(requestBody?.response_format).toEqual({ type: "json_object" });
+    expect(requestBody?.thinking).toEqual({ type: "enabled" });
+    expect(requestBody?.reasoning_effort).toBe("max");
+  });
+
+  it("syncs a DeepSeek provider into the managed Hermes home", async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "hermills-runtime-provider-sync-"));
+    const service = new RuntimeService({ baseDir });
+
+    await service.configureInferenceProvider({
+      kind: "openai-compatible",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-test-deepseek",
+      defaultModel: "deepseek-v4-pro"
+    });
+
+    const envText = await readFile(path.join(baseDir, "hermes-home", ".env"), "utf8");
+    const configText = await readFile(path.join(baseDir, "hermes-home", "config.yaml"), "utf8");
+    expect(envText).toContain("API_SERVER_ENABLED=true");
+    expect(envText).toContain("DEEPSEEK_API_KEY=sk-test-deepseek");
+    expect(envText).toContain("DEEPSEEK_BASE_URL=https://api.deepseek.com");
+    expect(configText).toContain('default: "deepseek-v4-pro"');
+    expect(configText).toContain('provider: "deepseek"');
+    expect(configText).toContain('base_url: "https://api.deepseek.com"');
   });
 
   it("sends Anthropic providers through the Messages API", async () => {

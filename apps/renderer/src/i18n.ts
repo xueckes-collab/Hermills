@@ -440,7 +440,7 @@ export type UiCopy = {
       reviewHint: string
       researchDepthTitle: string
       researchDepthHint: string
-      researchDepth: Record<'quick' | 'standard' | 'deep', { label: string; description: string }>
+      researchDepth: Record<'adaptive', { label: string; description: string }>
       agentQueueHint: (depth: string) => string
       researchScore: (score: number, angle: string) => string
       selectedCount: (count: number) => string
@@ -1206,14 +1206,12 @@ const en: UiCopy = {
       chooseHint: 'Pick customers with a website and email. Missing customers stay disabled.',
       reviewTitle: 'Check emails',
       reviewHint: 'Generate drafts, open each customer, then approve only the emails you want to send.',
-      researchDepthTitle: 'Research depth',
-      researchDepthHint: 'Standard is the default. Use deep only for important customers.',
+      researchDepthTitle: 'Adaptive research',
+      researchDepthHint: 'Hermes tries deep website research first, then falls back automatically if the site blocks it.',
       researchDepth: {
-        quick: { label: 'Save tokens', description: 'Fast website scan' },
-        standard: { label: 'Standard', description: 'Balanced research' },
-        deep: { label: 'Deep', description: 'Slower, richer buyer logic' },
+        adaptive: { label: 'Adaptive', description: 'Deep research first, lightweight fallback when needed' },
       },
-      agentQueueHint: (depth) => `${depth} research · hidden agents run in the background`,
+      agentQueueHint: () => `Adaptive research · hidden agents run in the background`,
       researchScore: (score, angle) => `${score}/100 · ${angle}`,
       selectedCount: (count) => `${count} selected`,
       noCampaign: 'Choose customers on the left, then prepare this batch.',
@@ -1238,7 +1236,7 @@ const en: UiCopy = {
         checkInbox: 'Check replies',
       },
       campaignStatus: { draft: 'Not generated', generating: 'Writing drafts', ready: 'Ready to review', sending: 'Sending', paused: 'Paused', completed: 'Done', failed: 'Needs attention', stopped: 'Stopped' },
-      recipientStatus: { pending: 'Not generated', researching: 'Researching', generated: 'Needs your check', approved: 'Ready to send', queued: 'Waiting to send', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped', replied: 'Replied', bounced: 'Bounced', unsubscribed: 'Unsubscribed', stopped: 'Stopped' },
+      recipientStatus: { pending: 'Not generated', researching: 'Researching / writing', generated: 'Needs your check', approved: 'Ready to send', queued: 'Waiting to send', sending: 'Sending', sent: 'Sent', failed: 'Failed', skipped: 'Skipped', replied: 'Replied', bounced: 'Bounced', unsubscribed: 'Unsubscribed', stopped: 'Stopped' },
       followUpTitle: 'Follow-up guard',
       followUpSummary: (scheduled, ready, stopped) => `${scheduled} scheduled · ${ready} ready · ${stopped} stopped`,
       followUpMetrics: { scheduled: 'scheduled', ready: 'ready', sent: 'sent', stopped: 'stopped' },
@@ -1595,7 +1593,7 @@ const zhCN = withOverrides(en, {
     quickTitle: '只填官网和邮箱',
     quickSubtitle: 'Hermes 会读取客户官网，整理客户背景和可能需求，然后按你的公司资料写第一封邮件。',
     navAria: '打开开发信工具',
-    defaults: { language: '中文', tone: '专业、真诚、简洁' },
+    defaults: { language: 'English', tone: 'professional, warm, concise' },
     steps: { auto: '一键流程', leads: '客户', draft: '草稿', send: '发送' },
     fields: {
       companyName: '客户公司',
@@ -1755,14 +1753,12 @@ const zhCN = withOverrides(en, {
       chooseHint: '选择有官网和邮箱的客户。资料不完整的客户先不会加入。',
       reviewTitle: '检查邮件',
       reviewHint: '先生成草稿，再点客户名字检查。确认没问题后点“通过”。',
-      researchDepthTitle: '背调强度',
-      researchDepthHint: '标准最省心。重点客户再用深度，能省 token。',
+      researchDepthTitle: '自适应背调',
+      researchDepthHint: 'Hermes 会优先深度分析官网，遇到失败会自动轻量兜底，不需要用户选择模式。',
       researchDepth: {
-        quick: { label: '省钱', description: '快速扫官网' },
-        standard: { label: '标准', description: '默认最合适' },
-        deep: { label: '深度', description: '更慢更细' },
+        adaptive: { label: '自适应', description: '先深度背调，失败自动兜底' },
       },
-      agentQueueHint: (depth) => `${depth}背调 · 后台 Agent 自动处理`,
+      agentQueueHint: () => `自适应背调 · 后台 Agent 自动处理`,
       researchScore: (score, angle) => `${score}分 · ${angle}`,
       selectedCount: (count) => `已选 ${count} 个客户`,
       noCampaign: '先在左边选择客户，再点“准备这批邮件”。',
@@ -1787,7 +1783,7 @@ const zhCN = withOverrides(en, {
         checkInbox: '检查回复',
       },
       campaignStatus: { draft: '还没生成', generating: '正在写草稿', ready: '可以检查', sending: '发送中', paused: '已暂停', completed: '已完成', failed: '需要处理', stopped: '已停止' },
-      recipientStatus: { pending: '还没生成', researching: '正在背调', generated: '等你检查', approved: '可以发送', queued: '等待发送', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过', replied: '已回复', bounced: '已退信', unsubscribed: '已退订', stopped: '已停止' },
+      recipientStatus: { pending: '还没生成', researching: '正在背调/写信', generated: '等你检查', approved: '可以发送', queued: '等待发送', sending: '发送中', sent: '已发送', failed: '失败', skipped: '已跳过', replied: '已回复', bounced: '已退信', unsubscribed: '已退订', stopped: '已停止' },
       followUpTitle: '跟进守护',
       followUpSummary: (scheduled, ready, stopped) => `${scheduled} 个等待 · ${ready} 个待确认 · ${stopped} 个已停止`,
       followUpMetrics: { scheduled: '等待', ready: '待确认', sent: '已发送', stopped: '已停止' },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from 'react'
+import type { ChangeEvent, Dispatch, FormEvent, KeyboardEvent, ReactNode, SetStateAction } from 'react'
 import { motion } from 'motion/react'
 import {
   AlertCircle,
@@ -31,11 +31,13 @@ import {
   Pencil,
   Play,
   Plus,
+  QrCode,
   RefreshCw,
   Search,
   Send,
   Settings,
   ShieldCheck,
+  Star,
   Trash2,
   Upload,
   UserRound,
@@ -45,6 +47,7 @@ import {
   Zap,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import QRCode from 'qrcode'
 import type { LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,8 +58,26 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, fallback } from './api.js'
-import type { Agent, AgentInput, AnalyticsSummary, ChatMessage, ChatSession, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachCampaign, OutreachCampaignRecipient, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachFollowUpJob, OutreachLead, OutreachLeadInput, OutreachResearchDepth, OutreachSenderAccount, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
+import type { Agent, AgentInput, AnalyticsSummary, ChatControlBindingSession, ChatControlCommand, ChatMessage, ChatSession, ChannelRecord, CloudStatus, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
+import { letterRowsToCsv } from './outreach-import.js'
+import {
+  OutreachBadge,
+  OutreachButton,
+  OutreachCard,
+  OutreachEmailEditor,
+  OutreachEmptyState,
+  OutreachField,
+  OutreachInput,
+  OutreachLeadRow,
+  OutreachStatCard,
+  OutreachStatusBanner,
+  OutreachStickyActionBar,
+  OutreachTextarea,
+  OutreachTimeline,
+  OutreachUploadDropzone,
+} from './components/outreach-ui.js'
+import { getSingleWriteValidation, normalizeCustomerWebsite } from './lib/outreach-form.js'
 import type { AssistantRoleCardId, ChatEmptyEntryId, FileActionId, UiCopy, UiLanguage, UiModeId } from './i18n.js'
 
 type AdvancedPanel = 'setup' | 'personalize' | 'company' | 'agents' | 'profiles' | 'keys' | 'diagnostics'
@@ -102,7 +123,7 @@ const providerPresets = [
     kind: 'openai',
     displayName: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o-mini',
+    defaultModel: 'gpt-5.5',
     keyPlaceholder: 'sk-...',
   },
   {
@@ -120,7 +141,7 @@ const providerPresets = [
     kind: 'openai-compatible',
     displayName: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    defaultModel: 'deepseek-v4-flash',
+    defaultModel: 'deepseek-v4-pro',
     keyPlaceholder: 'sk-...',
   },
   {
@@ -201,8 +222,6 @@ type ProviderKind = 'openai-compatible' | 'openai' | 'anthropic' | 'local'
 type ProviderPresetId = (typeof providerPresets)[number]['id']
 type SenderProviderId = 'gmail' | 'outlook' | 'tencent' | 'aliyun' | 'zoho' | 'custom'
 type SenderChannelId = 'gmailApi' | 'microsoftGraph' | 'zohoApi' | 'smtp' | 'enterpriseApi' | 'customHttpApi'
-const researchDepthOptions: OutreachResearchDepth[] = ['quick', 'standard', 'deep']
-
 type ProviderForm = {
   kind: ProviderKind
   displayName: string
@@ -236,6 +255,24 @@ const senderAuthGuides: Record<SenderProviderId, { url?: string; smtpLabel: stri
   aliyun: { url: 'https://qiye.aliyun.com/alimail/', smtpLabel: 'smtp.mxhichina.com:465' },
   zoho: { url: 'https://accounts.zoho.com/userdetails#security/app_password', smtpLabel: 'smtp.zoho.com:465' },
   custom: { smtpLabel: 'SMTP' },
+}
+
+const chatControlPlatformOptions: Array<{ id: ChannelRecord['kind']; label: string; detail: string }> = [
+  { id: 'feishu', label: '飞书', detail: '机器人事件订阅，适合单聊和群聊 @Hermills。' },
+  { id: 'dingtalk', label: '钉钉', detail: '企业机器人消息接收，适合团队审批。' },
+  { id: 'wecom', label: '企业微信', detail: '自建应用回调，微信官方体系里最稳定。' },
+  { id: 'wechat', label: '微信官方入口', detail: '公众号/小程序客服入口，不做个人微信外挂。' },
+  { id: 'qq', label: 'QQ', detail: 'QQ 官方机器人，适合频道、群和私信场景。' },
+]
+
+function chatControlBindingStatusLabel(binding: ChatControlBindingSession) {
+  if (!binding.relayUrl) return '未配置云端中转，当前只能测试本地命令链路'
+  if (binding.status === 'connected') return '连接成功，可以从聊天窗口控制 Hermills'
+  if (binding.status === 'testing') return '正在测试连接'
+  if (binding.status === 'failed') return binding.error || '连接失败，请重新生成二维码'
+  if (binding.status === 'expired') return '二维码已过期，请重新生成'
+  if (binding.status === 'linked') return '账号已绑定，等待测试'
+  return '等待扫码确认'
 }
 
 type OnboardingStepId = 'language' | 'identity' | 'companyBasics' | 'companyProducts' | 'companyMarket' | 'companyTrust' | 'companyTrade' | 'companyFiles' | 'companyReview' | 'provider' | 'theme' | 'workspace' | 'features'
@@ -333,6 +370,10 @@ const featureOptions: Array<{ id: OnboardingFeatureId; icon: LucideIcon }> = [
 ]
 
 const defaultOnboardingFeatures: OnboardingFeatureId[] = ['chat', 'files', 'memory', 'assistants']
+const cloudAutoSyncDelayMs = 8_000
+const cloudAutoSyncIntervalMs = 2 * 60_000
+const cloudAutoSyncMinGapMs = 20_000
+const endpointRetryDelaysMs = [1_000, 3_000, 8_000]
 
 const fallbackOnboarding: OnboardingState = {
   completed: false,
@@ -384,6 +425,15 @@ export function getChatSessionDefaults(agent: Agent | undefined, provider: Provi
   return { agentId: agent?.id, model: agent?.model }
 }
 
+function campaignExportFilename(campaign: OutreachCampaign): string {
+  const slug = (campaign.name || campaign.id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `outreach-campaign-${slug || campaign.id}.csv`
+}
+
 function sessionHasReadyProvider(session: ChatSession | undefined, providers: Provider[]): boolean {
   return Boolean(session?.providerId && providers.some((provider) => provider.id === session.providerId && provider.status === 'connected'))
 }
@@ -413,30 +463,44 @@ function useEndpoint<T>(loader: () => Promise<T>, fallbackValue: T, enabled = tr
 
   useEffect(() => {
     let alive = true
+    let retryTimer: number | undefined
     if (!enabled) {
       setLoading(false)
       setError('')
       return () => {
         alive = false
+        if (retryTimer) window.clearTimeout(retryTimer)
       }
     }
     setLoading(true)
-    loader()
-      .then((next) => {
-        if (alive) {
-          setData(next)
-          setError('')
-        }
-      })
-      .catch((err: Error) => {
-        if (alive) setError(err.message)
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
+    const run = (attempt = 0) => {
+      loader()
+        .then((next) => {
+          if (alive) {
+            setData(next)
+            setError('')
+            setLoading(false)
+          }
+        })
+        .catch((err: Error) => {
+          if (!alive) return
+          setError(err.message)
+          const delay = endpointRetryDelaysMs[attempt]
+          if (delay === undefined) {
+            setLoading(false)
+            return
+          }
+          retryTimer = window.setTimeout(() => {
+            retryTimer = undefined
+            run(attempt + 1)
+          }, delay)
+        })
+    }
+    run()
 
     return () => {
       alive = false
+      if (retryTimer) window.clearTimeout(retryTimer)
     }
   }, [enabled, loader])
 
@@ -553,10 +617,16 @@ export default function App() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [advancedPanel, setAdvancedPanel] = useState<AdvancedPanel>('setup')
   const [uiMode, setUiMode] = useState<UiModeId>(() => (['simple', 'expert'] as UiModeId[])[0])
+  const cloudAutoSyncedRef = useRef(false)
+  const cloudAutoSyncTimerRef = useRef<number | undefined>(undefined)
+  const cloudAutoSyncInFlightRef = useRef(false)
+  const cloudAutoSyncFingerprintRef = useRef('')
+  const cloudAutoSyncAttemptedAtRef = useRef(0)
   const appState = useEndpoint(api.appState, fallback.appState)
   const runtime = useEndpoint(api.runtimeStatus, fallback.runtime)
   const localDeploymentComplete = !appState.data.shouldShowFirstDeploy
   const workspaceEnabled = !appState.loading && localDeploymentComplete
+  const cloudStatus = useEndpoint(api.cloudStatus, fallback.cloudStatus, workspaceEnabled)
   const onboarding = useEndpoint(loadOnboardingState, fallbackOnboarding, workspaceEnabled)
   const companyProfile = useEndpoint(api.companyProfile, fallback.companyProfile, workspaceEnabled)
   const companyMaterials = useEndpoint(api.companyMaterials, fallback.companyMaterials, workspaceEnabled)
@@ -573,16 +643,128 @@ export default function App() {
   const outreachLeads = useEndpoint(api.outreachLeads, fallback.outreachLeads, chatEnabled)
   const outreachCampaigns = useEndpoint(api.outreachCampaigns, fallback.outreachCampaigns, chatEnabled)
   const outreachSenders = useEndpoint(api.outreachSenderAccounts, fallback.outreachSenderAccounts, chatEnabled)
+  const cloudSyncFingerprint = useMemo(() => JSON.stringify({
+    companyProfile: companyProfile.data,
+    leads: outreachLeads.data.map((lead) => ({
+      id: lead.id,
+      status: lead.status,
+      currentState: lead.currentState,
+      replyStatus: lead.replyStatus,
+      updatedAt: lead.updatedAt,
+      email: lead.email,
+      website: lead.website
+    })),
+    campaigns: outreachCampaigns.data.map((campaign) => ({
+      id: campaign.id,
+      status: campaign.status,
+      updatedAt: campaign.updatedAt,
+      stats: campaign.stats
+    }))
+  }), [companyProfile.data, outreachLeads.data, outreachCampaigns.data])
 
   const readyProviders = providers.data.filter((provider) => provider.status === 'connected').length
   const readyAgents = agents.data.filter((agent) => agent.status !== 'draft').length
-  const serviceWarning = appState.error || runtime.error || onboarding.error || agents.error || providers.error || profiles.error || usage.error || analytics.error || sessions.error || materials.error || companyProfile.error || companyMaterials.error || outreachLeads.error || outreachCampaigns.error || outreachSenders.error
+  const cloudLoginRequired = workspaceEnabled && cloudStatus.data.configured && cloudStatus.data.required && !cloudStatus.data.authenticated
   const copy = getUiCopy(onboarding.data.language ?? fallbackOnboarding.language)
-  const serviceWarningMessage = serviceWarning ? copy.topbar.serviceWarning(humanizeErrorMessage(serviceWarning, copy)) : ''
+  const serviceWarningEntry = [
+    { label: '应用状态', error: appState.error },
+    { label: 'Hermes 运行时', error: runtime.error },
+    { label: '云同步', error: cloudStatus.error },
+    { label: '初始化', error: onboarding.error },
+    { label: '助手', error: agents.error },
+    { label: '供应商', error: providers.error },
+    { label: '用户资料', error: profiles.error },
+    { label: '用量统计', error: usage.error },
+    { label: '数据统计', error: analytics.error },
+    { label: '对话', error: sessions.error },
+    { label: '文件', error: materials.error },
+    { label: '公司资料', error: companyProfile.error },
+    { label: '公司文件', error: companyMaterials.error },
+    { label: '客户', error: outreachLeads.error },
+    { label: '批量任务', error: outreachCampaigns.error },
+    { label: '邮箱账户', error: outreachSenders.error },
+  ].find((entry) => Boolean(entry.error))
+  const serviceWarning = serviceWarningEntry?.error ?? ''
+  const serviceWarningMessage = serviceWarningEntry ? copy.topbar.serviceWarning(`${serviceWarningEntry.label}：${humanizeErrorMessage(serviceWarningEntry.error, copy)}`) : ''
 
   useEffect(() => {
     document.documentElement.lang = normalizeUiLanguage(onboarding.data.language ?? fallbackOnboarding.language)
   }, [onboarding.data.language])
+
+  useEffect(() => {
+    if (!chatEnabled || !cloudStatus.data.authenticated) {
+      cloudAutoSyncedRef.current = false
+      cloudAutoSyncFingerprintRef.current = ''
+      if (cloudAutoSyncTimerRef.current) {
+        window.clearTimeout(cloudAutoSyncTimerRef.current)
+        cloudAutoSyncTimerRef.current = undefined
+      }
+      return
+    }
+    let disposed = false
+    const runCloudSync = async (force = false) => {
+      const now = Date.now()
+      if (!force && now - cloudAutoSyncAttemptedAtRef.current < cloudAutoSyncMinGapMs) return
+      if (cloudAutoSyncInFlightRef.current) return
+      cloudAutoSyncAttemptedAtRef.current = now
+      cloudAutoSyncInFlightRef.current = true
+      try {
+        const next = await api.cloudSync(force)
+        if (disposed) return
+        cloudAutoSyncFingerprintRef.current = cloudSyncFingerprint
+        cloudStatus.setData(next)
+      } catch (error) {
+        if (disposed) return
+        cloudStatus.setData((current) => ({
+          ...current,
+          lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+        }))
+      } finally {
+        cloudAutoSyncInFlightRef.current = false
+      }
+    }
+
+    if (!cloudAutoSyncedRef.current) {
+      cloudAutoSyncedRef.current = true
+      void runCloudSync(true)
+      return () => {
+        disposed = true
+      }
+    }
+
+    if (cloudAutoSyncFingerprintRef.current !== cloudSyncFingerprint) {
+      if (cloudAutoSyncTimerRef.current) window.clearTimeout(cloudAutoSyncTimerRef.current)
+      cloudAutoSyncTimerRef.current = window.setTimeout(() => {
+        cloudAutoSyncTimerRef.current = undefined
+        void runCloudSync(false)
+      }, cloudAutoSyncDelayMs)
+    }
+
+    return () => {
+      disposed = true
+    }
+  }, [chatEnabled, cloudStatus.data.authenticated, cloudSyncFingerprint, copy])
+
+  useEffect(() => {
+    if (!chatEnabled || !cloudStatus.data.authenticated) return
+    const interval = window.setInterval(() => {
+      if (cloudAutoSyncInFlightRef.current) return
+      cloudAutoSyncInFlightRef.current = true
+      cloudAutoSyncAttemptedAtRef.current = Date.now()
+      void api.cloudSync(false).then((next) => {
+        cloudAutoSyncFingerprintRef.current = cloudSyncFingerprint
+        cloudStatus.setData(next)
+      }).catch((error) => {
+        cloudStatus.setData((current) => ({
+          ...current,
+          lastSyncError: humanizeErrorMessage(error, copy, 'message'),
+        }))
+      }).finally(() => {
+        cloudAutoSyncInFlightRef.current = false
+      })
+    }, cloudAutoSyncIntervalMs)
+    return () => window.clearInterval(interval)
+  }, [chatEnabled, cloudStatus.data.authenticated, cloudSyncFingerprint, copy])
 
   async function refreshAfterDeploy() {
     runtime.setData(await api.runtimeStatus())
@@ -651,9 +833,19 @@ export default function App() {
     )
   }
 
-  if (onboarding.loading || companyProfile.loading || companyMaterials.loading) {
+  if (cloudStatus.loading || onboarding.loading || companyProfile.loading || companyMaterials.loading) {
     return (
       <OnboardingLoadingPage serviceError={serviceWarning} copy={copy} />
+    )
+  }
+
+  if (cloudLoginRequired) {
+    return (
+      <CloudLoginPage
+        status={cloudStatus.data}
+        serviceError={serviceWarning}
+        setStatus={cloudStatus.setData}
+      />
     )
   }
 
@@ -688,6 +880,8 @@ export default function App() {
         setOutreachCampaigns={outreachCampaigns.setData}
         outreachSenders={outreachSenders.data}
         setOutreachSenders={outreachSenders.setData}
+        cloudStatus={cloudStatus.data}
+        setCloudStatus={cloudStatus.setData}
         setRuntime={runtime.setData}
         agents={agents.data}
         setAgents={agents.setData}
@@ -741,6 +935,223 @@ export default function App() {
   )
 }
 
+function CloudLoginPage({
+  status,
+  serviceError,
+  setStatus,
+}: {
+  status: CloudStatus
+  serviceError?: string
+  setStatus: (status: CloudStatus) => void
+}) {
+  const copy = getUiCopy('zh-CN')
+  const [mode, setMode] = useState<'login' | 'signup' | 'verifySignup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [signupCode, setSignupCode] = useState('')
+  const [busy, setBusy] = useState('')
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const [signupPendingEmail, setSignupPendingEmail] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  useEffect(() => {
+    if (mode !== 'verifySignup' || resendCooldown <= 0) return undefined
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [mode, resendCooldown])
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setNotice('')
+    const normalizedEmail = email.trim().toLowerCase()
+    if (mode === 'verifySignup') {
+      const targetEmail = signupPendingEmail || normalizedEmail
+      const token = signupCode.replace(/\s/g, '').trim()
+      if (!targetEmail) {
+        setError('先填写邮箱。')
+        return
+      }
+      if (!/^\d{6}$/.test(token)) {
+        setError('请输入邮箱里的 6 位数字验证码。')
+        return
+      }
+      setBusy(mode)
+      try {
+        const next = await api.cloudVerifySignupCode({ email: targetEmail, token })
+        setStatus(next)
+        if (!next.authenticated) setError('验证码已提交，但还没有登录成功。请重新获取验证码再试一次。')
+      } catch (err) {
+        setError(humanizeErrorMessage(err, copy, 'message'))
+      } finally {
+        setBusy('')
+      }
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('请输入有效邮箱地址。')
+      return
+    }
+    if (mode === 'signup') {
+      if (!termsAccepted) {
+        setError('请先同意服务条款和隐私政策。')
+        return
+      }
+    } else if (password.length < 6) {
+      setError('请输入登录密码。')
+      return
+    }
+    setBusy(mode)
+    try {
+      const next = mode === 'signup'
+        ? await api.cloudSignup({
+          email: normalizedEmail,
+          fullName: fullName.trim() || undefined,
+          nickname: fullName.trim() || undefined,
+          termsAccepted
+        })
+        : await api.cloudLogin({ email: normalizedEmail, password })
+      setStatus(next)
+      if (mode === 'signup') {
+        setSignupPendingEmail(normalizedEmail)
+        setSignupCode('')
+        setMode('verifySignup')
+        setResendCooldown(60)
+        setNotice('验证码已发送。请打开邮箱，复制 6 位数字验证码，在这里输入后就能登录。')
+      }
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function resendSignupConfirmation() {
+    const targetEmail = (signupPendingEmail || email.trim()).toLowerCase()
+    if (!targetEmail) {
+      setError('先填写邮箱，再重发验证邮件。')
+      return
+    }
+    if (resendCooldown > 0) return
+    setBusy('resendSignup')
+    setError('')
+    try {
+      await api.cloudResendSignupConfirmation(targetEmail)
+      setSignupPendingEmail(targetEmail)
+      setMode('verifySignup')
+      setResendCooldown(60)
+      setNotice('验证码已重新发送。请打开邮箱复制 6 位数字验证码，不需要点击网页链接。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function resetPassword() {
+    if (!email.trim()) {
+      setError('先填写邮箱，再发送重置邮件。')
+      return
+    }
+    setBusy('reset')
+    setError('')
+    setNotice('')
+    try {
+      await api.cloudPasswordReset(email)
+      setNotice('重置邮件已发送，请打开邮箱继续。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="cloud-auth-page">
+      <div className="cloud-auth-brand">
+        <div className="hm-logo"><Mail size={18} /></div>
+        <div>
+          <strong>Outbound Mail OS</strong>
+          <span>Hermills 云端大脑</span>
+        </div>
+      </div>
+      <form className="cloud-auth-card" onSubmit={submit}>
+        <div className="cloud-auth-icon"><KeyRound size={22} /></div>
+        <div>
+          <p className="cloud-auth-eyebrow">账号登录</p>
+          <h1>{mode === 'signup' ? '发送邮箱验证码' : mode === 'verifySignup' ? '输入邮箱验证码' : '登录 Hermills'}</h1>
+          <p>{mode === 'verifySignup' ? '邮箱里会有一串 6 位数字验证码。复制到这里，Hermills 会在桌面端完成验证。' : mode === 'signup' ? '输入邮箱并获取验证码。验证成功后会创建账号并同步客户记录、邮件草稿和匿名学习数据。' : '登录后会同步客户记录、邮件草稿和匿名学习数据。真实邮箱密码和 API Key 仍然只保存在本机。'}</p>
+        </div>
+        {serviceError ? <div className="hm-alert error"><AlertCircle size={16} /><span>{serviceError}</span></div> : null}
+        {notice ? <div className="hm-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+        {error ? <div className="hm-alert error"><AlertCircle size={16} /><span>{error}</span></div> : null}
+        {mode === 'signup' ? (
+          <label>
+            <span>姓名</span>
+            <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="你的名字" />
+          </label>
+        ) : null}
+        <label>
+          <span>邮箱</span>
+          <input autoFocus type="email" value={signupPendingEmail || email} onChange={(event) => {
+            setEmail(event.target.value)
+            if (mode !== 'verifySignup') setSignupPendingEmail('')
+          }} placeholder="you@company.com" readOnly={mode === 'verifySignup' && Boolean(signupPendingEmail)} required />
+        </label>
+        {mode === 'verifySignup' ? (
+          <label>
+            <span>邮箱验证码</span>
+            <input inputMode="numeric" value={signupCode} onChange={(event) => setSignupCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="输入邮箱里的 6 位验证码" maxLength={6} required />
+          </label>
+        ) : mode === 'login' ? (
+          <label>
+            <span>密码</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="输入密码" minLength={6} required />
+          </label>
+        ) : null}
+        {mode === 'signup' ? (
+          <label className="cloud-auth-check">
+            <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} required />
+            <span>我同意服务条款和隐私政策。Hermills 可以同步账号资料、客户记录和匿名学习数据；邮箱密码和 API Key 仍只保存在本机。</span>
+          </label>
+        ) : null}
+        <button className="hm-primary" type="submit" disabled={Boolean(busy)}>
+          {busy === mode ? '处理中...' : mode === 'signup' ? '发送验证码' : mode === 'verifySignup' ? '验证并登录' : '登录'}
+          <ChevronRight size={16} />
+        </button>
+        <div className="cloud-auth-actions">
+          <button type="button" onClick={() => {
+            setMode(mode === 'signup' || mode === 'verifySignup' ? 'login' : 'signup')
+            setNotice('')
+            setError('')
+            setSignupCode('')
+            setSignupPendingEmail('')
+            setResendCooldown(0)
+          }}>
+            {mode === 'signup' || mode === 'verifySignup' ? '已有账号，去登录' : '没有账号，去注册'}
+          </button>
+          {signupPendingEmail || mode === 'verifySignup' ? (
+            <button type="button" onClick={resendSignupConfirmation} disabled={busy === 'resendSignup' || resendCooldown > 0}>
+              {busy === 'resendSignup' ? '重发中...' : resendCooldown > 0 ? `${resendCooldown}s 后重发` : '重发验证码'}
+            </button>
+          ) : null}
+          <button type="button" onClick={resetPassword} disabled={busy === 'reset'}>
+            {busy === 'reset' ? '发送中...' : '忘记密码'}
+          </button>
+        </div>
+        {!status.configured ? (
+          <p className="cloud-auth-footnote">当前安装包还没有配置 Supabase URL 和匿名 Key。</p>
+        ) : null}
+      </form>
+    </div>
+  )
+}
+
 function ClientWorkspace({
   runtime,
   sessions,
@@ -755,6 +1166,8 @@ function ClientWorkspace({
   setOutreachCampaigns,
   outreachSenders,
   setOutreachSenders,
+  cloudStatus,
+  setCloudStatus,
   setRuntime,
   agents,
   setAgents,
@@ -783,9 +1196,11 @@ function ClientWorkspace({
   outreachLeads: OutreachLead[]
   setOutreachLeads: (leads: OutreachLead[]) => void
   outreachCampaigns: OutreachCampaign[]
-  setOutreachCampaigns: (campaigns: OutreachCampaign[]) => void
+  setOutreachCampaigns: Dispatch<SetStateAction<OutreachCampaign[]>>
   outreachSenders: OutreachSenderAccount[]
   setOutreachSenders: (senders: OutreachSenderAccount[]) => void
+  cloudStatus: CloudStatus
+  setCloudStatus: (status: CloudStatus) => void
   setRuntime: (runtime: RuntimeStatus) => void
   agents: Agent[]
   setAgents: (agents: Agent[]) => void
@@ -1262,6 +1677,8 @@ function ClientWorkspace({
             setCampaigns={setOutreachCampaigns}
             senderAccounts={outreachSenders}
             setSenderAccounts={setOutreachSenders}
+            cloudStatus={cloudStatus}
+            setCloudStatus={setCloudStatus}
             providers={providers}
             onOpenCompanyKnowledge={openCompanyKnowledge}
             onOpenChat={() => setWorkspaceView('chat')}
@@ -1759,7 +2176,7 @@ function InspectorPanel({
               <strong>{formatNumber(outreachLeads.length)}</strong>
             </div>
             <div className="crm-assistant-metric">
-              <span>进行中的批量任务</span>
+              <span>进行中的批量写信</span>
               <strong>{formatNumber(outreachPipelineCount)}</strong>
             </div>
             <div className="crm-assistant-metric">
@@ -1963,7 +2380,7 @@ type SignatureFormDraft = {
 }
 
 type OutreachMode = 'single' | 'campaign'
-type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'mail' | 'signature' | 'profile'
+type LetterOutreachView = 'dashboard' | 'leads' | 'compose' | 'automation' | 'assets' | 'mail' | 'chatControl' | 'signature' | 'profile'
 type LetterLeadFilter = 'all' | 'new' | 'drafted' | 'sent' | 'replied'
 type LetterGenerationMode = 'single' | 'quick' | 'campaign'
 
@@ -1998,38 +2415,6 @@ function letterLeadStatusLabel(lead: OutreachLead) {
   if (lead.status === 'reply_received' || lead.replyStatus === 'reply_received') return '已回复'
   if (lead.status === 'followup_due') return '需跟进'
   return '新客户'
-}
-
-function domainCompanyName(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return 'Imported customer'
-  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '').replace(/^www\./i, '')
-  const host = withoutProtocol.split(/[/?#]/)[0] || withoutProtocol
-  const domain = host.split('@').pop() || host
-  const name = domain.split('.')[0] || domain
-  return name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Imported customer'
-}
-
-function csvEscape(value: string) {
-  const normalized = value.replace(/\r?\n/g, ' ').trim()
-  return /[",\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized
-}
-
-function letterRowsToCsv(input: string) {
-  const raw = input.trim()
-  if (!raw) return ''
-  const firstLine = raw.split(/\r?\n/)[0]?.toLowerCase() ?? ''
-  if (/company|公司|email|邮箱|website|网站/.test(firstLine)) return raw
-  const rows = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  const converted = rows.map((line) => {
-    const cells = line.split(/[\t,，]+/).map((item) => item.trim()).filter(Boolean)
-    const email = cells.find((item) => /@/.test(item)) ?? ''
-    const website = cells.find((item) => /^https?:\/\//i.test(item) || /\.[a-z]{2,}(\/|$)/i.test(item)) ?? ''
-    const contactName = cells.find((item) => item !== email && item !== website) ?? ''
-    const companyName = domainCompanyName(website || email)
-    return [companyName, email, website, contactName].map(csvEscape).join(',')
-  })
-  return ['company,email,website,contactName', ...converted].join('\n')
 }
 
 function letterGenerationSteps(mode: LetterGenerationMode) {
@@ -2068,16 +2453,16 @@ function LetterGenerationTrace({
   const status = running ? '正在生成' : completedAt ? '已完成' : '准备中'
   const statusText = completedAt && !running ? `${status} · ${new Date(completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : status
   return (
-    <details className="letter-thinking-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
+    <details className="hm-thinking-panel" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
       <summary>
         <span><Brain size={16} /> 生成过程</span>
         <em>{statusText}</em>
       </summary>
-      <div className="letter-thinking-note">这里显示的是可审核的生成步骤和依据，不展示模型内部私密推理链。</div>
-      <ol className="letter-thinking-steps">
+      <div className="hm-thinking-note">这里显示的是可审核的生成步骤和依据，不展示模型内部私密推理链。</div>
+      <ol className="hm-thinking-steps">
         {steps.map((step, index) => (
           <li className={running && index === steps.length - 1 ? 'active' : ''} key={step.title}>
-            <span className="letter-thinking-dot">{index + 1}</span>
+            <span className="hm-thinking-dot">{index + 1}</span>
             <div>
               <strong>{step.title}</strong>
               <p>{step.detail}</p>
@@ -2089,12 +2474,71 @@ function LetterGenerationTrace({
   )
 }
 
+function customerFitLabel(value: CustomerResearchBrief['fitVerdict']) {
+  if (value === 'good-fit') return '适合开发'
+  if (value === 'cautious') return '谨慎开发'
+  if (value === 'poor-fit') return '不建议开发'
+  return '证据不足'
+}
+
+function customerWriteModeLabel(value: CustomerResearchBrief['shouldWrite']) {
+  if (value === 'yes') return '可以写'
+  if (value === 'no') return '先别写'
+  return '谨慎写'
+}
+
+function loopFitLabel(value?: OutreachLeadFitScore['fit']) {
+  if (value === 'high') return '高机会'
+  if (value === 'medium') return '中等机会'
+  if (value === 'cautious') return '谨慎开发'
+  if (value === 'low') return '低机会'
+  return '未判断'
+}
+
+function loopAngleLabel(value?: NonNullable<OutreachLeadFitScore['primaryAngle']>) {
+  const labels: Record<NonNullable<OutreachLeadFitScore['primaryAngle']>, string> = {
+    'general-supply': '常规供应',
+    'product-line-extension': '产品线补充',
+    'new-product-development': '新品开发',
+    'private-label-oem': '贴牌 / OEM',
+    'project-specification': '项目规格',
+    'certification-compliance': '认证证明',
+    'material-complement': '互补材料',
+    'backup-capacity': '备用产能',
+    'channel-partnership': '渠道合作',
+    other: '其他角度',
+  }
+  return value ? labels[value] : '未选择'
+}
+
 function LetterQualitySummary({
   review,
+  strategy,
+  riskReview,
+  researchBrief,
+  leadFitScore,
+  evidenceLock,
+  valueMatch,
+  learningSignal,
+  evidenceUsed,
+  generationSummary,
+  matchedExampleCount,
+  modelUsed,
   stale,
   copy,
 }: {
   review?: OutreachEmailQualityReview
+  strategy?: OutreachStrategyMatch
+  riskReview?: OutreachSendRiskReview
+  researchBrief?: CustomerResearchBrief
+  leadFitScore?: OutreachLeadFitScore
+  evidenceLock?: OutreachEvidenceLock
+  valueMatch?: OutreachValueMatch
+  learningSignal?: OutreachLearningSignal
+  evidenceUsed?: OutreachEvidenceItem[]
+  generationSummary?: string
+  matchedExampleCount?: number
+  modelUsed?: string
   stale?: boolean
   copy: UiCopy
 }) {
@@ -2125,6 +2569,102 @@ function LetterQualitySummary({
         ))}
       </div>
       {review.summary ? <p>{review.summary}</p> : null}
+      {researchBrief ? (
+        <details className={`hm-research-brief ${researchBrief.fitVerdict}`} open>
+          <summary>
+            <span>客户判断简报</span>
+            <em>{customerFitLabel(researchBrief.fitVerdict)} · {customerWriteModeLabel(researchBrief.shouldWrite)}</em>
+          </summary>
+          <div className="hm-research-brief-grid">
+            <span><strong>客户类型</strong>{researchBrief.buyerTypeDetail || '暂未判断'}</span>
+            <span><strong>最佳切入点</strong>{researchBrief.bestAngle || researchBrief.bestOutreachPath || '暂未判断'}</span>
+            <span><strong>采购信号</strong>{researchBrief.purchaseIntentSignal || '暂未找到明确采购信号'}</span>
+            <span><strong>主要风险</strong>{researchBrief.mainRisk || '暂未发现明显风险'}</span>
+          </div>
+          {researchBrief.bestOutreachPath ? <p>{researchBrief.bestOutreachPath}</p> : null}
+          {researchBrief.claimsToAvoid.length ? (
+            <div className="hm-claims-avoid">
+              <strong>不能这样写</strong>
+              <ul>
+                {researchBrief.claimsToAvoid.slice(0, 4).map((claim) => <li key={claim}>{claim}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </details>
+      ) : null}
+      {leadFitScore || valueMatch || evidenceLock ? (
+        <details className="hm-loop-summary" open>
+          <summary>开发 Loop 摘要</summary>
+          <div className="hm-loop-grid">
+            <span><strong>开发评分</strong>{leadFitScore ? `${leadFitScore.score}/100 · ${loopFitLabel(leadFitScore.fit)}` : '未记录'}</span>
+            <span><strong>推荐角度</strong>{loopAngleLabel(leadFitScore?.primaryAngle)}</span>
+            <span><strong>预计回复率</strong>{leadFitScore?.expectedReplyRate ? `${leadFitScore.expectedReplyRate.minPercent}-${leadFitScore.expectedReplyRate.maxPercent}%` : '未估算'}</span>
+            <span><strong>证据锁</strong>{evidenceLock ? `${evidenceLock.usableFacts.length} 条可用 · ${evidenceLock.mustNotSay.length} 条禁说` : '未锁定'}</span>
+          </div>
+          {leadFitScore?.recommendedApproach ? <p>{leadFitScore.recommendedApproach}</p> : null}
+          {valueMatch ? (
+            <div className="hm-value-match">
+              <span><strong>只用这个卖点</strong>{valueMatch.specificValue || '未记录'}</span>
+              <span><strong>客户问题</strong>{valueMatch.customerConcern || '未记录'}</span>
+              <span><strong>CTA</strong>{valueMatch.cta || '未记录'}</span>
+            </div>
+          ) : null}
+          {evidenceLock?.mustNotSay?.length ? (
+            <ul className="hm-loop-risks">
+              {evidenceLock.mustNotSay.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+          {learningSignal?.recordedAt ? <em className="hm-loop-learning">已记录学习信号：{learningSignal.replyOutcome}</em> : null}
+        </details>
+      ) : null}
+      {strategy ? (
+        <div className="hm-strategy-summary">
+          <span><strong>切入点</strong>{strategy.buyerPain || '未记录'}</span>
+          <span><strong>匹配 USP</strong>{strategy.selectedUsp || '未记录'}</span>
+          <span><strong>CTA 资产</strong>{strategy.microOffer || '未记录'}</span>
+        </div>
+      ) : null}
+      {generationSummary || matchedExampleCount || modelUsed ? (
+        <details className="hm-harness-summary">
+          <summary>为什么这样写</summary>
+          {generationSummary ? <p>{generationSummary}</p> : null}
+          <div className="hm-harness-meta">
+            {modelUsed ? <span>模型：{modelUsed}</span> : null}
+            {matchedExampleCount ? <span>参考好样例：{matchedExampleCount} 个</span> : <span>还没有参考好样例</span>}
+          </div>
+        </details>
+      ) : null}
+      {evidenceUsed?.length ? (
+        <details className="hm-evidence-summary">
+          <summary>证据来源</summary>
+          <div className="hm-evidence-list">
+            {evidenceUsed.slice(0, 8).map((item) => (
+              <article className="hm-evidence-item" key={item.id}>
+                <div>
+                  <strong>{item.label}</strong>
+                  <span>{item.value}</span>
+                </div>
+                <em>{item.source}{item.sourceUrl ? ` · ${item.sourceUrl}` : ''}</em>
+                {item.snippet ? <p>{item.snippet}</p> : null}
+              </article>
+            ))}
+          </div>
+        </details>
+      ) : null}
+      {riskReview ? (
+        <div className={`hm-risk-summary ${riskReview.level}`}>
+          <div>
+            <ShieldCheck size={14} />
+            <strong>发送风控 {riskReview.score}/100</strong>
+            <em>{riskReview.level === 'blocked' ? '阻断' : riskReview.level === 'warning' ? '警告' : '通过'}</em>
+          </div>
+          {riskReview.issues.length ? (
+            <ul>
+              {riskReview.issues.slice(0, 4).map((issue) => <li key={`${issue.id}-${issue.message}`}>{issue.message}</li>)}
+            </ul>
+          ) : <p>没有发现发送阻断风险。</p>}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -2138,6 +2678,8 @@ function DevelopmentLetterPage({
   setCampaigns,
   senderAccounts,
   setSenderAccounts,
+  cloudStatus,
+  setCloudStatus,
   providers,
   onOpenCompanyKnowledge,
   onOpenChat,
@@ -2149,9 +2691,11 @@ function DevelopmentLetterPage({
   leads: OutreachLead[]
   setLeads: (leads: OutreachLead[]) => void
   campaigns: OutreachCampaign[]
-  setCampaigns: (campaigns: OutreachCampaign[]) => void
+  setCampaigns: Dispatch<SetStateAction<OutreachCampaign[]>>
   senderAccounts: OutreachSenderAccount[]
   setSenderAccounts: (accounts: OutreachSenderAccount[]) => void
+  cloudStatus: CloudStatus
+  setCloudStatus: (status: CloudStatus) => void
   providers: Provider[]
   onOpenCompanyKnowledge: () => void
   onOpenChat: () => void
@@ -2161,7 +2705,6 @@ function DevelopmentLetterPage({
   const [leadDraft, setLeadDraft] = useState<LeadFormDraft>(() => emptyLeadDraft())
   const [quickWebsite, setQuickWebsite] = useState('')
   const [quickEmail, setQuickEmail] = useState('')
-  const [quickResearchDepth, setQuickResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [outreachMode, setOutreachMode] = useState<OutreachMode>('single')
@@ -2171,7 +2714,6 @@ function DevelopmentLetterPage({
   const [selectedLetterLeadIds, setSelectedLetterLeadIds] = useState<string[]>([])
   const [bulkImportText, setBulkImportText] = useState('')
   const [campaignName, setCampaignName] = useState(copy.devLetter.batch.defaultName)
-  const [campaignResearchDepth, setCampaignResearchDepth] = useState<OutreachResearchDepth>('deep')
   const [selectedCampaignLeadIds, setSelectedCampaignLeadIds] = useState<string[]>([])
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
   const [selectedCampaignRecipientId, setSelectedCampaignRecipientId] = useState('')
@@ -2195,8 +2737,24 @@ function DevelopmentLetterPage({
   const [senderChannelId, setSenderChannelId] = useState<SenderChannelId>('smtp')
   const [selectedSenderId, setSelectedSenderId] = useState('')
   const [senderTestRecipient, setSenderTestRecipient] = useState('')
+  const [mailAdvancedOpen, setMailAdvancedOpen] = useState(false)
   const [emailSignature, setEmailSignature] = useState<OutreachEmailSignature>()
   const [signatureDraft, setSignatureDraft] = useState<SignatureFormDraft>(() => emptySignatureDraft(companyProfile))
+  const [buyerPersonas, setBuyerPersonas] = useState<OutreachBuyerPersona[]>([])
+  const [uspAssets, setUspAssets] = useState<OutreachUspCandidate[]>([])
+  const [ctaAssets, setCtaAssets] = useState<OutreachCtaAsset[]>([])
+  const [goldenExamples, setGoldenExamples] = useState<OutreachGoldenExample[]>([])
+  const [personaDraft, setPersonaDraft] = useState({ name: '', companyType: '', buyerRoles: '', painPoints: '' })
+  const [uspDraft, setUspDraft] = useState({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
+  const [ctaDraft, setCtaDraft] = useState({ name: '', type: 'sample_options' as OutreachCtaAsset['type'], description: '', assetText: '' })
+  const [goldenDraft, setGoldenDraft] = useState({ title: '', industry: '', buyerType: '', productLine: '', market: '', subject: '', body: '', tags: '' })
+  const [chatControlChannels, setChatControlChannels] = useState<ChannelRecord[]>([])
+  const [chatControlBindings, setChatControlBindings] = useState<ChatControlBindingSession[]>([])
+  const [chatControlCommands, setChatControlCommands] = useState<ChatControlCommand[]>([])
+  const [chatControlPlatform, setChatControlPlatform] = useState<ChannelRecord['kind']>('feishu')
+  const [chatControlText, setChatControlText] = useState('今日状态')
+  const [chatControlQr, setChatControlQr] = useState('')
+  const chatControlCloudPollInFlightRef = useRef(false)
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
@@ -2237,18 +2795,42 @@ function DevelopmentLetterPage({
   const senderChannel = senderChannelOptions.find((channel) => channel.id === senderChannelId) ?? senderChannelOptions[3]
   const senderApiChannelSelected = senderChannel.id !== 'smtp'
   const senderRecommendedApiChannel = senderChannelOptions.find((channel) => channel.id === recommendedSenderApiChannel(senderProviderId)) ?? senderChannelOptions[4]
-  const quickLeadReady = Boolean(quickWebsite.trim() && quickEmail.trim())
+  const quickValidation = useMemo(() => getSingleWriteValidation(quickEmail, quickWebsite), [quickEmail, quickWebsite])
+  const quickEmailError = quickEmail.trim() ? quickValidation.emailError : ''
+  const quickWebsiteError = quickWebsite.trim() ? quickValidation.websiteError : ''
+  const quickLeadReady = quickValidation.ready
   const companyReady = isCompanyProfileReady(companyProfile)
   const campaignSelectedCount = selectedCampaignLeadIds.length || selectedCampaign?.recipients.length || 0
   const campaignReviewCount = selectedCampaign?.stats.generated ?? 0
   const campaignReadyCount = selectedCampaign?.stats.approved ?? 0
   const campaignSentCount = selectedCampaign?.stats.sent ?? 0
-  const visibleResearchDepth = selectedCampaign?.researchDepth ?? campaignResearchDepth
   const activeQualityReview = selectedWorkflowEmail?.qualityReview ?? draft?.qualityReview
+  const activeStrategyMatch = selectedWorkflowEmail?.strategyMatch ?? draft?.strategyMatch
+  const activeRiskReview = selectedWorkflowEmail?.sendRiskReview ?? draft?.sendRiskReview
+  const activeResearchBrief = selectedWorkflowEmail?.researchBrief ?? draft?.researchBrief ?? workflow?.research.brief
+  const activeLeadFitScore = selectedWorkflowEmail?.leadFitScore ?? draft?.leadFitScore
+  const activeEvidenceLock = selectedWorkflowEmail?.evidenceLock ?? draft?.evidenceLock
+  const activeValueMatch = selectedWorkflowEmail?.valueMatch ?? draft?.valueMatch
+  const activeLearningSignal = selectedWorkflowEmail?.learningSignal ?? draft?.learningSignal
+  const activeEvidenceUsed = draft?.evidenceUsed ?? selectedWorkflowEmail?.evidenceMap?.verifiedFacts?.filter((item) => item.usedInEmail) ?? []
+  const activeGenerationSummary = draft?.generationSummary
+  const activeMatchedExampleCount = draft?.matchedExampleIds?.length ?? 0
+  const activeModelUsed = draft?.modelUsed ?? draft?.model
   const singleDraftChanged = selectedWorkflowEmail
     ? selectedWorkflowEmail.subject !== draftSubject || selectedWorkflowEmail.body !== draftBody
     : Boolean(draft && (draft.subject !== draftSubject || draft.body !== draftBody))
   const campaignQualityReview = selectedCampaignRecipient?.draft?.qualityReview
+  const campaignStrategyMatch = selectedCampaignRecipient?.draft?.strategyMatch
+  const campaignRiskReview = selectedCampaignRecipient?.draft?.sendRiskReview
+  const campaignResearchBrief = selectedCampaignRecipient?.draft?.researchBrief
+  const campaignLeadFitScore = selectedCampaignRecipient?.draft?.leadFitScore ?? selectedCampaignRecipient?.leadFitScore
+  const campaignEvidenceLock = selectedCampaignRecipient?.draft?.evidenceLock ?? selectedCampaignRecipient?.evidenceLock
+  const campaignValueMatch = selectedCampaignRecipient?.draft?.valueMatch ?? selectedCampaignRecipient?.valueMatch
+  const campaignLearningSignal = selectedCampaignRecipient?.draft?.learningSignal ?? selectedCampaignRecipient?.learningSignal
+  const campaignEvidenceUsed = selectedCampaignRecipient?.draft?.evidenceUsed ?? []
+  const campaignGenerationSummary = selectedCampaignRecipient?.draft?.generationSummary
+  const campaignMatchedExampleCount = selectedCampaignRecipient?.draft?.matchedExampleIds?.length ?? 0
+  const campaignModelUsed = selectedCampaignRecipient?.draft?.modelUsed ?? selectedCampaignRecipient?.draft?.model
   const campaignDraftChanged = Boolean(selectedCampaignRecipient?.draft && (
     selectedCampaignRecipient.draft.subject !== campaignDraftSubject ||
     selectedCampaignRecipient.draft.body !== campaignDraftBody
@@ -2256,10 +2838,32 @@ function DevelopmentLetterPage({
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
   const singleGenerationRunning = busy === 'generate' || busy === 'auto'
   const campaignGenerationRunning = busy === 'campaignGenerate'
+    || busy === 'letterImportGenerate'
+    || busy === 'letterFileGenerate'
+    || selectedCampaign?.status === 'generating'
+    || Boolean(selectedCampaign?.recipients.some((recipient) => recipient.status === 'researching'))
   const singleGenerationCompletedAt = generationMode === 'campaign' ? '' : generationCompletedAt
   const campaignGenerationCompletedAt = generationMode === 'campaign' ? generationCompletedAt : ''
   const hasVisibleSingleDraft = Boolean(activeDraftId || draftSubject.trim() || draftBody.trim() || workflow || singleGenerationRunning)
   const hasVisibleCampaignDraft = Boolean(selectedCampaign || campaignGenerationRunning)
+  const singleWriteTimelineSteps = letterGenerationSteps('single').map((step, index, steps) => ({
+    label: step.title,
+    detail: step.detail,
+    state: singleGenerationRunning
+      ? index === steps.length - 1 ? 'current' as const : 'complete' as const
+      : singleGenerationCompletedAt
+        ? 'complete' as const
+        : index === 0 ? 'current' as const : 'waiting' as const,
+  }))
+  const campaignTimelineSteps = letterGenerationSteps('campaign').map((step, index, steps) => ({
+    label: step.title,
+    detail: step.detail,
+    state: campaignGenerationRunning
+      ? index === steps.length - 1 ? 'current' as const : 'complete' as const
+      : campaignGenerationCompletedAt
+        ? 'complete' as const
+        : index === 0 ? 'current' as const : 'waiting' as const,
+  }))
   const singleSendBlocker = activeDraftStatus === 'sent'
     ? copy.devLetter.results.status.sent
     : !activeDraftId
@@ -2268,9 +2872,11 @@ function DevelopmentLetterPage({
         ? copy.devLetter.quality.saveBeforeReview
         : !activeQualityReview?.passed
           ? copy.devLetter.quality.blockedSend
-          : !senderDeliveryReady
-            ? copy.devLetter.warnings.senderNotConfirmed
-            : ''
+          : activeRiskReview?.level === 'blocked'
+            ? (activeRiskReview.issues.find((issue) => issue.blocking)?.message ?? '发送风控未通过')
+            : !senderDeliveryReady
+              ? copy.devLetter.warnings.senderNotConfirmed
+              : ''
   const canSendSingleDraft = !singleSendBlocker && busy !== 'send'
   const letterStats = useMemo(() => ({
     total: leads.length,
@@ -2290,6 +2896,9 @@ function DevelopmentLetterPage({
     })
   }, [leads, leadFilter, leadSearch])
   const selectedLetterLeads = useMemo(() => leads.filter((lead) => selectedLetterLeadIds.includes(lead.id)), [leads, selectedLetterLeadIds])
+  const chatControlKinds = useMemo(() => new Set(chatControlPlatformOptions.map((platform) => platform.id)), [])
+  const activeChatControlChannel = chatControlChannels.find((channel) => channel.kind === chatControlPlatform)
+  const activeChatControlBinding = chatControlBindings.find((binding) => binding.platform === chatControlPlatform)
 
   useEffect(() => {
     if (!languageEditedRef.current) setLanguage(copy.devLetter.defaults.language)
@@ -2302,6 +2911,74 @@ function DevelopmentLetterPage({
   useEffect(() => {
     if (!campaignNameEditedRef.current) setCampaignName(copy.devLetter.batch.defaultName)
   }, [copy.devLetter.batch.defaultName])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!activeChatControlBinding?.qrPayload) {
+      setChatControlQr('')
+      return () => {
+        cancelled = true
+      }
+    }
+    QRCode.toDataURL(activeChatControlBinding.qrPayload, { margin: 1, width: 220, color: { dark: '#082f49', light: '#ffffff' } })
+      .then((url) => {
+        if (!cancelled) setChatControlQr(url)
+      })
+      .catch(() => {
+        if (!cancelled) setChatControlQr('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeChatControlBinding?.qrPayload])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.channels(), api.chatControlBindings(), api.chatControlCommands({ limit: 20 })])
+      .then(([channels, bindings, commands]) => {
+        if (cancelled) return
+        setChatControlChannels(channels.filter((channel) => chatControlKinds.has(channel.kind)))
+        setChatControlBindings(bindings.filter((binding) => chatControlKinds.has(binding.platform)))
+        setChatControlCommands(commands)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setChatControlChannels([])
+        setChatControlBindings([])
+        setChatControlCommands([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chatControlKinds])
+
+  useEffect(() => {
+    if (!cloudStatus.authenticated) return
+    let cancelled = false
+    const pollCloudCommands = async () => {
+      if (chatControlCloudPollInFlightRef.current) return
+      chatControlCloudPollInFlightRef.current = true
+      try {
+        const result = await api.pollChatControlCloudCommands()
+        if (!cancelled && result.pulled > 0) {
+          await refreshChatControl()
+          setNotice(`已处理 ${result.executed} 条聊天平台命令${result.failed ? `，${result.failed} 条失败` : ''}。`)
+        }
+      } catch {
+        // Background polling should never block the local desktop workflow.
+      } finally {
+        chatControlCloudPollInFlightRef.current = false
+      }
+    }
+    void pollCloudCommands()
+    const timer = window.setInterval(() => {
+      void pollCloudCommands()
+    }, 15_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [cloudStatus.authenticated])
 
   useEffect(() => {
     setSenderDraft((current) => {
@@ -2374,6 +3051,28 @@ function DevelopmentLetterPage({
       cancelled = true
     }
   }, [companyProfile.name, companyProfile.website])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.outreachBuyerPersonas(), api.outreachUsps(), api.outreachCtaAssets(), api.outreachGoldenExamples()])
+      .then(([personas, usps, ctas, examples]) => {
+        if (cancelled) return
+        setBuyerPersonas(personas)
+        setUspAssets(usps)
+        setCtaAssets(ctas)
+        setGoldenExamples(examples)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setBuyerPersonas([])
+        setUspAssets([])
+        setCtaAssets([])
+        setGoldenExamples([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedSenderId && senderAccounts[0]) setSelectedSenderId(senderAccounts[0].id)
@@ -2509,12 +3208,34 @@ function DevelopmentLetterPage({
   }
 
   function replaceCampaign(campaign: OutreachCampaign) {
-    setCampaigns(campaigns.some((item) => item.id === campaign.id)
-      ? campaigns.map((item) => item.id === campaign.id ? campaign : item)
-      : [campaign, ...campaigns])
+    setCampaigns((current) => current.some((item) => item.id === campaign.id)
+      ? current.map((item) => item.id === campaign.id ? campaign : item)
+      : [campaign, ...current])
     setSelectedCampaignId(campaign.id)
     const reviewCandidate = campaign.recipients.find((recipient) => recipient.status === 'generated' || recipient.status === 'failed') ?? campaign.recipients[0]
     if (reviewCandidate) setSelectedCampaignRecipientId(reviewCandidate.id)
+  }
+
+  async function pollCampaignGeneration(campaignId: string) {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1200))
+      const campaign = await api.outreachCampaign(campaignId)
+      replaceCampaign(campaign)
+      const stillRunning = campaign.status === 'generating' || campaign.recipients.some((recipient) => recipient.status === 'pending' || recipient.status === 'researching')
+      if (!stillRunning) return campaign
+    }
+    return api.outreachCampaign(campaignId)
+  }
+
+  async function watchCampaignGeneration(campaignId: string, completeNotice: (campaign: OutreachCampaign) => string) {
+    try {
+      const campaign = await pollCampaignGeneration(campaignId)
+      replaceCampaign(campaign)
+      setGenerationCompletedAt(new Date().toISOString())
+      setNotice(completeNotice(campaign))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    }
   }
 
   async function refreshCampaignFollowUps(campaignId = selectedCampaign?.id) {
@@ -2523,6 +3244,157 @@ function DevelopmentLetterPage({
       return
     }
     setFollowUps(await api.outreachFollowUps(campaignId))
+  }
+
+  function splitAssetLines(value: string) {
+    return value.split(/[\n;；、,，]/).map((item) => item.trim()).filter(Boolean)
+  }
+
+  async function saveBuyerPersonaAsset() {
+    if (!personaDraft.name.trim()) {
+      setError('请先填写画像名称。')
+      return
+    }
+    setBusy('assetPersona')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachBuyerPersona({
+        name: personaDraft.name.trim(),
+        companyType: personaDraft.companyType.trim(),
+        buyerRoles: splitAssetLines(personaDraft.buyerRoles),
+        painPoints: splitAssetLines(personaDraft.painPoints),
+        successMetrics: [],
+        objections: [],
+        triggerEvents: [],
+        evidenceNotes: [],
+        enabled: true,
+      })
+      setBuyerPersonas([saved, ...buyerPersonas])
+      setPersonaDraft({ name: '', companyType: '', buyerRoles: '', painPoints: '' })
+      setNotice('买家画像已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveUspAsset() {
+    if (!uspDraft.headline.trim()) {
+      setError('请先填写 USP 标题。')
+      return
+    }
+    setBusy('assetUsp')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachUsp({
+        category: uspDraft.category.trim() || 'Strategic value',
+        headline: uspDraft.headline.trim(),
+        buyerAngle: uspDraft.buyerAngle.trim(),
+        proof: uspDraft.proof.trim(),
+        proofLevel: uspDraft.proof.trim() ? 'profile-derived' : 'needs-proof',
+        assetIds: [],
+        enabled: true,
+      })
+      setUspAssets([saved, ...uspAssets])
+      setUspDraft({ headline: '', buyerAngle: '', proof: '', category: 'Strategic value' })
+      setNotice('USP 已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveCtaAsset() {
+    if (!ctaDraft.name.trim()) {
+      setError('请先填写 CTA 资产名称。')
+      return
+    }
+    setBusy('assetCta')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachCtaAsset({
+        name: ctaDraft.name.trim(),
+        type: ctaDraft.type,
+        description: ctaDraft.description.trim(),
+        assetText: ctaDraft.assetText.trim(),
+        enabled: true,
+      })
+      setCtaAssets([saved, ...ctaAssets])
+      setCtaDraft({ name: '', type: 'sample_options', description: '', assetText: '' })
+      setNotice('CTA 资产已保存。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveGoldenExampleAsset(input?: Partial<Omit<typeof goldenDraft, 'tags'>> & { tags?: string | string[]; sourceDraftId?: string; qualityScore?: number }) {
+    const source = { ...goldenDraft, ...input }
+    if (!source.subject.trim() || !source.body.trim()) {
+      setError('请先填写邮件主题和正文。')
+      return
+    }
+    setBusy(input?.sourceDraftId ? 'assetGoldenFromDraft' : 'assetGolden')
+    setError('')
+    setNotice('')
+    try {
+      const saved = await api.saveOutreachGoldenExample({
+        title: source.title.trim() || source.subject.trim(),
+        industry: source.industry.trim(),
+        buyerType: source.buyerType.trim(),
+        productLine: source.productLine.trim(),
+        market: source.market.trim(),
+        subject: source.subject.trim(),
+        body: source.body.trim(),
+        tags: Array.isArray(source.tags) ? source.tags : splitAssetLines(source.tags),
+        sourceDraftId: input?.sourceDraftId,
+        qualityScore: input?.qualityScore,
+        enabled: true,
+      })
+      setGoldenExamples([saved, ...goldenExamples])
+      if (!input?.sourceDraftId) setGoldenDraft({ title: '', industry: '', buyerType: '', productLine: '', market: '', subject: '', body: '', tags: '' })
+      setNotice('黄金邮件样例已保存。以后写信会参考它的质量和表达方式。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function saveCurrentDraftAsGoldenExample() {
+    const sourceDraftId = activeDraftId
+    await saveGoldenExampleAsset({
+      title: draftSubject.trim() ? `${draftSubject.trim()} 样例` : '开发信好样例',
+      industry: selectedLead?.industry || workflow?.research.industry || '',
+      buyerType: workflow?.research.buyerType || '',
+      productLine: activeStrategyMatch?.selectedUsp || '',
+      subject: draftSubject,
+      body: draftBody,
+      tags: ['golden', 'single'],
+      sourceDraftId,
+      qualityScore: activeQualityReview?.score,
+    })
+  }
+
+  async function saveCampaignDraftAsGoldenExample() {
+    if (!selectedCampaignRecipient?.draft) return
+    await saveGoldenExampleAsset({
+      title: campaignDraftSubject.trim() ? `${campaignDraftSubject.trim()} 样例` : `${selectedCampaignRecipient.companyName} 好样例`,
+      industry: selectedCampaignRecipient.draft.strategyMatch?.buyerPain || '',
+      buyerType: selectedCampaignRecipient.companyName,
+      productLine: selectedCampaignRecipient.draft.strategyMatch?.selectedUsp || '',
+      subject: campaignDraftSubject,
+      body: campaignDraftBody,
+      tags: ['golden', 'campaign'],
+      sourceDraftId: selectedCampaignRecipient.draft.id,
+      qualityScore: selectedCampaignRecipient.draft.qualityReview?.score,
+    })
   }
 
   function toggleCampaignLead(leadId: string) {
@@ -2562,7 +3434,8 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
-        researchDepth: campaignResearchDepth,
+        generationMode: 'deep',
+        researchDepth: 'adaptive',
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
       replaceCampaign(campaign)
@@ -2585,10 +3458,10 @@ function DevelopmentLetterPage({
     setError('')
     setNotice('')
     try {
-      const campaign = await api.generateOutreachCampaign(selectedCampaign.id)
-      replaceCampaign(campaign)
-      setGenerationCompletedAt(new Date().toISOString())
-      setNotice(copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
+      const started = await api.startOutreachCampaignGeneration(selectedCampaign.id)
+      replaceCampaign({ ...started, status: 'generating' })
+      setNotice('批量生成已开始，写好一封会自动显示一封。')
+      void watchCampaignGeneration(selectedCampaign.id, (campaign) => copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -2634,6 +3507,44 @@ function DevelopmentLetterPage({
       setNotice(copy.devLetter.batch.status.skipped)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function retryCampaignRecipient(recipient: OutreachCampaignRecipient) {
+    if (!selectedCampaign) return
+    setBusy(`campaignRetry:${recipient.id}`)
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.retryOutreachCampaignRecipient(selectedCampaign.id, recipient.id)
+      replaceCampaign(campaign)
+      setSelectedCampaignRecipientId(recipient.id)
+      setNotice(`${recipient.companyName} 已重新生成开发信。`)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function exportCampaignCsv() {
+    if (!selectedCampaign) return
+    setBusy('campaignExport')
+    setError('')
+    setNotice('')
+    try {
+      const blob = await api.exportOutreachCampaignCsv(selectedCampaign.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = campaignExportFilename(selectedCampaign)
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setNotice('已导出批量开发信结果 CSV。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
     } finally {
       setBusy('')
     }
@@ -2879,17 +3790,18 @@ function DevelopmentLetterPage({
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
-        researchDepth: 'deep',
+        generationMode: 'deep',
+        researchDepth: 'adaptive',
         rateLimit: { maxPerHour: 10, minDelayMinutes: 6 }
       })
       replaceCampaign(created)
       setSelectedCampaignLeadIds([])
       setBulkImportText('')
       setLetterView('automation')
-      const generated = await api.generateOutreachCampaign(created.id)
-      replaceCampaign(generated)
-      setGenerationCompletedAt(new Date().toISOString())
-      setNotice(`已导入 ${result.imported.length} 个客户，并为 ${ready.length} 个客户逐个生成开发信。`)
+      const started = await api.startOutreachCampaignGeneration(created.id)
+      replaceCampaign({ ...started, status: 'generating' })
+      setNotice(`已导入 ${result.imported.length} 个客户，正在逐封生成，写好一封会自动显示一封。`)
+      void watchCampaignGeneration(created.id, (campaign) => `已导入 ${result.imported.length} 个客户，并为 ${campaign.stats.generated + campaign.stats.approved + campaign.stats.sent} 个客户逐个生成开发信。`)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'fileUpload'))
     } finally {
@@ -2937,6 +3849,7 @@ function DevelopmentLetterPage({
       await importAndGenerateLetterLeads(text)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
       setBusy('')
     }
   }
@@ -2990,6 +3903,7 @@ function DevelopmentLetterPage({
         leadId: lead.id,
         language,
         tone,
+        generationMode: 'deep',
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel
       })
@@ -3010,25 +3924,26 @@ function DevelopmentLetterPage({
 
   async function autoGenerateDraft() {
     if (!requireCompanyKnowledge()) return
-    if (!quickWebsite.trim() || !quickEmail.trim()) {
-      setError(copy.devLetter.warnings.quickRequired)
+    if (!quickValidation.ready) {
+      setError(quickValidation.disabledHint || copy.devLetter.warnings.quickRequired)
       return
     }
-    setGenerationMode('quick')
+    setGenerationMode('single')
     setGenerationOpen(true)
     setGenerationCompletedAt('')
     setBusy('auto')
     setError('')
     setNotice('')
     try {
-      const next = await api.autoGenerateOutreachWorkflow({
-        website: quickWebsite.trim(),
+      const next = await api.autoGenerateOutreachDraft({
+        website: quickValidation.normalizedWebsite,
         email: quickEmail.trim(),
         language,
         tone,
         providerId: defaultProvider?.id,
         model: defaultProvider?.defaultModel,
-        researchDepth: quickResearchDepth
+        generationMode: 'deep',
+        researchDepth: 'adaptive'
       })
       const nextLeads = await api.outreachLeads()
       setLeads(nextLeads)
@@ -3037,13 +3952,12 @@ function DevelopmentLetterPage({
         const researchedLead = nextLeads.find((lead) => lead.id === next.leadId)
         if (researchedLead) setLeadDraft(leadFormFromLead(researchedLead))
       }
-      setDraft(undefined)
-      setWorkflow(next)
-      setSelectedEmailId(next.initialEmail.id)
-      setDraftSubject(next.initialEmail.subject)
-      setDraftBody(next.initialEmail.body)
-      setNotice(copy.devLetter.status.workflowGenerated)
-      setLetterView('leads')
+      setWorkflow(undefined)
+      setSelectedEmailId('')
+      setDraft(next)
+      setDraftSubject(next.subject)
+      setDraftBody(next.body)
+      setNotice(copy.devLetter.status.researched)
       setGenerationCompletedAt(new Date().toISOString())
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -3062,7 +3976,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const next = await api.updateOutreachDraft(activeDraftId, { subject: draftSubject, body: draftBody, language, tone })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError, qualityReview: next.qualityReview })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: next.subject, body: next.body, status: next.status, sentAt: next.sentAt, sendError: next.sendError, qualityReview: next.qualityReview, sendRiskReview: next.sendRiskReview })
       else setDraft(next)
       setNotice(copy.devLetter.status.draftSaved)
       return next
@@ -3116,7 +4030,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const rewritten = await api.rewriteOutreachDraft(draftId, { providerId: defaultProvider?.id, model: defaultProvider?.defaultModel })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: rewritten.subject, body: rewritten.body, status: rewritten.status, sentAt: rewritten.sentAt, sendError: rewritten.sendError, qualityReview: rewritten.qualityReview, strategyMatch: rewritten.strategyMatch, sendRiskReview: rewritten.sendRiskReview, researchBrief: rewritten.researchBrief })
       else setDraft(rewritten)
       setDraftSubject(rewritten.subject)
       setDraftBody(rewritten.body)
@@ -3202,12 +4116,14 @@ function DevelopmentLetterPage({
   }
 
   async function saveSender() {
-    if (!senderDraft.label.trim() || !senderDraft.email.trim() || (!senderApiChannelSelected && !senderDraft.host.trim())) {
+    const effectiveSenderChannelId = mailAdvancedOpen ? senderChannelId : 'smtp'
+    const effectiveApiChannelSelected = effectiveSenderChannelId !== 'smtp'
+    if (!senderDraft.label.trim() || !senderDraft.email.trim() || (!effectiveApiChannelSelected && !senderDraft.host.trim())) {
       setError(copy.devLetter.warnings.senderRequired)
       return undefined
     }
-    const sendChannel = sendChannelFromSenderChannel(senderChannelId)
-    const provider = providerFromSenderChannel(senderChannelId, senderProviderId)
+    const sendChannel = sendChannelFromSenderChannel(effectiveSenderChannelId)
+    const provider = providerFromSenderChannel(effectiveSenderChannelId, senderProviderId)
     const apiCredential = senderDraft.apiCredential.trim()
     const apiAccountId = senderDraft.apiAccountId.trim()
     const apiBaseUrl = senderDraft.apiBaseUrl.trim()
@@ -3251,21 +4167,23 @@ function DevelopmentLetterPage({
   }
 
   async function saveSignature() {
+    const text = signatureDraft.text.trim()
+    const hasLogo = Boolean(emailSignature?.logo)
     setBusy('signature')
     setError('')
     setNotice('')
     try {
       const saved = await api.saveOutreachEmailSignature({
-        enabled: signatureDraft.enabled,
-        text: signatureDraft.text.trim(),
-        html: signatureDraft.html.trim(),
-        logoEnabled: signatureDraft.logoEnabled,
-        logoAlt: signatureDraft.logoAlt.trim() || 'Company logo',
-        logoWidth: Number(signatureDraft.logoWidth || 120),
+        enabled: Boolean(text || hasLogo),
+        text,
+        html: '',
+        logoEnabled: hasLogo,
+        logoAlt: `${companyProfile.name || 'Company'} logo`,
+        logoWidth: 120,
       })
       setEmailSignature(saved)
       setSignatureDraft(signatureFormFromSettings(saved, companyProfile))
-      setNotice('邮件签名和 Logo 设置已保存。')
+      setNotice('邮件签名和 Logo 已保存。之后发送开发信会自动带上。')
       return saved
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
@@ -3346,6 +4264,44 @@ function DevelopmentLetterPage({
     }
   }
 
+  function openSenderAuthGuide() {
+    const url = senderAuthGuide.url
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setNotice(`已打开 ${senderProvider.label} 授权码页面。复制授权码后粘贴到这里，再点击“保存并测试邮箱”。`)
+      return
+    }
+    setMailAdvancedOpen(true)
+    setNotice('这个邮箱服务商无法自动打开授权码页面，请在高级设置里填写 SMTP 主机、端口和授权码。')
+  }
+
+  async function saveAndTestSender() {
+    const sender = await saveSender()
+    if (!sender) return
+    setBusy('mailSetup')
+    setError('')
+    setNotice('')
+    try {
+      const tested = await api.testOutreachSenderAccount(sender.id)
+      replaceSenderAccount(tested.sender)
+      if (!tested.ok) {
+        setError(formatSenderDeliveryError(tested.message))
+        return
+      }
+      const emailed = await api.sendOutreachSenderTestEmail(sender.id)
+      replaceSenderAccount(emailed.sender)
+      if (emailed.ok) {
+        setNotice(`邮箱可用。已发送测试邮件到 ${sender.email}，收到后点击“确认已收到”。`)
+      } else {
+        setError(formatSenderDeliveryError(emailed.message))
+      }
+    } catch (err) {
+      setError(formatSenderDeliveryError(humanizeErrorMessage(err, copy, 'message')))
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function sendSenderExternalTestEmail() {
     const target = senderTestRecipient.trim()
     if (!target) return
@@ -3415,7 +4371,7 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const sent = await api.sendOutreachDraft(draftId, { senderAccountId: sender.id, to })
-      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError })
+      if (selectedWorkflowEmail) updateWorkflowEmail(selectedWorkflowEmail.id, { subject: sent.subject, body: sent.body, status: sent.status, sentAt: sent.sentAt, sendError: sent.sendError, sendRiskReview: sent.sendRiskReview })
       else setDraft(sent)
       setLeads(await api.outreachLeads())
       setNotice(copy.devLetter.status.sent)
@@ -3426,41 +4382,141 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function syncCloudNow() {
+    if (!cloudStatus.authenticated) return
+    setBusy('cloudSync')
+    setError('')
+    setNotice('')
+    try {
+      const next = await api.cloudSync(true)
+      setCloudStatus(next)
+      setNotice(next.learningRulesUpdatedAt ? '云端学习数据已同步，写信规则已更新。' : '云端学习数据已同步。')
+    } catch (err) {
+      const message = humanizeErrorMessage(err, copy, 'message')
+      setCloudStatus({ ...cloudStatus, lastSyncError: message })
+      setError(message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function refreshChatControl() {
+    const [channels, bindings, commands] = await Promise.all([api.channels(), api.chatControlBindings(), api.chatControlCommands({ limit: 20 })])
+    setChatControlChannels(channels.filter((channel) => chatControlKinds.has(channel.kind)))
+    setChatControlBindings(bindings.filter((binding) => chatControlKinds.has(binding.platform)))
+    setChatControlCommands(commands)
+  }
+
+  async function startChatControlBinding(platform: ChannelRecord['kind']) {
+    const option = chatControlPlatformOptions.find((item) => item.id === platform)
+    setBusy(`chatBind:${platform}`)
+    setError('')
+    setNotice('')
+    try {
+      const binding = await api.createChatControlBinding({
+        platform,
+        label: `${option?.label ?? platform} 聊天控制`
+      })
+      await refreshChatControl()
+      setNotice(binding.relayUrl
+        ? `${option?.label ?? platform} 绑定二维码已生成，请用对应平台扫码确认。`
+        : '二维码已生成，但当前安装包还没有配置 Hermills 云端聊天中转；可以先用“测试连接”验证本地执行链路。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function testChatControlBinding(sessionId: string) {
+    setBusy(`chatBindTest:${sessionId}`)
+    setError('')
+    setNotice('')
+    try {
+      const binding = await api.testChatControlBinding(sessionId)
+      await refreshChatControl()
+      setNotice(binding.status === 'connected'
+        ? '聊天助手测试成功。你现在可以发送“今日状态”或“写开发信”。'
+        : binding.error || '聊天助手测试未通过。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function runChatControlText() {
+    if (!chatControlText.trim()) return
+    setBusy('chatControl')
+    setError('')
+    setNotice('')
+    try {
+      const command = await api.createChatControlCommand({
+        channelId: activeChatControlChannel?.id,
+        platform: chatControlPlatform,
+        conversationId: 'local-preview',
+        senderId: 'local-user',
+        senderDisplayName: 'Local preview',
+        rawText: chatControlText,
+        executeNow: true
+      })
+      await refreshChatControl()
+      setNotice(command.resultText || command.error || '聊天命令已执行。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   const letterNavItems: Array<{ id: LetterOutreachView; label: string; icon: LucideIcon }> = [
     { id: 'dashboard', label: '今日外联', icon: Clock },
     { id: 'leads', label: '客户', icon: Users },
-    { id: 'compose', label: '写信', icon: Pencil },
-    { id: 'automation', label: '批量任务', icon: Zap },
+    { id: 'compose', label: '单封写信', icon: Pencil },
+    { id: 'automation', label: '批量写信', icon: Zap },
+    { id: 'assets', label: '销售资产', icon: ShieldCheck },
     { id: 'mail', label: '邮箱', icon: Settings },
+    { id: 'chatControl', label: '聊天控制', icon: MessageCircle },
     { id: 'signature', label: '签名Logo', icon: ImageIcon },
     { id: 'profile', label: '公司资料', icon: UserRound },
   ]
   const letterTitle = letterNavItems.find((item) => item.id === letterView)?.label ?? '今日外联'
+  const cloudSidebarStatus = cloudStatus.lastSyncError
+    ? { className: 'warning', label: '云端同步失败' }
+    : cloudStatus.authenticated
+      ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '自动学习已更新' : cloudStatus.lastSyncAt ? '自动学习已同步' : '云端大脑已连接' }
+      : cloudStatus.configured
+        ? { className: 'muted', label: '本地模式' }
+        : { className: 'muted', label: '云端大脑未启用' }
   const letterSubtitle = letterView === 'dashboard'
     ? '查看今天要处理的客户、草稿、发送和回复'
     : letterView === 'leads'
       ? '查看、筛选和维护所有潜在客户'
       : letterView === 'compose'
-        ? '输入客户网站和邮箱，生成可审核的开发信'
+        ? '一次只输入一个客户，生成可审核的定制开发信'
         : letterView === 'automation'
-          ? '批量生成开发信、逐封审核和跟进客户'
-          : letterView === 'mail'
-            ? '配置 SMTP、API 通道和外发测试'
-            : letterView === 'signature'
-              ? '保存邮件签名和 Logo，之后所有开发信自动使用'
-              : '维护 AI 写信时使用的公司资料'
+          ? '导入客户名单，批量生成开发信、逐封审核和跟进'
+          : letterView === 'assets'
+            ? '维护买家画像、USP 和 CTA 资产，让每封邮件有证据、有卖点、有下一步'
+            : letterView === 'mail'
+              ? '填写邮箱和授权码，Hermills 自动配置 SMTP 并测试可用性'
+              : letterView === 'chatControl'
+                ? '连接微信官方入口、飞书、钉钉和 QQ，用聊天命令控制 Hermills'
+                : letterView === 'signature'
+                  ? '保存邮件签名和 Logo，之后所有开发信自动使用'
+                  : '维护 AI 写信时使用的公司资料'
 
   return (
-    <div className="letter-app-shell">
-      <aside className="letter-sidebar" aria-label="外联导航">
-        <div className="letter-brand">
-          <div className="letter-logo"><Mail size={18} /></div>
+    <div className="hm-outreach-shell hm-ui-v2">
+      <aside className="hm-sidebar" aria-label="Hermills 外联导航">
+        <div className="hm-brand">
+          <div className="hm-brand-mark"><Mail size={18} /></div>
           <div>
             <strong>Outbound Mail OS</strong>
             <span>Hermills 本地版</span>
           </div>
         </div>
-        <nav className="letter-nav">
+        <nav className="hm-nav">
           {letterNavItems.map((item) => {
             const Icon = item.icon
             return (
@@ -3471,259 +4527,348 @@ function DevelopmentLetterPage({
             )
           })}
         </nav>
-        <div className="letter-sidebar-footer">
+        <div className="hm-sidebar-footer">
           <span className={companyReady ? 'ready' : 'warning'}>{companyReady ? '公司资料已准备' : '公司资料待完善'}</span>
+          <span className={cloudSidebarStatus.className}>{cloudSidebarStatus.label}</span>
+          {cloudStatus.authenticated && cloudStatus.lastSyncError ? (
+            <button type="button" onClick={syncCloudNow} disabled={busy === 'cloudSync'}>
+              <RefreshCw size={15} /> {busy === 'cloudSync' ? '重试中' : '重试同步'}
+            </button>
+          ) : null}
           <button type="button" onClick={onOpenCompanyKnowledge}>打开公司资料</button>
           <button type="button" onClick={onOpenChat}><Bot size={15} /> AI 助手</button>
           <button type="button" onClick={onOpenSettings}><Settings size={15} /> 系统设置</button>
         </div>
       </aside>
 
-      <main className="letter-main">
-        <header className="letter-page-header">
+      <main className="hm-main">
+        <header className="hm-page-header">
           <div>
             <h1>{letterTitle}</h1>
             <p>{letterSubtitle}</p>
           </div>
           {letterView === 'dashboard' ? (
-            <button className="letter-primary compact" type="button" onClick={() => setLetterView('compose')}>
-              开始写信 <ChevronRight size={16} />
+            <button className="hm-primary-button compact" type="button" onClick={() => setLetterView('compose')}>
+              写单封开发信 <ChevronRight size={16} />
             </button>
           ) : null}
         </header>
 
         {error ? (
-          <div className="letter-alert error">
+          <div className="hm-alert error">
             <AlertCircle size={16} />
             <span>{error}</span>
-            <button className="letter-alert-copy" type="button" onClick={() => void navigator.clipboard?.writeText(error)} aria-label={copy.errors.copyDetails}>
+            <button className="hm-alert-copy" type="button" onClick={() => void navigator.clipboard?.writeText(error)} aria-label={copy.errors.copyDetails}>
               <Copy size={14} /> {copy.errors.copyDetails}
             </button>
           </div>
         ) : null}
-        {notice ? <div className="letter-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
+        {notice ? <div className="hm-alert success"><CheckCircle2 size={16} /><span>{notice}</span></div> : null}
 
         {letterView === 'dashboard' ? (
-          <div className="letter-view">
-            <section className="letter-stats-grid" aria-label="客户状态统计">
+          <div className="hm-page hm-today-workspace">
+            <OutreachStatusBanner
+              tone={cloudStatus.authenticated ? 'success' : cloudStatus.configured ? 'warning' : 'info'}
+              title={cloudStatus.authenticated ? '自动学习已开启' : cloudStatus.configured ? '本地模式' : '本地外联工作台'}
+              action={<OutreachButton variant="secondary" onClick={() => setLetterView('compose')}>写单封开发信</OutreachButton>}
+            >
+              {cloudStatus.authenticated
+                ? 'Hermills 会在本地完成写信流程，并持续上传脱敏后的学习数据。'
+                : '登录系统已临时关闭。你可以先在本地写信、审核和发送。'}
+            </OutreachStatusBanner>
+
+            <section className="hm-dashboard-stats" aria-label="客户状态统计">
               {[
-                { label: '总客户', value: letterStats.total, icon: Users, tone: 'orange' },
-                { label: '待生成', value: letterStats.new, icon: Zap, tone: 'blue' },
-                { label: '待发送', value: letterStats.drafted, icon: Send, tone: 'amber' },
-                { label: '等待回复', value: letterStats.waiting, icon: Clock, tone: 'violet' },
-                { label: '已回复', value: letterStats.replied, icon: CheckCircle2, tone: 'green' },
+                { label: '总客户', value: letterStats.total, icon: <Users size={20} />, tone: 'orange' as const, view: 'leads' as const },
+                { label: '待生成', value: letterStats.new, icon: <Zap size={20} />, tone: 'blue' as const, view: 'automation' as const },
+                { label: '待发送', value: letterStats.drafted, icon: <Send size={20} />, tone: 'orange' as const, view: 'automation' as const },
+                { label: '等待回复', value: letterStats.waiting, icon: <Clock size={20} />, tone: 'purple' as const, view: 'automation' as const },
+                { label: '已回复', value: letterStats.replied, icon: <CheckCircle2 size={20} />, tone: 'green' as const, view: 'leads' as const },
               ].map((stat) => {
-                const Icon = stat.icon
                 return (
-                  <button className="letter-stat-card" type="button" key={stat.label} onClick={() => setLetterView(stat.label === '总客户' ? 'leads' : 'automation')}>
-                    <span>{stat.label}</span>
-                    <strong>{stat.value}</strong>
-                    <i className={stat.tone}><Icon size={20} /></i>
+                  <button className="hm-dashboard-stat-button" type="button" key={stat.label} onClick={() => setLetterView(stat.view)}>
+                    <OutreachStatCard label={stat.label} value={stat.value} tone={stat.tone} icon={stat.icon} />
                   </button>
                 )
               })}
             </section>
 
-            <section className="letter-quick-actions" aria-label="今日外联快捷入口">
-              <button className="letter-action-card" type="button" onClick={() => setLetterView('compose')}>
-                <span><Mail size={18} /></span>
-                <strong>写新开发信</strong>
-                <small>输入客户网站和邮箱，生成首封邮件和跟进序列。</small>
-              </button>
-              <button className="letter-action-card" type="button" onClick={() => setLetterView('leads')}>
-                <span><Users size={18} /></span>
-                <strong>整理客户</strong>
-                <small>筛选待生成、待发送、已回复客户并补齐资料。</small>
-              </button>
-              <button className="letter-action-card" type="button" onClick={() => setLetterView('automation')}>
-                <span><Zap size={18} /></span>
-                <strong>处理批量任务</strong>
-                <small>逐封审核批量草稿，安排发送、跟进和回复检查。</small>
-              </button>
-              <button className="letter-action-card" type="button" onClick={() => setLetterView('mail')}>
-                <span><Settings size={18} /></span>
-                <strong>检查邮箱</strong>
-                <small>{senderDeliveryReady ? '发件邮箱已确认，可以发送已审核邮件。' : '先保存并测试邮箱，确认收到测试邮件。'}</small>
-              </button>
+            <section className="hm-dashboard-actions" aria-label="今日外联快捷入口">
+              {[
+                { title: '写单封开发信', detail: '输入一个客户网站和邮箱，生成首封邮件和跟进序列。', icon: <Mail size={18} />, view: 'compose' as const },
+                { title: '整理客户', detail: '筛选待生成、待发送、已回复客户并补齐资料。', icon: <Users size={18} />, view: 'leads' as const },
+                { title: '批量写开发信', detail: '导入客户名单，写好一封就显示一封，逐封审核再发送。', icon: <Zap size={18} />, view: 'automation' as const },
+                { title: '检查邮箱', detail: senderDeliveryReady ? '发件邮箱已确认，可以发送已审核邮件。' : '先保存并测试邮箱，确认收到测试邮件。', icon: <Settings size={18} />, view: 'mail' as const },
+              ].map((action) => (
+                <OutreachCard className="hm-dashboard-action-card" key={action.title}>
+                  <button className="hm-dashboard-card-button" type="button" onClick={() => setLetterView(action.view)}>
+                    <span>{action.icon}</span>
+                    <strong>{action.title}</strong>
+                    <small>{action.detail}</small>
+                    <em>打开 <ChevronRight size={15} /></em>
+                  </button>
+                </OutreachCard>
+              ))}
             </section>
 
             {(letterStats.new > 0 || letterStats.drafted > 0) ? (
-              <section className="letter-automation-banner">
-                <div>
-                  <Zap size={18} />
-                  <div>
-                    <strong>自动化中心就绪</strong>
-                    <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
-              </section>
+              <OutreachStatusBanner
+                tone="info"
+                title="批量写信中心就绪"
+                action={<OutreachButton variant="secondary" onClick={() => setLetterView('automation')}>前往批量写信</OutreachButton>}
+              >
+                {letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送。
+              </OutreachStatusBanner>
             ) : null}
           </div>
         ) : null}
 
         {letterView === 'compose' ? (
-          <div className="letter-view">
-            <section className="letter-two-column">
-              <div className="letter-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Globe2 size={18} /> 新增客户</h2>
-                    <p>输入客户网站和邮箱，AI 会自动分析并生成首封开发信。</p>
-                  </div>
+          <div className="hm-page hm-single-workspace">
+            <section className="hm-single-compose">
+              <OutreachCard
+                title="单个客户"
+                description="输入一个客户的网站和邮箱，Hermills 会自动背调官网并生成首封开发信。"
+                icon={<Globe2 size={18} />}
+              >
+                <div className="hm-form-grid quick-lead-form" aria-label="新增客户输入">
+                  <OutreachField id="hm-quick-email" label="客户邮箱" error={quickEmailError}>
+                    <OutreachInput
+                      id="hm-quick-email"
+                      name="quickCustomerEmail"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={quickEmail}
+                      onChange={(event) => setQuickEmail(event.currentTarget.value)}
+                      placeholder="buyer@company.com"
+                      aria-invalid={quickEmailError ? true : undefined}
+                    />
+                  </OutreachField>
+                  <OutreachField id="hm-quick-website" label="客户网站" error={quickWebsiteError}>
+                    <OutreachInput
+                      ref={quickWebsiteRef}
+                      id="hm-quick-website"
+                      name="quickCustomerWebsite"
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
+                      value={quickWebsite}
+                      onChange={(event) => setQuickWebsite(event.currentTarget.value)}
+                      onBlur={() => setQuickWebsite((current) => normalizeCustomerWebsite(current))}
+                      placeholder="https://company.com"
+                      aria-invalid={quickWebsiteError ? true : undefined}
+                    />
+                  </OutreachField>
                 </div>
-                <div className="letter-form-grid">
-                  <label>客户邮箱<input value={quickEmail} onChange={(event) => setQuickEmail(event.target.value)} placeholder="buyer@company.com" /></label>
-                  <label>客户网站<input value={quickWebsite} onChange={(event) => setQuickWebsite(event.target.value)} placeholder="https://company.com" /></label>
+                <OutreachStatusBanner tone="success" title="自适应深度分析">
+                  后台会优先深度抓取官网、产品页和联系页；失败时自动轻量兜底，不需要手动选择模式。
+                </OutreachStatusBanner>
+                <div className="hm-depth-flow" aria-label="自适应深度分析流程">
+                  <span>官网结构</span>
+                  <span>高价值页面</span>
+                  <span>采购线索</span>
+                  <span>开发信草稿</span>
                 </div>
-                <div className="campaign-depth-picker letter-depth-picker">
-                  <div>
-                    <strong>客户背调方式</strong>
-                    <small>普通适合日常开发，深度会调用内置爬取引擎分析更多官网页面。</small>
-                  </div>
-                  <div className="campaign-depth-options">
-                    {(['standard', 'deep'] as OutreachResearchDepth[]).map((depth) => (
-                      <button
-                        className={quickResearchDepth === depth ? 'active' : ''}
-                        type="button"
-                        key={depth}
-                        onClick={() => setQuickResearchDepth(depth)}
-                      >
-                        <strong>{depth === 'deep' ? '深度分析' : '普通分析'}</strong>
-                        <span>{depth === 'deep' ? '多页/动态官网' : '快速官网背调'}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button className="letter-primary full" type="button" disabled={!quickLeadReady || busy === 'auto'} onClick={autoGenerateDraft}>
-                  {busy === 'auto' ? '正在深度分析并生成开发信...' : '深度分析并生成开发信'} <ChevronRight size={16} />
-                </button>
-              </div>
-
-              <div className="letter-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Upload size={18} /> 批量导入</h2>
-                    <p>支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。</p>
-                  </div>
-                </div>
-                <label className="letter-drop-zone">
-                  <FileText size={24} />
-                  <span>点击选择 Excel / CSV 文件</span>
-                  <small>支持 .xlsx、.xls、.csv、.txt</small>
-                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
-                </label>
-                <label className="letter-drop-zone letter-drop-zone-primary">
-                  <Zap size={24} />
-                  <span>选择文件并生成开发信</span>
-                  <small>一个邮箱一个客户，每个客户单独背调和写信</small>
-                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
-                </label>
-                <textarea className="letter-import-textarea" value={bulkImportText} onChange={(event) => setBulkImportText(event.target.value)} placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com" />
-                <button className="letter-primary full" type="button" disabled={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} onClick={() => importAndGenerateLetterLeads()}>
-                  批量导入并生成开发信
-                </button>
-                <button className="letter-secondary full" type="button" disabled={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
-                  仅导入客户
-                </button>
-              </div>
+                <OutreachButton variant="primary" className="full" disabled={!quickLeadReady || busy === 'auto'} loading={busy === 'auto'} onClick={autoGenerateDraft}>
+                  {busy === 'auto' ? '正在分析客户官网并生成开发信...' : '分析客户官网并生成开发信'}
+                </OutreachButton>
+                {!quickLeadReady ? <p className="hm-form-hint">{quickValidation.disabledHint}</p> : null}
+              </OutreachCard>
+              <aside className="hm-single-note">
+                <strong>批量客户请去“批量写信”</strong>
+                <span>单封写信页只处理一个客户，批量导入、逐客户智能体生成、批量审核和跟进都集中在批量写信页。</span>
+                <button className="hm-secondary" type="button" onClick={() => setLetterView('automation')}>打开批量写信 <ChevronRight size={16} /></button>
+              </aside>
             </section>
 
-            {(letterStats.new > 0 || letterStats.drafted > 0) ? (
-              <section className="letter-automation-banner">
-                <div>
-                  <Zap size={18} />
-                  <div>
-                    <strong>自动化中心就绪</strong>
-                    <span>{letterStats.new} 个客户待生成邮件 · {letterStats.drafted} 封邮件待发送</span>
+            {(singleGenerationRunning || hasVisibleSingleDraft) ? (
+              <section className="hm-single-result" aria-label="单封写信生成结果">
+                <OutreachStatusBanner
+                  tone={singleGenerationRunning ? 'info' : activeQualityReview?.passed ? 'success' : 'warning'}
+                  title={singleGenerationRunning ? 'Hermills 正在写这封开发信' : '已生成开发信草稿'}
+                >
+                  {singleGenerationRunning ? '你可以看到每一步进度。生成完成后，主题、正文、证据和质量评分会出现在这里。' : '请先审核邮件内容、证据和质量分，确认后再发送。'}
+                </OutreachStatusBanner>
+                <div className="hm-single-result-grid">
+                  <OutreachCard title="生成过程" description="这里显示可审核的工作步骤，不展示模型内部私密推理链。" icon={<Brain size={18} />}>
+                    {singleGenerationRunning ? <div className="hm-operation-progress" role="progressbar" aria-label="正在生成开发信" /> : null}
+                    <OutreachTimeline steps={singleWriteTimelineSteps} />
+                  </OutreachCard>
+                  <div className="hm-single-review-panel">
+                    <OutreachCard
+                      title="开发信草稿"
+                      description={draftSubject.trim() || draftBody.trim() ? '你可以直接编辑主题和正文，再保存、检查质量或发送。' : '生成完成后主题和正文会出现在这里。'}
+                      icon={<Mail size={18} />}
+                      actions={activeDraftStatus ? <span className="hm-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+                    >
+                      {draftSubject.trim() || draftBody.trim() ? (
+                        <>
+                          <OutreachEmailEditor
+                            subject={draftSubject}
+                            body={draftBody}
+                            subjectLabel="邮件主题"
+                            bodyLabel="邮件正文"
+                            onSubjectChange={setDraftSubject}
+                            onBodyChange={setDraftBody}
+                          />
+                          <OutreachStickyActionBar>
+                            <OutreachButton variant="primary" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</OutreachButton>
+                            <OutreachButton disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</OutreachButton>
+                            <OutreachButton disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</OutreachButton>
+                            <OutreachButton disabled={!draftSubject.trim() || !draftBody.trim()} onClick={copyDraft}>复制草稿</OutreachButton>
+                            <OutreachButton disabled={!canSendSingleDraft} title={singleSendBlocker} onClick={sendDraft}>确认发送</OutreachButton>
+                          </OutreachStickyActionBar>
+                        </>
+                      ) : (
+                        <OutreachEmptyState title="还没有生成开发信" description="Hermills 正在整理客户官网、公司资料和开发角度，完成后会显示可编辑草稿。" />
+                      )}
+                    </OutreachCard>
                   </div>
+                  <aside className="hm-single-review-panel">
+                    <LetterQualitySummary
+                      review={activeQualityReview}
+                      strategy={activeStrategyMatch}
+                      riskReview={activeRiskReview}
+                      researchBrief={activeResearchBrief}
+                      leadFitScore={activeLeadFitScore}
+                      evidenceLock={activeEvidenceLock}
+                      valueMatch={activeValueMatch}
+                      learningSignal={activeLearningSignal}
+                      evidenceUsed={activeEvidenceUsed}
+                      generationSummary={activeGenerationSummary}
+                      matchedExampleCount={activeMatchedExampleCount}
+                      modelUsed={activeModelUsed}
+                      stale={singleDraftChanged}
+                      copy={copy}
+                    />
+                  </aside>
                 </div>
-                <button type="button" onClick={() => setLetterView('automation')}>前往批量任务 <ChevronRight size={16} /></button>
               </section>
             ) : null}
           </div>
         ) : null}
 
         {letterView === 'leads' ? (
-          <div className="letter-view">
-            <section className="letter-toolbar">
-              <label className="letter-search"><Search size={16} /><input value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="搜索公司、邮箱、联系人..." /></label>
-              <div className="letter-filter-row">
+          <div className="hm-page hm-customer-workspace">
+            <section className="hm-toolbar hm-leads-toolbar">
+              <OutreachField id="hm-lead-search" label="搜索客户">
+                <OutreachInput
+                  id="hm-lead-search"
+                  value={leadSearch}
+                  onChange={(event) => setLeadSearch(event.currentTarget.value)}
+                  placeholder="搜索公司、邮箱、联系人..."
+                />
+              </OutreachField>
+              <div className="hm-filter-row">
                 {letterLeadFilters.map((filter) => (
-                  <button key={filter.id} className={leadFilter === filter.id ? 'active' : ''} type="button" onClick={() => setLeadFilter(filter.id)}>
+                  <OutreachButton key={filter.id} className={leadFilter === filter.id ? 'active' : ''} variant={leadFilter === filter.id ? 'primary' : 'secondary'} onClick={() => setLeadFilter(filter.id)}>
                     {filter.label}
                     <span>{filter.id === 'all' ? leads.length : leads.filter((lead) => leadMatchesLetterFilter(lead, filter.id)).length}</span>
-                  </button>
+                  </OutreachButton>
                 ))}
               </div>
             </section>
 
             {selectedLetterLeadIds.length ? (
-              <section className="letter-selection-bar">
-                <strong>已选择 {selectedLetterLeadIds.length} 个客户</strong>
-                <button type="button" onClick={() => setSelectedLetterLeadIds(filteredLetterLeads.map((lead) => lead.id))}>全选当前</button>
-                <button type="button" onClick={() => setSelectedLetterLeadIds([])}>取消选择</button>
-                <button className="danger" type="button" disabled={busy === 'deleteLeads'} onClick={deleteSelectedLetterLeads}>删除所选</button>
-              </section>
+              <OutreachStatusBanner
+                tone="warning"
+                title={`已选择 ${selectedLetterLeadIds.length} 个客户`}
+                action={(
+                  <>
+                    <OutreachButton variant="secondary" onClick={() => setSelectedLetterLeadIds(filteredLetterLeads.map((lead) => lead.id))}>全选当前</OutreachButton>
+                    <OutreachButton variant="secondary" onClick={() => setSelectedLetterLeadIds([])}>取消选择</OutreachButton>
+                    <OutreachButton variant="danger" disabled={busy === 'deleteLeads'} loading={busy === 'deleteLeads'} onClick={deleteSelectedLetterLeads}>删除所选</OutreachButton>
+                  </>
+                )}
+              >
+                批量操作只影响当前勾选的客户，不会删除未勾选记录。
+              </OutreachStatusBanner>
             ) : null}
 
-            <section className="letter-leads-layout">
-              <div className="letter-lead-list">
-                <div className="letter-result-count">{filteredLetterLeads.length} 条结果</div>
+            <section className="hm-leads-workspace">
+              <OutreachCard
+                className="hm-leads-master"
+                title="客户列表"
+                description="筛选、选择并打开客户记录；右侧会显示可编辑资料和生成草稿。"
+                icon={<Users size={18} />}
+                actions={<span className="hm-result-count">{filteredLetterLeads.length} 条结果</span>}
+              >
+                <div className="hm-lead-list">
+                <div className="hm-result-count">{filteredLetterLeads.length} 条结果</div>
                 {filteredLetterLeads.length ? filteredLetterLeads.map((lead) => (
-                  <article className={`letter-lead-row ${selectedLeadId === lead.id ? 'active' : ''}`} key={lead.id} onClick={() => { setSelectedLeadId(lead.id); setLeadDraft(leadFormFromLead(lead)) }}>
-                    <input type="checkbox" checked={selectedLetterLeadIds.includes(lead.id)} onChange={() => toggleLetterLeadSelection(lead.id)} onClick={(event) => event.stopPropagation()} />
-                    <div className="letter-lead-avatar"><Building2 size={18} /></div>
-                    <div className="letter-lead-main">
-                      <strong>{lead.companyName || lead.website || lead.email}</strong>
-                      <span>{lead.email || '未填写邮箱'} · {lead.website || '未填写网站'}</span>
-                    </div>
-                    <div className="letter-lead-status">
-                      <span className={`letter-status-dot ${lead.statusColor}`} />
-                      <em>{letterLeadStatusLabel(lead)}</em>
-                      <small>{letterStateLabels[lead.currentState] ?? lead.currentState}</small>
-                    </div>
-                  </article>
+                  <OutreachLeadRow
+                    key={lead.id}
+                    company={lead.companyName || lead.website || lead.email || '未命名客户'}
+                    email={lead.email || '未填写邮箱'}
+                    website={lead.website || '未填写网站'}
+                    status={`${letterLeadStatusLabel(lead)} · ${letterStateLabels[lead.currentState] ?? lead.currentState}`}
+                    score={lead.leadFitScore?.score}
+                    selected={selectedLeadId === lead.id}
+                    checked={selectedLetterLeadIds.includes(lead.id)}
+                    mark={<Building2 size={18} />}
+                    onToggle={() => toggleLetterLeadSelection(lead.id)}
+                    onSelect={() => { setSelectedLeadId(lead.id); setLeadDraft(leadFormFromLead(lead)) }}
+                  />
                 )) : (
-                  <div className="letter-empty">
-                    <Globe2 size={32} />
-                    <strong>暂无客户数据</strong>
-                    <span>在写信页添加客户网站和邮箱开始分析。</span>
-                  </div>
+                  <OutreachEmptyState
+                    icon={<Globe2 size={24} />}
+                    title="暂无客户数据"
+                    description="在单封写信页添加客户网站和邮箱，Hermills 会自动保存客户并生成开发信。"
+                    action={<OutreachButton variant="primary" onClick={() => setLetterView('compose')}>写第一封开发信</OutreachButton>}
+                  />
                 )}
-              </div>
+                </div>
+              </OutreachCard>
 
-              <div className="letter-panel letter-detail-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2>{selectedLead ? '客户详情' : '新增客户'}</h2>
-                    <p>保存后可以生成开发信，也可以加入批量任务。</p>
+              <aside className="hm-leads-detail">
+                <OutreachCard
+                  title={selectedLead ? '客户详情' : '新增客户'}
+                  description="保存后可以生成开发信，也可以加入批量写信。"
+                  icon={<Building2 size={18} />}
+                  actions={selectedLead ? <OutreachBadge tone="blue">{letterLeadStatusLabel(selectedLead)}</OutreachBadge> : null}
+                >
+                  <div className="hm-form-grid">
+                    <OutreachField id="lead-company-name" label="公司名称">
+                      <OutreachInput id="lead-company-name" value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.currentTarget.value)} />
+                    </OutreachField>
+                    <OutreachField id="lead-email" label="客户邮箱">
+                      <OutreachInput id="lead-email" value={leadDraft.email} onChange={(event) => updateLead('email', event.currentTarget.value)} />
+                    </OutreachField>
+                    <OutreachField id="lead-contact" label="联系人">
+                      <OutreachInput id="lead-contact" value={leadDraft.contactName} onChange={(event) => updateLead('contactName', event.currentTarget.value)} />
+                    </OutreachField>
+                    <OutreachField id="lead-title" label="职位">
+                      <OutreachInput id="lead-title" value={leadDraft.contactTitle} onChange={(event) => updateLead('contactTitle', event.currentTarget.value)} />
+                    </OutreachField>
+                    <OutreachField id="lead-website" label="网站">
+                      <OutreachInput id="lead-website" value={leadDraft.website} onChange={(event) => updateLead('website', event.currentTarget.value)} />
+                    </OutreachField>
+                    <OutreachField id="lead-country" label="国家/地区">
+                      <OutreachInput id="lead-country" value={leadDraft.country} onChange={(event) => updateLead('country', event.currentTarget.value)} />
+                    </OutreachField>
                   </div>
-                  {selectedLead ? <span className="letter-badge">{letterLeadStatusLabel(selectedLead)}</span> : null}
-                </div>
-                <div className="letter-form-grid">
-                  <label>公司名称<input value={leadDraft.companyName} onChange={(event) => updateLead('companyName', event.target.value)} /></label>
-                  <label>客户邮箱<input value={leadDraft.email} onChange={(event) => updateLead('email', event.target.value)} /></label>
-                  <label>联系人<input value={leadDraft.contactName} onChange={(event) => updateLead('contactName', event.target.value)} /></label>
-                  <label>职位<input value={leadDraft.contactTitle} onChange={(event) => updateLead('contactTitle', event.target.value)} /></label>
-                  <label>网站<input value={leadDraft.website} onChange={(event) => updateLead('website', event.target.value)} /></label>
-                  <label>国家/地区<input value={leadDraft.country} onChange={(event) => updateLead('country', event.target.value)} /></label>
-                </div>
-                <label className="letter-field">客户需求<textarea value={leadDraft.need} onChange={(event) => updateLead('need', event.target.value)} placeholder="客户可能在找什么？" /></label>
-                <label className="letter-field">备注<textarea value={leadDraft.notes} onChange={(event) => updateLead('notes', event.target.value)} /></label>
-                <div className="letter-action-row letter-sticky-actions">
-                  <button className="letter-secondary" type="button" onClick={() => { setSelectedLeadId(''); setLeadDraft(emptyLeadDraft()) }}>新建</button>
-                  <button className="letter-primary" type="button" disabled={busy === 'lead'} onClick={saveLead}>保存客户</button>
-                  <button className="letter-secondary" type="button" disabled={!selectedLead || busy === 'generate'} onClick={generateDraft}>生成草稿</button>
-                </div>
+                  <OutreachField id="lead-need" label="客户需求">
+                    <OutreachTextarea id="lead-need" value={leadDraft.need} onChange={(event) => updateLead('need', event.currentTarget.value)} placeholder="客户可能在找什么？" />
+                  </OutreachField>
+                  <OutreachField id="lead-notes" label="备注">
+                    <OutreachTextarea id="lead-notes" value={leadDraft.notes} onChange={(event) => updateLead('notes', event.currentTarget.value)} />
+                  </OutreachField>
+                  <OutreachStickyActionBar>
+                    <OutreachButton variant="secondary" onClick={() => { setSelectedLeadId(''); setLeadDraft(emptyLeadDraft()) }}>新建</OutreachButton>
+                    <OutreachButton variant="primary" disabled={busy === 'lead'} loading={busy === 'lead'} onClick={saveLead}>保存客户</OutreachButton>
+                    <OutreachButton variant="secondary" disabled={!selectedLead || busy === 'generate'} loading={busy === 'generate'} onClick={generateDraft}>生成草稿</OutreachButton>
+                  </OutreachStickyActionBar>
+                </OutreachCard>
+
                 {hasVisibleSingleDraft ? (
-                  <section className="letter-draft-card" aria-label="生成的开发信草稿">
-                    <div className="letter-draft-heading">
+                  <section className="hm-leads-draft-review" aria-label="生成的开发信草稿">
+                    <div className="hm-draft-heading">
                       <div>
                         <h3><Mail size={17} /> 生成的开发信</h3>
                         <p>生成完成后会显示在这里。你可以修改、复制、检查质量，再决定是否发送。</p>
                       </div>
-                      {activeDraftStatus ? <span className="letter-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
+                      {activeDraftStatus ? <span className="hm-badge">{copy.devLetter.results.status[activeDraftStatus]}</span> : null}
                     </div>
                     <LetterGenerationTrace
                       mode={generationMode}
@@ -3733,7 +4878,7 @@ function DevelopmentLetterPage({
                       onToggle={setGenerationOpen}
                     />
                     {workflowEmails.length > 1 ? (
-                      <div className="letter-email-sequence-tabs" aria-label="选择邮件序列">
+                      <div className="hm-email-sequence-tabs" aria-label="选择邮件序列">
                         {workflowEmails.map((email) => (
                           <button className={selectedWorkflowEmail?.id === email.id ? 'active' : ''} type="button" key={email.id} onClick={() => selectWorkflowEmail(email)}>
                             {email.step === 0 ? copy.devLetter.results.firstEmail : copy.devLetter.results.followUp(email.step)}
@@ -3743,298 +4888,692 @@ function DevelopmentLetterPage({
                     ) : null}
                     {draftSubject.trim() || draftBody.trim() ? (
                       <>
-                        <label className="letter-field">邮件主题<input value={draftSubject} onChange={(event) => setDraftSubject(event.target.value)} /></label>
-                        <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={draftBody} onChange={(event) => setDraftBody(event.target.value)} /></label>
-                        <LetterQualitySummary review={activeQualityReview} stale={singleDraftChanged} copy={copy} />
-                        <div className="letter-action-row wrap letter-sticky-actions">
-                          <button className="letter-primary" type="button" disabled={!activeDraftId || busy === 'draft'} onClick={saveDraftEdits}>保存草稿</button>
-                          <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
-                          <button className="letter-secondary" type="button" disabled={!activeDraftId || busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
-                          <button className="letter-secondary" type="button" disabled={!draftSubject.trim() || !draftBody.trim()} onClick={copyDraft}>复制草稿</button>
-                          <button className="letter-secondary" type="button" disabled={!canSendSingleDraft} title={singleSendBlocker} onClick={sendDraft}>确认发送</button>
-                        </div>
+                        <OutreachEmailEditor
+                          subject={draftSubject}
+                          body={draftBody}
+                          subjectLabel="邮件主题"
+                          bodyLabel="邮件正文"
+                          onSubjectChange={setDraftSubject}
+                          onBodyChange={setDraftBody}
+                        />
+                        <LetterQualitySummary
+                          review={activeQualityReview}
+                          strategy={activeStrategyMatch}
+                          riskReview={activeRiskReview}
+                          researchBrief={activeResearchBrief}
+                          leadFitScore={activeLeadFitScore}
+                          evidenceLock={activeEvidenceLock}
+                          valueMatch={activeValueMatch}
+                          learningSignal={activeLearningSignal}
+                          evidenceUsed={activeEvidenceUsed}
+                          generationSummary={activeGenerationSummary}
+                          matchedExampleCount={activeMatchedExampleCount}
+                          modelUsed={activeModelUsed}
+                          stale={singleDraftChanged}
+                          copy={copy}
+                        />
+                        <OutreachStickyActionBar>
+                          <OutreachButton variant="primary" disabled={!activeDraftId || busy === 'draft'} loading={busy === 'draft'} onClick={saveDraftEdits}>保存草稿</OutreachButton>
+                          <OutreachButton variant="secondary" disabled={!activeDraftId || busy === 'reviewDraft'} loading={busy === 'reviewDraft'} onClick={reviewCurrentDraft}>{busy === 'reviewDraft' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</OutreachButton>
+                          <OutreachButton variant="secondary" disabled={!activeDraftId || busy === 'rewriteDraft'} loading={busy === 'rewriteDraft'} onClick={rewriteCurrentDraft}>{busy === 'rewriteDraft' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</OutreachButton>
+                          <OutreachButton variant="secondary" disabled={!activeDraftId || busy === 'assetGoldenFromDraft'} loading={busy === 'assetGoldenFromDraft'} onClick={saveCurrentDraftAsGoldenExample}>保存为好样例</OutreachButton>
+                          <OutreachButton variant="secondary" disabled={!draftSubject.trim() || !draftBody.trim()} onClick={copyDraft}>复制草稿</OutreachButton>
+                          <OutreachButton variant="primary" disabled={!canSendSingleDraft} title={singleSendBlocker} onClick={sendDraft}>确认发送</OutreachButton>
+                        </OutreachStickyActionBar>
                       </>
                     ) : (
-                      <div className="letter-empty small">生成中会先整理客户和公司资料，完成后主题和正文会出现在这里。</div>
+                      <OutreachEmptyState title="草稿生成中" description="Hermills 会先整理客户和公司资料，完成后主题和正文会出现在这里。" />
                     )}
                   </section>
                 ) : null}
-              </div>
+              </aside>
             </section>
           </div>
         ) : null}
 
         {letterView === 'automation' ? (
-          <div className="letter-view">
-            <section className="letter-stats-grid compact">
+          <div className="hm-page hm-batch-workspace">
+            <section className="hm-batch-stats">
               {[
-                { label: '待生成', value: letterStats.new, icon: Users, tone: 'blue' },
-                { label: '待发送', value: letterStats.drafted, icon: Mail, tone: 'amber' },
-                { label: '批量已发送', value: selectedCampaign?.stats.sent ?? 0, icon: Send, tone: 'green' },
-                { label: '需跟进', value: campaignFollowUpStats.ready + campaignFollowUpStats.scheduled, icon: Clock, tone: 'rose' },
-                { label: '已回复', value: selectedCampaign?.stats.replied ?? letterStats.replied, icon: CheckCircle2, tone: 'violet' },
+                { label: '待生成', value: letterStats.new, icon: Users, tone: 'blue' as const },
+                { label: '待发送', value: letterStats.drafted, icon: Mail, tone: 'orange' as const },
+                { label: '批量已发送', value: selectedCampaign?.stats.sent ?? 0, icon: Send, tone: 'green' as const },
+                { label: '需跟进', value: campaignFollowUpStats.ready + campaignFollowUpStats.scheduled, icon: Clock, tone: 'red' as const },
+                { label: '已回复', value: selectedCampaign?.stats.replied ?? letterStats.replied, icon: CheckCircle2, tone: 'purple' as const },
               ].map((stat) => {
                 const Icon = stat.icon
-                return <div className="letter-stat-card" key={stat.label}><span>{stat.label}</span><strong>{stat.value}</strong><i className={stat.tone}><Icon size={20} /></i></div>
+                return <OutreachStatCard key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} icon={<Icon size={20} />} />
               })}
             </section>
 
-            <section className="letter-two-column">
-              <div className="letter-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Zap size={18} /> 批量智能体队列</h2>
-                    <p>选择客户后创建批量任务；每个客户都会单独背调并生成一封开发信。</p>
-                  </div>
-                </div>
-                <div className="letter-action-row wrap">
-                  <button type="button" className="letter-secondary" onClick={() => setSelectedCampaignLeadIds(leads.filter((lead) => leadMatchesLetterFilter(lead, 'new')).map((lead) => lead.id))}>选择待生成客户 ({letterStats.new})</button>
-                  <button type="button" className="letter-secondary" onClick={() => setSelectedCampaignLeadIds(leads.map((lead) => lead.id))}>选择全部客户</button>
-                </div>
-                <label className="letter-field">Campaign 名称<input value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.target.value) }} /></label>
-                <div className="letter-action-row">
-                  <button className="letter-primary" type="button" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} onClick={createCampaign}>创建批量任务 ({selectedCampaignLeadIds.length})</button>
-                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'campaignGenerate'} onClick={generateCampaign}>逐客户智能体生成</button>
-                </div>
-              </div>
+            <section className="hm-batch-setup-grid">
+              <OutreachCard title="导入批量客户" description="支持 Excel / CSV，也可以直接粘贴“邮箱、网站、联系人”。" icon={<Upload size={18} />}>
+                <label className="hm-upload-control">
+                  <OutreachUploadDropzone
+                    title="点击选择 Excel / CSV 文件"
+                    description="支持 .xlsx、.xls、.csv、.txt"
+                    action="仅导入客户"
+                  />
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFile} />
+                </label>
+                <label className="hm-upload-control primary">
+                  <OutreachUploadDropzone
+                    title="选择文件并生成开发信"
+                    description="一个邮箱一个客户，每个客户单独背调和写信；写好一封会自动显示一封。"
+                    action="选择文件并启动批量生成"
+                  />
+                  <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={importLetterFileAndGenerate} />
+                </label>
+                <OutreachField id="hm-bulk-import-text" label="手动粘贴客户">
+                  <OutreachTextarea
+                    id="hm-bulk-import-text"
+                    value={bulkImportText}
+                    onChange={(event) => setBulkImportText(event.currentTarget.value)}
+                    placeholder="buyer@example.com, https://example.com, John Smith&#10;another@company.com, https://company.com"
+                  />
+                </OutreachField>
+                <OutreachButton className="full" variant="primary" disabled={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} loading={busy === 'letterImportGenerate' || busy === 'letterFileGenerate'} onClick={() => importAndGenerateLetterLeads()}>
+                  批量导入并生成开发信
+                </OutreachButton>
+                <OutreachButton className="full" variant="secondary" disabled={busy === 'letterImport' || busy === 'letterFile'} loading={busy === 'letterImport' || busy === 'letterFile'} onClick={() => importLetterLeads()}>
+                  仅导入客户
+                </OutreachButton>
+              </OutreachCard>
 
-              <div className="letter-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Send size={18} /> 发送和跟进</h2>
-                    <p>发送前会检查发件邮箱、草稿质量和用户确认。</p>
-                  </div>
-                  {selectedCampaign ? <span className="letter-badge">{selectedCampaign.status}</span> : null}
+              <OutreachCard title="批量智能体队列" description="选择客户后创建批量写信任务；每个客户都会单独背调并生成一封开发信。" icon={<Zap size={18} />}>
+                <div className="hm-action-row wrap">
+                  <OutreachButton variant="secondary" onClick={() => setSelectedCampaignLeadIds(leads.filter((lead) => leadMatchesLetterFilter(lead, 'new')).map((lead) => lead.id))}>选择待生成客户 ({letterStats.new})</OutreachButton>
+                  <OutreachButton variant="secondary" onClick={() => setSelectedCampaignLeadIds(leads.map((lead) => lead.id))}>选择全部客户</OutreachButton>
                 </div>
+                <OutreachField id="hm-campaign-name" label="Campaign 名称">
+                  <OutreachInput id="hm-campaign-name" value={campaignName} onChange={(event) => { campaignNameEditedRef.current = true; setCampaignName(event.currentTarget.value) }} />
+                </OutreachField>
+                <OutreachStickyActionBar>
+                  <OutreachButton variant="primary" disabled={!selectedCampaignLeadIds.length || busy === 'campaignCreate'} aria-busy={busy === 'campaignCreate'} loading={busy === 'campaignCreate'} onClick={createCampaign}>创建批量写信 ({selectedCampaignLeadIds.length})</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'campaignGenerate'} aria-busy={busy === 'campaignGenerate'} loading={busy === 'campaignGenerate'} onClick={generateCampaign}>逐客户智能体生成</OutreachButton>
+                </OutreachStickyActionBar>
+              </OutreachCard>
+
+              <OutreachCard className="hm-batch-send-card" title="发送和跟进" description="发送前会检查发件邮箱、草稿质量和用户确认。" icon={<Send size={18} />} actions={selectedCampaign ? <OutreachBadge tone="blue">{selectedCampaign.status}</OutreachBadge> : null}>
                 {selectedCampaign ? (
-                  <div className="letter-campaign-summary">
+                  <div className="hm-campaign-summary">
                     <strong>{selectedCampaign.name}</strong>
                     <span>{selectedCampaign.stats.generated} 待审核 · {selectedCampaign.stats.approved} 可发送 · {selectedCampaign.stats.sent} 已发送</span>
                   </div>
-                ) : <div className="letter-empty small">还没有批量任务。先选择客户创建批量任务。</div>}
-                <div className="letter-action-row wrap">
-                  <button className="letter-primary" type="button" disabled={!selectedCampaign || busy === 'campaignSend'} onClick={startCampaign}>一键发送</button>
-                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</button>
-                  <button className="letter-secondary" type="button" disabled={busy === 'followUpsTick'} onClick={runFollowUpTick}>检查跟进</button>
-                  <button className="letter-secondary" type="button" disabled={!selectedCampaign || busy === 'inboxCheck'} onClick={checkCampaignInbox}>检查回复</button>
+                ) : <OutreachEmptyState title="还没有批量写信任务" description="先导入或选择客户，再创建批量写信任务。" />}
+                <div className="hm-action-row wrap">
+                  <OutreachButton variant="primary" disabled={!selectedCampaign || busy === 'campaignSend'} aria-busy={busy === 'campaignSend'} loading={busy === 'campaignSend'} onClick={startCampaign}>一键发送</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'followUpsSchedule'} aria-busy={busy === 'followUpsSchedule'} loading={busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={busy === 'followUpsTick'} aria-busy={busy === 'followUpsTick'} loading={busy === 'followUpsTick'} onClick={runFollowUpTick}>检查跟进</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'inboxCheck'} aria-busy={busy === 'inboxCheck'} loading={busy === 'inboxCheck'} onClick={checkCampaignInbox}>检查回复</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'campaignExport'} aria-busy={busy === 'campaignExport'} loading={busy === 'campaignExport'} onClick={exportCampaignCsv}>导出 CSV</OutreachButton>
                 </div>
                 {nextFollowUps.length ? (
-                  <div className="letter-followup-list">
+                  <div className="hm-followup-list">
                     {nextFollowUps.map((job) => <span key={job.id}>{job.companyName} · {job.status} · {new Date(job.sendAt).toLocaleString()}</span>)}
                   </div>
                 ) : null}
-              </div>
+              </OutreachCard>
             </section>
             {hasVisibleCampaignDraft ? (
-              <section className="letter-panel letter-campaign-review-panel">
-                <div className="letter-panel-heading">
-                  <div>
-                    <h2><Eye size={18} /> 逐封查看生成邮件</h2>
-                    <p>批量生成后，每个客户的邮件都会在这里显示。检查通过后才会发送。</p>
-                  </div>
-                  {selectedCampaign ? <span className="letter-badge">{selectedCampaign.stats.generated} 待审核</span> : null}
-                </div>
-                <LetterGenerationTrace
-                  mode="campaign"
-                  running={campaignGenerationRunning}
-                  completedAt={campaignGenerationCompletedAt}
-                  open={generationOpen}
-                  onToggle={setGenerationOpen}
-                />
+              <OutreachCard
+                className="hm-campaign-review-panel"
+                title="逐封查看生成邮件"
+                description="批量生成后，每个客户的邮件都会在这里显示；写好一封会自动显示一封，检查通过后才会发送。"
+                icon={<Eye size={18} />}
+                actions={selectedCampaign ? <OutreachBadge tone="purple">{selectedCampaign.stats.generated} 待审核</OutreachBadge> : null}
+              >
+                {campaignGenerationRunning ? <div className="hm-operation-progress" role="progressbar" aria-label="正在批量生成开发信" /> : null}
+                <OutreachTimeline steps={campaignTimelineSteps} />
                 {selectedCampaign ? (
-                  <div className="letter-campaign-review-grid">
-                    <div className="letter-recipient-list" aria-label="批量客户邮件列表">
+                  <div className="hm-batch-review-workspace">
+                    <div className="hm-batch-recipient-list" aria-label="批量客户邮件列表">
                       {campaignRecipients.length ? campaignRecipients.map((recipient) => (
-                        <button
-                          className={`letter-recipient-row ${selectedCampaignRecipient?.id === recipient.id ? 'active' : ''}`}
-                          type="button"
+                        <OutreachLeadRow
                           key={recipient.id}
-                          onClick={() => setSelectedCampaignRecipientId(recipient.id)}
-                        >
-                          <strong>{recipient.companyName}</strong>
-                          <span>{recipient.email || copy.devLetter.batch.missingEmail}</span>
-                          <small>{copy.devLetter.batch.recipientStatus[recipient.status]}</small>
-                        </button>
-                      )) : <div className="letter-empty small">这批任务里还没有客户。</div>}
+                          company={recipient.companyName}
+                          email={recipient.email || copy.devLetter.batch.missingEmail}
+                          website={recipient.website}
+                          status={copy.devLetter.batch.recipientStatus[recipient.status]}
+                          score={recipient.draft?.qualityReview?.score}
+                          selected={selectedCampaignRecipient?.id === recipient.id}
+                          mark={<Mail size={18} />}
+                          onSelect={() => setSelectedCampaignRecipientId(recipient.id)}
+                        />
+                      )) : <OutreachEmptyState title="这批任务里还没有客户" description="先选择客户并创建批量写信任务。" />}
                     </div>
-                    <div className="letter-campaign-draft-view">
+                    <div className="hm-campaign-draft-view">
                       {selectedCampaignRecipient?.draft ? (
                         <>
-                          <div className="letter-draft-heading compact">
+                          <div className="hm-draft-heading compact">
                             <div>
                               <h3>{selectedCampaignRecipient.companyName}</h3>
                               <p>{selectedCampaignRecipient.website} · {selectedCampaignRecipient.email}</p>
                             </div>
-                            <span className="letter-badge">{copy.devLetter.batch.recipientStatus[selectedCampaignRecipient.status]}</span>
+                            <span className="hm-badge">{copy.devLetter.batch.recipientStatus[selectedCampaignRecipient.status]}</span>
                           </div>
-                          <label className="letter-field">邮件主题<input value={campaignDraftSubject} onChange={(event) => setCampaignDraftSubject(event.target.value)} /></label>
-                          <label className="letter-field">邮件正文<textarea className="letter-draft-body" value={campaignDraftBody} onChange={(event) => setCampaignDraftBody(event.target.value)} /></label>
-                          <LetterQualitySummary review={campaignQualityReview} stale={campaignDraftChanged} copy={copy} />
-                          <div className="letter-action-row wrap">
-                            <button className="letter-secondary" type="button" disabled={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>{busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</button>
-                            <button className="letter-secondary" type="button" disabled={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>{busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</button>
-                            <button className="letter-primary" type="button" disabled={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>{copy.devLetter.batch.actions.approve}</button>
-                            <button className="letter-secondary" type="button" disabled={!campaignDraftSubject.trim() || !campaignDraftBody.trim()} onClick={() => copyEmailDraft(campaignDraftSubject, campaignDraftBody)}>复制草稿</button>
-                            <button className="letter-secondary" type="button" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>{copy.devLetter.batch.actions.skip}</button>
-                          </div>
+                          <OutreachEmailEditor
+                            subject={campaignDraftSubject}
+                            body={campaignDraftBody}
+                            subjectLabel="邮件主题"
+                            bodyLabel="邮件正文"
+                            onSubjectChange={setCampaignDraftSubject}
+                            onBodyChange={setCampaignDraftBody}
+                          />
+                          <LetterQualitySummary
+                            review={campaignQualityReview}
+                            strategy={campaignStrategyMatch}
+                            riskReview={campaignRiskReview}
+                            researchBrief={campaignResearchBrief}
+                            leadFitScore={campaignLeadFitScore}
+                            evidenceLock={campaignEvidenceLock}
+                            valueMatch={campaignValueMatch}
+                            learningSignal={campaignLearningSignal}
+                            evidenceUsed={campaignEvidenceUsed}
+                            generationSummary={campaignGenerationSummary}
+                            matchedExampleCount={campaignMatchedExampleCount}
+                            modelUsed={campaignModelUsed}
+                            stale={campaignDraftChanged}
+                            copy={copy}
+                          />
+                          <OutreachStickyActionBar>
+                            <OutreachButton variant="secondary" disabled={busy === 'campaignReviewQuality'} loading={busy === 'campaignReviewQuality'} onClick={reviewCampaignRecipient}>{busy === 'campaignReviewQuality' ? copy.devLetter.quality.reviewing : copy.devLetter.quality.review}</OutreachButton>
+                            <OutreachButton variant="secondary" disabled={busy === 'campaignRewriteQuality'} loading={busy === 'campaignRewriteQuality'} onClick={rewriteCampaignRecipient}>{busy === 'campaignRewriteQuality' ? copy.devLetter.quality.rewriting : copy.devLetter.quality.rewrite}</OutreachButton>
+                            <OutreachButton variant="primary" disabled={busy === 'campaignApprove'} loading={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>{copy.devLetter.batch.actions.approve}</OutreachButton>
+                            <OutreachButton variant="secondary" disabled={busy === 'assetGoldenFromDraft'} loading={busy === 'assetGoldenFromDraft'} onClick={saveCampaignDraftAsGoldenExample}>保存为好样例</OutreachButton>
+                            <OutreachButton variant="secondary" disabled={!campaignDraftSubject.trim() || !campaignDraftBody.trim()} onClick={() => copyEmailDraft(campaignDraftSubject, campaignDraftBody)}>复制草稿</OutreachButton>
+                            {selectedCampaignRecipient.status === 'failed' || selectedCampaignRecipient.status === 'skipped' ? (
+                              <OutreachButton variant="secondary" disabled={busy === `campaignRetry:${selectedCampaignRecipient.id}`} loading={busy === `campaignRetry:${selectedCampaignRecipient.id}`} onClick={() => retryCampaignRecipient(selectedCampaignRecipient)}>重试失败项</OutreachButton>
+                            ) : null}
+                            <OutreachButton variant="secondary" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} loading={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>{copy.devLetter.batch.actions.skip}</OutreachButton>
+                          </OutreachStickyActionBar>
                         </>
                       ) : (
-                        <div className="letter-empty small">
-                          {campaignGenerationRunning ? '正在生成这批客户的邮件，完成后会在这里逐封显示。' : copy.devLetter.batch.emptyReview}
-                        </div>
+                        <>
+                          <OutreachEmptyState
+                            title={campaignGenerationRunning ? '正在逐封生成' : '还没有可审核草稿'}
+                            description={campaignGenerationRunning ? '写好一封会自动显示一封，你不用等整批客户全部完成。' : copy.devLetter.batch.emptyReview}
+                          />
+                          {selectedCampaignRecipient?.status === 'failed' || selectedCampaignRecipient?.status === 'skipped' ? (
+                            <OutreachStickyActionBar>
+                              <OutreachButton variant="primary" disabled={busy === `campaignRetry:${selectedCampaignRecipient.id}`} loading={busy === `campaignRetry:${selectedCampaignRecipient.id}`} onClick={() => retryCampaignRecipient(selectedCampaignRecipient)}>重试失败项</OutreachButton>
+                            </OutreachStickyActionBar>
+                          ) : null}
+                        </>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="letter-empty small">先选择客户并创建批量任务，生成后即可逐封查看邮件。</div>
+                  <OutreachEmptyState title="还没有批量写信任务" description="先导入或选择客户并创建批量写信，生成后即可逐封查看邮件。" />
                 )}
-              </section>
+              </OutreachCard>
             ) : null}
           </div>
         ) : null}
 
-        {letterView === 'profile' ? (
-          <div className="letter-view">
-            <section className="letter-panel">
-              <div className="letter-panel-heading">
-                <div>
-                  <h2><UserRound size={18} /> 公司资料</h2>
-                  <p>Hermills 会用这些公司资料写开发信、研究客户和回复买家。</p>
+        {letterView === 'assets' ? (
+          <div className="hm-page hm-assets-workspace">
+            <section className="hm-assets-stat-grid" aria-label="销售资产统计">
+              {[
+                { label: '买家画像', value: buyerPersonas.length, icon: <Users size={20} />, tone: 'blue' as const },
+                { label: 'USP 库', value: uspAssets.length, icon: <ShieldCheck size={20} />, tone: 'green' as const },
+                { label: 'CTA 资产', value: ctaAssets.length, icon: <FileText size={20} />, tone: 'orange' as const },
+                { label: '黄金样例', value: goldenExamples.length, icon: <Star size={20} />, tone: 'red' as const },
+                { label: '公司资料', value: companyMaterials.length, icon: <FolderOpen size={20} />, tone: 'purple' as const },
+              ].map((stat) => (
+                <OutreachStatCard key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} icon={stat.icon} />
+              ))}
+            </section>
+
+            <section className="hm-assets-grid">
+              <OutreachCard
+                title="买家画像库"
+                description="提前保存常见买家角色，AI 写信时会用它判断买家痛点和采购触发点。"
+                icon={<Users size={18} />}
+              >
+                <div className="hm-assets-form-grid">
+                  <OutreachField id="asset-persona-name" label="画像名称">
+                    <OutreachInput id="asset-persona-name" value={personaDraft.name} onChange={(event) => setPersonaDraft({ ...personaDraft, name: event.currentTarget.value })} placeholder="Flooring importer / Contractor distributor" />
+                  </OutreachField>
+                  <OutreachField id="asset-persona-type" label="公司类型">
+                    <OutreachInput id="asset-persona-type" value={personaDraft.companyType} onChange={(event) => setPersonaDraft({ ...personaDraft, companyType: event.currentTarget.value })} placeholder="importer, distributor, retailer..." />
+                  </OutreachField>
+                  <OutreachField id="asset-persona-roles" label="买家角色">
+                    <OutreachInput id="asset-persona-roles" value={personaDraft.buyerRoles} onChange={(event) => setPersonaDraft({ ...personaDraft, buyerRoles: event.currentTarget.value })} placeholder="采购经理, category manager, owner" />
+                  </OutreachField>
+                  <OutreachField id="asset-persona-pains" label="典型痛点">
+                    <OutreachTextarea id="asset-persona-pains" value={personaDraft.painPoints} onChange={(event) => setPersonaDraft({ ...personaDraft, painPoints: event.currentTarget.value })} placeholder="lead time risk; certification proof; sample comparison" />
+                  </OutreachField>
                 </div>
-                <button className="letter-primary compact" type="button" onClick={onOpenCompanyKnowledge}>编辑公司资料</button>
-              </div>
-              <div className="letter-profile-grid">
+                <OutreachButton variant="primary" className="full" disabled={busy === 'assetPersona'} loading={busy === 'assetPersona'} onClick={saveBuyerPersonaAsset}>保存买家画像</OutreachButton>
+                <div className="hm-asset-list">
+                  {buyerPersonas.length ? buyerPersonas.slice(0, 6).map((persona) => (
+                    <article className="hm-asset-row" key={persona.id}>
+                      <strong>{persona.name}</strong>
+                      <span>{persona.companyType || persona.buyerRoles.join(', ') || '未补充类型'}</span>
+                    </article>
+                  )) : <OutreachEmptyState title="还没有买家画像" description="先保存一个常见客户类型，写信时就能更准确判断痛点。" />}
+                </div>
+              </OutreachCard>
+
+              <OutreachCard
+                title="USP 库"
+                description="不要让 AI 瞎编卖点。把真实 USP、证据和适用场景放在这里。"
+                icon={<ShieldCheck size={18} />}
+              >
+                <div className="hm-assets-form-grid">
+                  <OutreachField id="asset-usp-headline" label="USP 标题">
+                    <OutreachInput id="asset-usp-headline" value={uspDraft.headline} onChange={(event) => setUspDraft({ ...uspDraft, headline: event.currentTarget.value })} placeholder="Sample-ready SPC flooring options" />
+                  </OutreachField>
+                  <OutreachField id="asset-usp-category" label="分类">
+                    <OutreachInput id="asset-usp-category" value={uspDraft.category} onChange={(event) => setUspDraft({ ...uspDraft, category: event.currentTarget.value })} />
+                  </OutreachField>
+                  <OutreachField id="asset-usp-angle" label="买家角度">
+                    <OutreachTextarea id="asset-usp-angle" value={uspDraft.buyerAngle} onChange={(event) => setUspDraft({ ...uspDraft, buyerAngle: event.currentTarget.value })} placeholder="Why this matters to buyer sourcing risk, KPI or channel..." />
+                  </OutreachField>
+                  <OutreachField id="asset-usp-proof" label="可证明依据">
+                    <OutreachTextarea id="asset-usp-proof" value={uspDraft.proof} onChange={(event) => setUspDraft({ ...uspDraft, proof: event.currentTarget.value })} placeholder="Certification, sample policy, MOQ, lead time, catalog, case..." />
+                  </OutreachField>
+                </div>
+                <OutreachButton variant="primary" className="full" disabled={busy === 'assetUsp'} loading={busy === 'assetUsp'} onClick={saveUspAsset}>保存 USP</OutreachButton>
+                <div className="hm-asset-list">
+                  {uspAssets.length ? uspAssets.slice(0, 6).map((usp) => (
+                    <article className="hm-asset-row" key={usp.id}>
+                      <strong>{usp.headline}</strong>
+                      <span>{usp.buyerAngle || usp.proof || usp.category}</span>
+                    </article>
+                  )) : <OutreachEmptyState title="还没有 USP" description="保存后写信会优先匹配真实卖点。" />}
+                </div>
+              </OutreachCard>
+
+              <OutreachCard
+                className="hm-assets-wide"
+                title="CTA 资产库"
+                description="低摩擦 CTA 必须真的能交付。比如样品选项、MOQ/交期表、认证包、规格对比。"
+                icon={<FileText size={18} />}
+              >
+                <div className="hm-assets-form-grid">
+                  <OutreachField id="asset-cta-name" label="资产名称">
+                    <OutreachInput id="asset-cta-name" value={ctaDraft.name} onChange={(event) => setCtaDraft({ ...ctaDraft, name: event.currentTarget.value })} placeholder="2-3 sample-ready options" />
+                  </OutreachField>
+                  <OutreachField id="asset-cta-type" label="资产类型">
+                    <select id="asset-cta-type" className="outreach-input" value={ctaDraft.type} onChange={(event) => setCtaDraft({ ...ctaDraft, type: event.currentTarget.value as OutreachCtaAsset['type'] })}>
+                      <option value="sample_options">样品/选项包</option>
+                      <option value="moq_leadtime_sheet">MOQ/交期表</option>
+                      <option value="spec_comparison">规格对比</option>
+                      <option value="certification_pack">认证/证明包</option>
+                      <option value="catalog">产品目录</option>
+                      <option value="case_study">案例</option>
+                      <option value="packaging_options">包装选项</option>
+                      <option value="quote_range">报价范围</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </OutreachField>
+                  <OutreachField id="asset-cta-description" label="描述">
+                    <OutreachInput id="asset-cta-description" value={ctaDraft.description} onChange={(event) => setCtaDraft({ ...ctaDraft, description: event.currentTarget.value })} placeholder="What the buyer receives if they reply" />
+                  </OutreachField>
+                  <OutreachField id="asset-cta-text" label="资产内容">
+                    <OutreachTextarea id="asset-cta-text" value={ctaDraft.assetText} onChange={(event) => setCtaDraft({ ...ctaDraft, assetText: event.currentTarget.value })} placeholder="可交付内容、包含哪些信息、适合哪些客户..." />
+                  </OutreachField>
+                </div>
+                <OutreachButton variant="primary" className="full" disabled={busy === 'assetCta'} loading={busy === 'assetCta'} onClick={saveCtaAsset}>保存 CTA 资产</OutreachButton>
+                <div className="hm-asset-list columns">
+                  {ctaAssets.length ? ctaAssets.slice(0, 8).map((asset) => (
+                    <article className="hm-asset-row" key={asset.id}>
+                      <strong>{asset.name}</strong>
+                      <span>{asset.type.replace(/_/g, ' ')} · {asset.description || '未补充描述'}</span>
+                    </article>
+                  )) : <OutreachEmptyState title="还没有 CTA 资产" description="没有资产时，风控会阻止虚假的资料包承诺。" />}
+                </div>
+              </OutreachCard>
+
+              <OutreachCard
+                className="hm-assets-wide"
+                title="黄金邮件样例"
+                description="保存你认可的好邮件。以后 AI 写信会参考它的表达方式，但不会照抄客户信息。"
+                icon={<Star size={18} />}
+              >
+                <div className="hm-assets-form-grid">
+                  <OutreachField id="asset-golden-title" label="样例标题">
+                    <OutreachInput id="asset-golden-title" value={goldenDraft.title} onChange={(event) => setGoldenDraft({ ...goldenDraft, title: event.currentTarget.value })} placeholder="SPC importer first email" />
+                  </OutreachField>
+                  <OutreachField id="asset-golden-industry" label="行业 / 买家类型">
+                    <OutreachInput id="asset-golden-industry" value={goldenDraft.industry} onChange={(event) => setGoldenDraft({ ...goldenDraft, industry: event.currentTarget.value })} placeholder="flooring importer / distributor" />
+                  </OutreachField>
+                  <OutreachField id="asset-golden-product" label="产品线">
+                    <OutreachInput id="asset-golden-product" value={goldenDraft.productLine} onChange={(event) => setGoldenDraft({ ...goldenDraft, productLine: event.currentTarget.value })} placeholder="SPC / LVT / vinyl plank" />
+                  </OutreachField>
+                  <OutreachField id="asset-golden-tags" label="标签">
+                    <OutreachInput id="asset-golden-tags" value={goldenDraft.tags} onChange={(event) => setGoldenDraft({ ...goldenDraft, tags: event.currentTarget.value })} placeholder="warm, sample options, proof pack" />
+                  </OutreachField>
+                  <OutreachField id="asset-golden-subject" label="邮件主题">
+                    <OutreachInput id="asset-golden-subject" value={goldenDraft.subject} onChange={(event) => setGoldenDraft({ ...goldenDraft, subject: event.currentTarget.value })} placeholder="Short subject line" />
+                  </OutreachField>
+                  <OutreachField id="asset-golden-body" label="邮件正文">
+                    <OutreachTextarea id="asset-golden-body" value={goldenDraft.body} onChange={(event) => setGoldenDraft({ ...goldenDraft, body: event.currentTarget.value })} placeholder="Paste a strong email example here." />
+                  </OutreachField>
+                </div>
+                <OutreachButton variant="primary" className="full" disabled={busy === 'assetGolden'} loading={busy === 'assetGolden'} onClick={() => saveGoldenExampleAsset()}>保存黄金样例</OutreachButton>
+                <div className="hm-asset-list columns">
+                  {goldenExamples.length ? goldenExamples.slice(0, 8).map((example) => (
+                    <article className="hm-asset-row" key={example.id}>
+                      <strong>{example.title}</strong>
+                      <span>{example.subject} · {example.qualityScore ? `${example.qualityScore}/100` : '未评分'}</span>
+                    </article>
+                  )) : <OutreachEmptyState title="还没有黄金样例" description="可以从生成好的邮件里点击“保存为好样例”。" />}
+                </div>
+              </OutreachCard>
+            </section>
+          </div>
+        ) : null}
+
+        {letterView === 'profile' ? (
+          <div className="hm-page hm-company-workspace">
+            <OutreachStatusBanner
+              tone={companyReady ? 'success' : 'warning'}
+              title={companyReady ? '公司资料已准备' : '公司资料还需要补充'}
+              action={<OutreachButton variant="primary" onClick={onOpenCompanyKnowledge}>编辑公司资料</OutreachButton>}
+            >
+              Hermills 会用这些公司资料匹配客户背调、选择开发角度，并写出更可信的开发信。
+            </OutreachStatusBanner>
+            <section className="hm-profile-stat-grid" aria-label="公司资料概览">
+              <OutreachStatCard label="公司资料" value={companyMaterials.length} tone="blue" icon={<FolderOpen size={20} />} />
+              <OutreachStatCard label="买家画像" value={buyerPersonas.length} tone="purple" icon={<Users size={20} />} />
+              <OutreachStatCard label="可用 USP" value={uspAssets.length} tone="green" icon={<ShieldCheck size={20} />} />
+            </section>
+            <OutreachCard
+              title="公司资料"
+              description="这些内容会进入写信引擎，但不会展示给客户。"
+              icon={<UserRound size={18} />}
+              actions={<OutreachButton variant="secondary" onClick={onOpenCompanyKnowledge}>打开资料库</OutreachButton>}
+            >
+              <div className="hm-profile-grid">
                 <div><span>公司名称</span><strong>{companyProfile.name || '还没填写'}</strong></div>
                 <div><span>公司官网</span><strong>{companyProfile.website || '还没填写'}</strong></div>
                 <div><span>主营产品</span><strong>{companyProfile.mainProducts?.join(', ') || '还没填写'}</strong></div>
                 <div><span>认证资质</span><strong>{companyProfile.certifications?.join(', ') || '还没填写'}</strong></div>
-                <div><span>公司资料</span><strong>{companyMaterials.length} 个文件</strong></div>
+                <div><span>资料文件</span><strong>{companyMaterials.length} 个文件</strong></div>
                 <div><span>状态</span><strong>{companyReady ? '已准备好' : '需要补充资料'}</strong></div>
               </div>
+            </OutreachCard>
+          </div>
+        ) : null}
+
+        {letterView === 'chatControl' ? (
+          <div className="hm-page hm-chat-workspace">
+            <OutreachCard
+              title="聊天控制"
+              description="通过官方机器人/API 接收微信官方入口、飞书、钉钉和 QQ 消息，再让本地 Hermills 执行写信、查回复和审批发送。"
+              icon={<MessageCircle size={18} />}
+              actions={<OutreachButton variant="secondary" disabled={busy === 'chatRefresh'} loading={busy === 'chatRefresh'} onClick={() => void refreshChatControl()}>刷新</OutreachButton>}
+            >
+              <OutreachStatusBanner tone={activeChatControlBinding?.status === 'connected' ? 'success' : activeChatControlBinding ? 'info' : 'warning'} title={activeChatControlBinding ? chatControlBindingStatusLabel(activeChatControlBinding) : '先选择平台并生成二维码'}>
+                真正扫码使用需要云端中转地址和平台官方机器人配置；本地预览可以先验证命令链路。
+              </OutreachStatusBanner>
+              <div className="chat-control-grid chat-control-platform-grid">
+                {chatControlPlatformOptions.map((platform) => {
+                  const channel = chatControlChannels.find((item) => item.kind === platform.id)
+                  const active = chatControlPlatform === platform.id
+                  return (
+                    <button
+                      key={platform.id}
+                      className={`chat-control-platform ${active ? 'active' : ''}`}
+                      type="button"
+                      onClick={() => setChatControlPlatform(platform.id)}
+                    >
+                      <span>
+                        <strong>{platform.label}</strong>
+                        <small>{channel ? (channel.enabled ? '已启用' : '配置已保存') : '未配置'}</small>
+                      </span>
+                      <em>{platform.detail}</em>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="chat-control-setup">
+                <div>
+                  <strong><QrCode size={17} /> {chatControlPlatformOptions.find((item) => item.id === chatControlPlatform)?.label ?? chatControlPlatform} 扫码绑定</strong>
+                  <span>用户只需要扫码确认。后台会把平台消息发到 Hermills 云端中转，再由本机 Hermills 执行命令。</span>
+                  {activeChatControlBinding ? (
+                    <div className={`chat-binding-status ${activeChatControlBinding.status}`}>
+                      <CheckCircle2 size={15} />
+                      <span>{chatControlBindingStatusLabel(activeChatControlBinding)}</span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="chat-binding-actions">
+                  <OutreachButton variant="primary" disabled={busy === `chatBind:${chatControlPlatform}`} loading={busy === `chatBind:${chatControlPlatform}`} onClick={() => void startChatControlBinding(chatControlPlatform)}>
+                    {busy === `chatBind:${chatControlPlatform}` ? '正在生成...' : activeChatControlBinding ? '重新生成二维码' : '生成扫码二维码'}
+                  </OutreachButton>
+                  {activeChatControlBinding ? (
+                    <OutreachButton variant="secondary" disabled={busy === `chatBindTest:${activeChatControlBinding.id}`} loading={busy === `chatBindTest:${activeChatControlBinding.id}`} onClick={() => void testChatControlBinding(activeChatControlBinding.id)}>
+                      {busy === `chatBindTest:${activeChatControlBinding.id}` ? '测试中...' : '测试连接'}
+                    </OutreachButton>
+                  ) : null}
+                </div>
+              </div>
+              {activeChatControlBinding ? (
+                <div className="chat-binding-card">
+                  <div className="chat-binding-qr">
+                    {chatControlQr ? <img src={chatControlQr} alt="聊天助手绑定二维码" /> : <QrCode size={56} />}
+                  </div>
+                  <div className="chat-binding-copy">
+                    <strong>{activeChatControlBinding.qrPayload ? '用手机打开对应平台扫码' : '暂时不能扫码绑定'}</strong>
+                    <span>绑定码：<code>{activeChatControlBinding.bindingCode}</code></span>
+                    <span>{activeChatControlBinding.relayUrl ? '扫码后会自动发送“今日状态”测试。' : '当前安装包没有配置聊天云端中转地址，所以不能生成手机可打开的二维码。先用“测试连接”验证本地命令链路。'}</span>
+                    {activeChatControlBinding.bindingUrl ? <small>{activeChatControlBinding.bindingUrl}</small> : <small>需要在 hermills-cloud.json 里配置 chatRelayUrl 后重新生成二维码。</small>}
+                  </div>
+                </div>
+              ) : (
+                <div className="chat-binding-card empty">
+                  <QrCode size={28} />
+                  <span>选择一个平台，然后点击“生成扫码二维码”。</span>
+                </div>
+              )}
+            </OutreachCard>
+
+            <section className="chat-control-command-grid">
+              <OutreachCard title="命令预览" description="模拟聊天平台发来的一条消息，测试 Hermills 是否能正确执行。" icon={<Bot size={18} />}>
+                <OutreachField id="chat-control-text" label="聊天消息">
+                  <OutreachTextarea id="chat-control-text" value={chatControlText} onChange={(event) => setChatControlText(event.currentTarget.value)} placeholder="给 buyer@company.com https://company.com 写开发信" />
+                </OutreachField>
+                <div className="chat-command-examples">
+                  {['今日状态', '查看草稿', '检查回复', '给 buyer@company.com https://company.com 写开发信'].map((example) => (
+                    <button className="chat-command-chip" key={example} type="button" onClick={() => setChatControlText(example)}>{example}</button>
+                  ))}
+                </div>
+                <OutreachButton variant="primary" className="full" disabled={busy === 'chatControl' || !chatControlText.trim()} loading={busy === 'chatControl'} onClick={() => void runChatControlText()}>
+                  {busy === 'chatControl' ? '正在执行聊天命令...' : '执行聊天命令'}
+                </OutreachButton>
+              </OutreachCard>
+
+              <OutreachCard title="最近命令" description="手机或电脑聊天端发来的命令都会保存在这里，方便排查。" icon={<ListChecks size={18} />}>
+                <div className="chat-command-list">
+                  {chatControlCommands.length ? chatControlCommands.slice(0, 8).map((command) => (
+                    <article className={`chat-command-row ${command.status}`} key={command.id}>
+                      <div>
+                        <strong>{command.rawText}</strong>
+                        <span>{command.platform} · {command.action} · {command.status}</span>
+                      </div>
+                      <p>{command.resultText || command.error || '等待执行'}</p>
+                    </article>
+                  )) : <OutreachEmptyState title="还没有聊天命令" description="先在左侧发一条本地预览命令。" icon={<MessageCircle size={24} />} />}
+                </div>
+              </OutreachCard>
             </section>
           </div>
         ) : null}
 
         {letterView === 'signature' ? (
-          <div className="letter-view">
-            <section className="letter-panel signature-settings-panel">
-              <div className="letter-panel-heading">
-                <div>
-                  <h2><ImageIcon size={18} /> 签名与 Logo</h2>
-                  <p>保存一次，之后单封、批量和跟进开发信发送时都会自动带上。</p>
-                </div>
-                {emailSignature?.enabled ? <span className="letter-badge success">已启用</span> : <span className="letter-badge">未启用</span>}
-              </div>
-              <label className="letter-toggle-row">
-                <input type="checkbox" checked={signatureDraft.enabled} onChange={(event) => updateSignature('enabled', event.target.checked)} />
-                <span>发送开发信时自动追加邮件签名</span>
-              </label>
-              <div className="letter-form-grid">
-                <label className="letter-form-span">文字签名<textarea value={signatureDraft.text} onChange={(event) => updateSignature('text', event.target.value)} placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website" /></label>
-                <label className="letter-form-span">HTML 签名（可选）<textarea value={signatureDraft.html} onChange={(event) => updateSignature('html', event.target.value)} placeholder="<strong>Your Name</strong><br />Company<br />Website" /></label>
-                <label>Logo 替代文字<input value={signatureDraft.logoAlt} onChange={(event) => updateSignature('logoAlt', event.target.value)} /></label>
-                <label>Logo 宽度<input value={signatureDraft.logoWidth} onChange={(event) => updateSignature('logoWidth', event.target.value)} /></label>
-              </div>
-              <label className="letter-toggle-row">
-                <input type="checkbox" checked={signatureDraft.logoEnabled} onChange={(event) => updateSignature('logoEnabled', event.target.checked)} />
-                <span>如果已上传 Logo，则在 HTML 邮件签名中显示 Logo</span>
-              </label>
-              <div className="signature-logo-box">
+          <div className="hm-page hm-signature-workspace">
+            <OutreachCard
+              className="hm-signature-workspace signature-settings-panel"
+              title="签名与 Logo"
+              description="填写文字签名，上传公司 Logo。保存后所有开发信都会自动带上。"
+              icon={<ImageIcon size={18} />}
+              actions={emailSignature?.enabled ? <OutreachBadge tone="green">已保存</OutreachBadge> : <OutreachBadge>未保存</OutreachBadge>}
+            >
+              <OutreachStatusBanner tone={emailSignature?.enabled ? 'success' : 'warning'} title={emailSignature?.enabled ? '签名已启用' : '签名未启用'}>
+                这里只需要维护文字签名和 Logo，HTML 与图片尺寸会由 Hermills 自动处理。
+              </OutreachStatusBanner>
+              <OutreachField id="signature-text" label="文字签名">
+                <OutreachTextarea
+                  id="signature-text"
+                  value={signatureDraft.text}
+                  onChange={(event) => updateSignature('text', event.currentTarget.value)}
+                  placeholder="Your Name&#10;Sales Manager&#10;Company&#10;Phone / WhatsApp&#10;Website"
+                />
+              </OutreachField>
+              <div className="hm-signature-logo-upload">
+                <label className="hm-upload-control">
+                  <OutreachUploadDropzone
+                    title="上传 Logo"
+                    description="支持 PNG / JPG / WebP / GIF，最大 2 MB。"
+                    action={emailSignature?.logo ? '替换当前 Logo' : '选择 Logo 文件'}
+                  />
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadSignatureLogo} />
+                </label>
                 <div>
                   <strong>{emailSignature?.logo ? emailSignature.logo.fileName : '还没有上传 Logo'}</strong>
                   <span>{emailSignature?.logo ? `${Math.round(emailSignature.logo.size / 1024)} KB · ${emailSignature.logo.mimeType}` : '支持 PNG / JPG / WebP / GIF，最大 2 MB。'}</span>
                 </div>
-                <label className="letter-secondary file-button">
-                  上传 Logo
-                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadSignatureLogo} />
-                </label>
-                <button className="letter-secondary" type="button" disabled={!emailSignature?.logo || busy === 'signatureLogoDelete'} onClick={deleteSignatureLogo}>删除 Logo</button>
+                <OutreachButton variant="secondary" disabled={!emailSignature?.logo || busy === 'signatureLogoDelete'} loading={busy === 'signatureLogoDelete'} onClick={deleteSignatureLogo}>删除 Logo</OutreachButton>
               </div>
               <div className="signature-preview">
                 <span>发送预览</span>
                 <p>Hi buyer, this is where the generated outreach email appears.</p>
-                {signatureDraft.enabled && signatureDraft.text.trim() ? <pre>{signatureDraft.text}</pre> : <em>未启用签名</em>}
+                {emailSignature?.logo ? <strong>{emailSignature.logo.fileName}</strong> : null}
+                {signatureDraft.text.trim() ? <pre>{signatureDraft.text}</pre> : <em>还没有文字签名</em>}
               </div>
-              <div className="letter-action-row wrap">
-                <button className="letter-primary" type="button" disabled={busy === 'signature'} onClick={saveSignature}>保存签名和 Logo 设置</button>
-              </div>
-            </section>
+              <OutreachStickyActionBar>
+                <OutreachButton variant="primary" disabled={busy === 'signature'} aria-busy={busy === 'signature'} loading={busy === 'signature'} onClick={saveSignature}>保存签名和 Logo</OutreachButton>
+              </OutreachStickyActionBar>
+            </OutreachCard>
           </div>
         ) : null}
 
         {letterView === 'mail' ? (
-          <div className="letter-view">
-            <section className="letter-panel mail-settings-panel">
-              <div className="letter-panel-heading">
-                <div>
-                  <h2><Settings size={18} /> 邮箱</h2>
-                  <p>先选择发送通道；当前 SMTP 通道可直接保存和测试。</p>
+          <div className="hm-page hm-mail-workspace">
+            <OutreachCard
+              className="hm-mail-workspace mail-settings-panel"
+              title="邮箱"
+              description="只填写邮箱、授权码和显示名称。发送参数会在后台自动匹配。"
+              icon={<Settings size={18} />}
+              actions={senderDeliveryReady ? <OutreachBadge tone="green">已确认</OutreachBadge> : <OutreachBadge>待确认</OutreachBadge>}
+            >
+              <div className="mail-simple-panel">
+                <OutreachStatusBanner tone={senderDeliveryReady ? 'success' : senderLoginReady ? 'info' : 'warning'} title={`自动配置：${senderProvider.label} SMTP`}>
+                  当前将使用 {senderAuthGuide.smtpLabel}。如果识别不正确，可以展开高级设置手动切换。
+                </OutreachStatusBanner>
+                <div className="hm-form-grid mail-simple-grid">
+                  <OutreachField id="sender-simple-email" label="你的发件邮箱">
+                    <OutreachInput
+                      ref={senderEmailRef}
+                      id="sender-simple-email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={senderDraft.email}
+                      onChange={(event) => updateSenderEmail(event.currentTarget.value)}
+                      placeholder="sales@company.com"
+                    />
+                  </OutreachField>
+                  <OutreachField id="sender-simple-password" label="邮箱授权码 / SMTP 密码">
+                    <OutreachInput
+                      id="sender-simple-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={senderDraft.password}
+                      onChange={(event) => updateSender('password', event.currentTarget.value)}
+                      placeholder={senderDraft.id ? selectedSender?.passwordPreview || '粘贴邮箱授权码' : '粘贴邮箱授权码'}
+                    />
+                  </OutreachField>
+                  <OutreachField id="sender-simple-from-name" label="显示名称">
+                    <OutreachInput
+                      id="sender-simple-from-name"
+                      value={senderDraft.fromName}
+                      onChange={(event) => updateSender('fromName', event.currentTarget.value)}
+                      placeholder={companyProfile.name || 'Your company'}
+                    />
+                  </OutreachField>
                 </div>
-                {senderDeliveryReady ? <span className="letter-badge success">已确认</span> : <span className="letter-badge">待确认</span>}
-              </div>
-              <div className="sender-channel-section">
-                <div className="sender-subsection-heading">
-                  <span>发送通道</span>
-                  <small>当前：{senderChannel.label}</small>
-                </div>
-                <div className="sender-channel-grid" aria-label="选择发送通道">
-                  {senderChannelOptions.map((channel) => {
-                    const ChannelIcon = channel.icon
-                    const active = senderChannel.id === channel.id
-                    return (
-                      <button key={channel.id} className={active ? 'sender-channel-card active' : 'sender-channel-card'} type="button" aria-pressed={active} onClick={() => chooseSenderChannel(channel.id)}>
-                        <span className="sender-channel-top">
-                          <span><ChannelIcon size={16} /> {channel.label}</span>
-                          <small>{active ? '已选择' : channel.status}</small>
-                        </span>
-                        <em>{channel.detail}</em>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className={senderApiChannelSelected ? 'sender-channel-status warning' : 'sender-channel-status ready'}>
+                <div className="hm-mail-helper">
+                  <KeyRound size={18} />
                   <div>
-                    <strong>{senderApiChannelSelected ? `${senderChannel.label} 已选` : `${senderProvider.label} SMTP 可配置`}</strong>
-                    <span>{senderApiChannelSelected ? '此通道会通过 HTTPS API 发信；请填写 API/OAuth 凭据，测试成功后再确认收件。' : `正在使用 ${senderAuthGuide.smtpLabel}。如果 SMTP 被邮箱服务商拦截，可改选 ${senderRecommendedApiChannel.label}。`}</span>
+                    <strong>不知道授权码在哪里？</strong>
+                    <span>点击按钮会打开邮箱服务商的授权码页面。生成后复制回来，粘贴到上面的授权码框。</span>
                   </div>
-                  <small>{senderApiChannelSelected ? 'HTTPS API' : 'SMTP'}</small>
+                  <OutreachButton variant="secondary" onClick={openSenderAuthGuide}>获取 SMTP 授权码</OutreachButton>
                 </div>
+                <OutreachStickyActionBar className="sender-action-row">
+                  <OutreachButton variant="primary" disabled={busy === 'sender' || busy === 'mailSetup'} aria-busy={busy === 'mailSetup' || busy === 'sender'} loading={busy === 'mailSetup' || busy === 'sender'} onClick={saveAndTestSender}>
+                    {busy === 'mailSetup' || busy === 'sender' ? '正在保存并测试...' : '保存并测试邮箱'}
+                  </OutreachButton>
+                  <OutreachButton variant="secondary" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} loading={busy === 'confirmDelivery'} onClick={confirmSenderDelivery}>确认已收到测试邮件</OutreachButton>
+                </OutreachStickyActionBar>
               </div>
-              <div className="sender-subsection-heading smtp-heading">
-                <span>SMTP 邮箱预设</span>
-                <small>{senderAuthGuide.smtpLabel}</small>
-              </div>
-              <div className="letter-provider-grid">
-                {senderProviderPresets.map((preset) => (
-                  <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
-                    <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
-                  </button>
-                ))}
-              </div>
-              <div className="letter-form-grid">
-                <label>发件邮箱<input value={senderDraft.email} onChange={(event) => updateSenderEmail(event.target.value)} placeholder="sales@company.com" /></label>
-                <label>{senderApiChannelSelected ? 'SMTP 备用密码' : 'SMTP 密码'}<input type="password" value={senderDraft.password} onChange={(event) => updateSender('password', event.target.value)} placeholder={senderDraft.id ? selectedSender?.passwordPreview || '邮箱授权码或 SMTP 密码' : '邮箱授权码或 SMTP 密码'} /></label>
-                <label>显示名称<input value={senderDraft.fromName} onChange={(event) => updateSender('fromName', event.target.value)} /></label>
-                <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
-                <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
-                <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
-                <label>外部测试收件箱<input value={senderTestRecipient} onChange={(event) => setSenderTestRecipient(event.target.value)} placeholder="建议填你自己的另一个邮箱，验证真正外发" /></label>
-                {senderApiChannelSelected ? (
-                  <>
-                    <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
-                    <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
-                    <label className="letter-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
-                  </>
-                ) : null}
-              </div>
-              <div className="letter-action-row wrap sender-action-row">
-                <button className="letter-primary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
-                <button className="letter-secondary" type="button" disabled={busy === 'confirmDelivery' || !senderTestEmailReady} onClick={confirmSenderDelivery}>确认已收到</button>
-              </div>
-            </section>
+              <details className="mail-advanced-settings" open={mailAdvancedOpen} onToggle={(event) => setMailAdvancedOpen(event.currentTarget.open)}>
+                <summary>高级设置（一般不用管）</summary>
+                <div className="sender-channel-section">
+                  <div className="sender-subsection-heading">
+                    <span>发送通道</span>
+                    <small>当前：{senderChannel.label}</small>
+                  </div>
+                  <div className="sender-channel-grid" aria-label="选择发送通道">
+                    {senderChannelOptions.map((channel) => {
+                      const ChannelIcon = channel.icon
+                      const active = senderChannel.id === channel.id
+                      return (
+                        <button key={channel.id} className={active ? 'sender-channel-card active' : 'sender-channel-card'} type="button" aria-pressed={active} onClick={() => chooseSenderChannel(channel.id)}>
+                          <span className="sender-channel-top">
+                            <span><ChannelIcon size={16} /> {channel.label}</span>
+                            <small>{active ? '已选择' : channel.status}</small>
+                          </span>
+                          <em>{channel.detail}</em>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className={senderApiChannelSelected ? 'sender-channel-status warning' : 'sender-channel-status ready'}>
+                    <div>
+                      <strong>{senderApiChannelSelected ? `${senderChannel.label} 已选` : `${senderProvider.label} SMTP 可配置`}</strong>
+                      <span>{senderApiChannelSelected ? '此通道会通过 HTTPS API 发信；请填写 API/OAuth 凭据，测试成功后再确认收件。' : `正在使用 ${senderAuthGuide.smtpLabel}。如果 SMTP 被邮箱服务商拦截，可改选 ${senderRecommendedApiChannel.label}。`}</span>
+                    </div>
+                    <small>{senderApiChannelSelected ? 'HTTPS API' : 'SMTP'}</small>
+                  </div>
+                </div>
+                <div className="sender-subsection-heading smtp-heading">
+                  <span>SMTP 邮箱预设</span>
+                  <small>{senderAuthGuide.smtpLabel}</small>
+                </div>
+                <div className="hm-provider-grid">
+                  {senderProviderPresets.map((preset) => (
+                    <button key={preset.id} className={senderProviderId === preset.id ? 'active' : ''} type="button" onClick={() => chooseSenderProvider(preset.id)}>
+                      <Mail size={15} /> {preset.id === 'outlook' ? 'Microsoft 365 SMTP' : preset.id === 'custom' ? '自定义 SMTP' : `${preset.label} SMTP`}
+                    </button>
+                  ))}
+                </div>
+                <div className="hm-form-grid">
+                  <label>SMTP 主机<input value={senderDraft.host} onChange={(event) => updateSender('host', event.target.value)} /></label>
+                  <label>SMTP 端口<input value={senderDraft.port} onChange={(event) => updateSender('port', event.target.value)} /></label>
+                  <label>登录用户名<input value={senderDraft.username} onChange={(event) => updateSender('username', event.target.value)} /></label>
+                  <label>外部测试收件箱<input value={senderTestRecipient} onChange={(event) => setSenderTestRecipient(event.target.value)} placeholder="建议填你自己的另一个邮箱，验证真正外发" /></label>
+                  {senderApiChannelSelected ? (
+                    <>
+                      <label>API Account ID<input value={senderDraft.apiAccountId} onChange={(event) => updateSender('apiAccountId', event.target.value)} placeholder={senderChannelId === 'zohoApi' ? 'Zoho accountId' : '可选'} /></label>
+                      <label>API Base URL<input value={senderDraft.apiBaseUrl} onChange={(event) => updateSender('apiBaseUrl', event.target.value)} placeholder={senderChannelId === 'customHttpApi' || senderChannelId === 'enterpriseApi' ? 'https://mail-gateway.example/send' : '可选'} /></label>
+                      <label className="hm-form-span">API / OAuth 凭据<textarea value={senderDraft.apiCredential} onChange={(event) => updateSender('apiCredential', event.target.value)} placeholder="可粘贴 access token，或包含 accessToken / refreshToken / clientId / clientSecret 的 JSON。" /></label>
+                    </>
+                  ) : null}
+                </div>
+                <div className="hm-action-row wrap sender-action-row">
+                  <button className="hm-secondary" type="button" disabled={busy === 'sender'} onClick={saveSender}>{senderApiChannelSelected ? '保存 API 通道' : '保存 SMTP 设置'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'testSender'} onClick={testSender}>{senderApiChannelSelected ? '测试 API 通道' : '测试 SMTP 连接'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'testEmail' || !senderLoginReady} onClick={sendSenderTestEmail}>{senderApiChannelSelected ? '发送 API 测试邮件' : '发送 SMTP 测试邮件'}</button>
+                  <button className="hm-secondary" type="button" disabled={busy === 'externalTestEmail' || !senderLoginReady || !senderTestRecipient.trim()} onClick={sendSenderExternalTestEmail}>测试外部收件箱</button>
+                </div>
+              </details>
+            </OutreachCard>
           </div>
         ) : null}
       </main>
@@ -6969,8 +8508,10 @@ function humanizeErrorMessage(error: unknown, copy: UiCopy, context: ErrorContex
   if (/413|too large|file size|payload/i.test(raw)) return `${friendly.fileTooLarge.message} ${friendly.fileTooLarge.recovery}`
   if (/api key|unauthorized|forbidden|401|403|invalid key|authentication/i.test(raw)) return `${friendly.apiKeyInvalid.message} ${friendly.apiKeyInvalid.recovery}`
   if (/provider|base url|model not found|no model/i.test(raw)) return `${friendly.providerMissing.message} ${friendly.providerMissing.recovery}`
-  if (/body cannot be empty|internal_error|application\/json|empty body/i.test(raw)) return `${friendly.messageFailed.message} ${friendly.messageFailed.recovery}`
   if (/runtime|gateway|not ready|not installed|econnrefused|failed to fetch|network/i.test(raw)) return `${friendly.runtimeUnavailable.message} ${friendly.runtimeUnavailable.recovery}`
+  const backendDetail = visibleBackendRequestError(raw)
+  if (backendDetail) return `${friendly.messageFailed.title} ${copy.errors.withDetail(backendDetail)}`
+  if (/body cannot be empty|internal_error|application\/json|empty body/i.test(raw)) return `${friendly.messageFailed.message} ${friendly.messageFailed.recovery}`
   if (context === 'fileUpload') return `${friendly.fileUploadFailed.message} ${friendly.fileUploadFailed.recovery}`
   if (context === 'assistant') return `${friendly.assistantCreateFailed.message} ${friendly.assistantCreateFailed.recovery}`
   if (context === 'provider') return `${friendly.providerMissing.message} ${friendly.providerMissing.recovery}`
@@ -6986,6 +8527,15 @@ function visibleDiagnosticError(raw: string): string {
     .trim()
   if (!/(email could not be sent|smtp|mailbox|sender account|sendmail|connection closed|unexpected socket close|greeting never received|invalid login|eauth|esocket|econnreset|etimedout|\b5(?:3[45]|50|53|54)\b)/i.test(cleaned)) return ''
   return cleaned.length > 320 ? `${cleaned.slice(0, 319).trimEnd()}...` : cleaned
+}
+
+function visibleBackendRequestError(raw: string): string {
+  const cleaned = raw
+    .replace(/^Error:\s*/i, '')
+    .replace(/^Request failed\s*/i, '')
+    .trim()
+  if (!cleaned || cleaned === raw.trim()) return ''
+  return cleaned.length > 360 ? `${cleaned.slice(0, 359).trimEnd()}...` : cleaned
 }
 
 function localizeRuntimeMessage(message: string | undefined, copy: UiCopy): string {

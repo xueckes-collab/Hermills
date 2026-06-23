@@ -47,20 +47,28 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  disabled,
+  loading = false,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  const busy = loading || props["aria-busy"] === true || props["aria-busy"] === "true"
 
   return (
     <Comp
+      {...props}
+      aria-busy={busy ? true : undefined}
+      data-feedback="button"
+      data-loading={busy ? true : undefined}
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
     />
   )
 }

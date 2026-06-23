@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { existsSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -294,12 +294,44 @@ function formatAppUpdateVersion(info) {
 
 async function startServerIfNeeded() {
   if (apiBaseUrl) return;
+  loadCloudConfigEnv();
   const port = await findOpenPort(47321);
   const serverPath = pathToFileURL(path.join(app.getAppPath(), "apps", "server", "dist", "index.js")).href;
   const { createServer } = await import(serverPath);
   serverInstance = await createServer({ host: "127.0.0.1", port, baseDir: app.getPath("userData"), desktopToken });
   await serverInstance.listen({ host: "127.0.0.1", port });
   apiBaseUrl = `http://127.0.0.1:${port}`;
+}
+
+function loadCloudConfigEnv() {
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.HERMILLS_CHAT_RELAY_URL) return;
+  const candidates = [
+    path.join(app.getPath("userData"), "hermills-cloud.json"),
+    process.resourcesPath ? path.join(process.resourcesPath, "hermills-cloud.json") : undefined,
+    path.join(app.getAppPath(), "build", "hermills-cloud.json")
+  ].filter(Boolean);
+  for (const filePath of candidates) {
+    if (!existsSync(filePath)) continue;
+    try {
+      const config = JSON.parse(readFileSync(filePath, "utf8"));
+      process.env.SUPABASE_URL ||= stringConfigValue(config.supabaseUrl ?? config.SUPABASE_URL);
+      process.env.SUPABASE_ANON_KEY ||= stringConfigValue(config.supabaseAnonKey ?? config.SUPABASE_ANON_KEY);
+      process.env.HERMILLS_CLOUD_REQUIRED ||= stringConfigValue(config.cloudRequired ?? config.HERMILLS_CLOUD_REQUIRED) ?? "0";
+      process.env.HERMILLS_ACCOUNT_LOGIN_ENABLED ||= stringConfigValue(config.accountLoginEnabled ?? config.HERMILLS_ACCOUNT_LOGIN_ENABLED) ?? "0";
+      process.env.HERMILLS_CHAT_RELAY_URL ||= stringConfigValue(config.chatRelayUrl ?? config.HERMILLS_CHAT_RELAY_URL);
+      return;
+    } catch (error) {
+      console.warn(`Ignoring invalid Hermills cloud config at ${filePath}: ${error && error.message ? error.message : error}`);
+    }
+  }
+}
+
+function stringConfigValue(value) {
+  if (value === undefined || value === null) return undefined;
+  const normalized = String(value).trim();
+  if (!normalized) return undefined;
+  if (normalized.toLowerCase() === "undefined" || normalized.toLowerCase() === "null") return undefined;
+  return normalized;
 }
 
 function findOpenPort(startPort) {

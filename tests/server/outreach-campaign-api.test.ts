@@ -1,4 +1,5 @@
 import { mkdtemp } from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +41,54 @@ describe("outreach campaign API", () => {
   afterEach(async () => {
     await server.close();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("marks slow batch recipients as failed instead of leaving them researching forever", async () => {
+    vi.stubEnv("HERMILLS_CAMPAIGN_RECIPIENT_TIMEOUT_MS", "25");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return new Response(`<html><body>Slow buyer page for ${String(url)}.</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    });
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Slow buyer options",
+          body: "Hi Slow Buyer team,\n\nYour page suggests a relevant sourcing check.\nWe can share a concise comparison with MOQ and lead time.\nWould a short table help?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
+
+    const lead = await createLead("Slow Buyer", "https://slow.example", "buyer@slow.example");
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["SPC flooring"],
+      certifications: ["CE"]
+    } });
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/campaigns",
+      headers,
+      payload: { name: "Slow campaign", leadIds: [lead.id], language: "English", tone: "warm", researchDepth: "quick" }
+    });
+    expect(createResponse.statusCode, createResponse.body).toBe(200);
+
+    const generateResponse = await server.inject({ method: "POST", url: `/api/outreach/campaigns/${createResponse.json().id}/generate`, headers });
+
+    expect(generateResponse.statusCode, generateResponse.body).toBe(200);
+    expect(generateResponse.json().status).toBe("failed");
+    expect(generateResponse.json().stats).toMatchObject({ failed: 1, generated: 0 });
+    expect(generateResponse.json().recipients[0]).toMatchObject({ status: "failed" });
+    expect(generateResponse.json().recipients[0].sendError).toContain("Timed out");
+    expect(runtime.requests).toHaveLength(0);
   });
 
   it("creates a batch campaign, generates reviewed drafts, and sends only approved first emails", async () => {
@@ -57,7 +106,7 @@ describe("outreach campaign API", () => {
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
           subject: "Contractor work light options",
-          body: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?"
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
         });
       }
       return JSON.stringify({
@@ -79,7 +128,7 @@ describe("outreach campaign API", () => {
         }],
         initialEmail: {
           subject: "Work light options",
-          body: "Hi, I saw your contractor lighting channel. I can share two sample-ready work light options with MOQ and lead time. Would a short comparison help?"
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
         },
         followUps: Array.from({ length: 9 }, (_, index) => ({
           step: index + 1,
@@ -109,6 +158,7 @@ describe("outreach campaign API", () => {
     expect(createResponse.statusCode, createResponse.body).toBe(200);
     expect(createResponse.json().stats).toMatchObject({ total: 2, pending: 2, sent: 0 });
     expect(createResponse.json().researchDepth).toBe("deep");
+    expect(createResponse.json().generationMode).toBe("deep");
     expect(runtime.requests).toHaveLength(0);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
@@ -118,9 +168,96 @@ describe("outreach campaign API", () => {
     expect(generatedResponse.json().stats).toMatchObject({ generated: 2, sent: 0 });
     expect(generatedResponse.json().recipients.every((recipient: { draft?: unknown; status: string }) => recipient.status === "generated" && recipient.draft)).toBe(true);
     expect(generatedResponse.json().recipients.every((recipient: { draft?: { qualityReview?: { passed?: boolean } } }) => recipient.draft?.qualityReview?.passed === true)).toBe(true);
+    expect(generatedResponse.json().recipients.every((recipient: { draft?: { generationMode?: string; evidenceMap?: unknown; strategyMatch?: unknown; sendRiskReview?: { passed?: boolean } } }) =>
+      recipient.draft?.generationMode === "deep" && recipient.draft.evidenceMap && recipient.draft.strategyMatch && recipient.draft.sendRiskReview?.passed === true
+    )).toBe(true);
+    expect(generatedResponse.json().recipients.every((recipient: { draft?: { researchBrief?: { fitVerdict?: string; shouldWrite?: string } } }) =>
+      recipient.draft?.researchBrief?.fitVerdict === "good-fit" && recipient.draft.researchBrief.shouldWrite === "yes"
+    )).toBe(true);
     expect(generatedResponse.json().recipients.every((recipient: { researchSummary?: { depth?: string; confidenceScore?: number } }) => recipient.researchSummary?.depth === "deep" && Number(recipient.researchSummary.confidenceScore) > 0)).toBe(true);
     expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Research depth: deep"))).toBe(true);
+    expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Outreach OS evidence and asset map"))).toBe(true);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
+
+    const exportResponse = await server.inject({
+      method: "GET",
+      url: `/api/outreach/campaigns/${campaignId}/export.csv`,
+      headers
+    });
+    expect(exportResponse.statusCode, exportResponse.body).toBe(200);
+    expect(exportResponse.headers["content-type"]).toContain("text/csv");
+    expect(exportResponse.headers["content-disposition"]).toContain("outreach-campaign-june-outreach");
+    expect(exportResponse.body).toContain("companyName,email,website,status,qualityScore,subject,body,evidenceUrls,error");
+    expect(exportResponse.body).toContain("Atlas Buyer");
+    expect(exportResponse.body).toContain("Work light options");
+    expect(exportResponse.body).toContain("https://atlas.example");
+
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Retry work light options",
+          body: "Hi Retry Buyer team,\n\nYour contractor lighting channel suggests sample timing and replenishment proof may matter before trialing another work-light option.\nWe can prepare two CE-backed work light options with MOQ and lead time side by side.\nWould a sample-ready comparison be useful first?\n\nBest regards\nEckes Export"
+        });
+      }
+      if (prompt.includes("Fail Once Buyer") && !runtime.failOnceTriggered) {
+        runtime.failOnceTriggered = true;
+        throw new Error("temporary research generation failure");
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Retry work light options",
+          body: "Hi Retry Buyer team,\n\nYour contractor lighting channel suggests sample timing and replenishment proof may matter before trialing another work-light option.\nWe can prepare two CE-backed work light options with MOQ and lead time side by side.\nWould a sample-ready comparison be useful first?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
+    const failOnceLead = await createLead("Fail Once Buyer", "https://fail-once.example", "buyer@fail-once.example");
+    const failCampaignResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/campaigns",
+      headers,
+      payload: { name: "Retry campaign", leadIds: [failOnceLead.id], language: "English", tone: "warm", researchDepth: "deep" }
+    });
+    expect(failCampaignResponse.statusCode, failCampaignResponse.body).toBe(200);
+    const failCampaignId = failCampaignResponse.json().id;
+    const failedGeneration = await server.inject({ method: "POST", url: `/api/outreach/campaigns/${failCampaignId}/generate`, headers });
+    expect(failedGeneration.statusCode, failedGeneration.body).toBe(200);
+    const failedRecipient = failedGeneration.json().recipients[0];
+    expect(failedRecipient.status).toBe("failed");
+    expect(failedRecipient.sendError).toContain("temporary research generation failure");
+    const retryResponse = await server.inject({
+      method: "POST",
+      url: `/api/outreach/campaigns/${failCampaignId}/recipients/${failedRecipient.id}/retry`,
+      headers
+    });
+    expect(retryResponse.statusCode, retryResponse.body).toBe(200);
+    expect(retryResponse.json().recipients[0]).toMatchObject({ status: "generated" });
+    expect(retryResponse.json().recipients[0].sendError).toBeUndefined();
+    expect(retryResponse.json().recipients[0].draft.subject).toBe("Retry work light options");
+
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Contractor work light options",
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Contractor work light options",
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
 
     const senderResponse = await server.inject({
       method: "POST",
@@ -164,6 +301,20 @@ describe("outreach campaign API", () => {
     expect(blockedApproval.statusCode).toBe(400);
     expect(blockedApproval.json().error.message).toContain("Email needs rewrite");
 
+    const blockedRiskApproval = await server.inject({
+      method: "POST",
+      url: `/api/outreach/campaigns/${campaignId}/recipients/${firstRecipient.id}/approve`,
+      headers,
+      payload: {
+        confirm: true,
+        subject: "Re: purchase order attached",
+        body: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
+      }
+    });
+    expect(blockedRiskApproval.statusCode).toBe(400);
+    expect(blockedRiskApproval.json().error.message).toContain("Email send risk blocked");
+    expect(blockedRiskApproval.json().error.message).toContain("fake reply");
+
     const reviewResponse = await server.inject({
       method: "POST",
       url: `/api/outreach/campaigns/${campaignId}/recipients/${firstRecipient.id}/review`,
@@ -190,7 +341,7 @@ describe("outreach campaign API", () => {
       payload: {
         confirm: true,
         subject: "Contractor work light options",
-        body: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?"
+        body: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
       }
     });
     expect(approveResponse.statusCode).toBe(200);
@@ -234,9 +385,9 @@ describe("outreach campaign API", () => {
     expect(sentMail).toMatchObject({
       to: firstRecipient.email,
       subject: "Contractor work light options",
-      text: "Hi, I saw Atlas Buyer serves contractor channels. We can send two sample-ready work light options with MOQ and lead time side by side. Would a short comparison help?\n\nBest regards\nSales team"
+      text: "Hi Atlas Buyer team,\n\nI saw Atlas Buyer serves contractor channels, so reliable work-light supply likely affects jobsite availability.\nWe can send two sample-ready work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?\n\nBest regards\nSales team"
     });
-    expect(String(sentMail.html)).toContain("<strong>Sales team</strong>");
+    expect(String(sentMail.html)).toContain("Best regards<br />Sales team");
     expect(String(sentMail.html)).toContain("cid:hermills-signature-logo");
     expect(sentMail.attachments).toEqual([
       expect.objectContaining({
@@ -279,6 +430,43 @@ describe("outreach campaign API", () => {
     });
     expect(readyFollowUpsResponse.json().filter((job: { status: string }) => job.status === "ready")).toHaveLength(3);
 
+    const fakeImap = await createFakeImapServer({
+      replyFrom: firstRecipient.email,
+      subject: "Re: Contractor work light options"
+    });
+    try {
+      const updateInboxSender = await server.inject({
+        method: "PUT",
+        url: `/api/outreach/sender-accounts/${senderResponse.json().id}`,
+        headers,
+        payload: {
+          imapHost: "127.0.0.1",
+          imapPort: fakeImap.port,
+          imapSecure: false,
+          imapUsername: "sales@example.com"
+        }
+      });
+      expect(updateInboxSender.statusCode, updateInboxSender.body).toBe(200);
+
+      const inboxResponse = await server.inject({
+        method: "POST",
+        url: "/api/outreach/inbox/check",
+        headers,
+        payload: { senderAccountId: senderResponse.json().id, campaignId }
+      });
+      expect(inboxResponse.statusCode, inboxResponse.body).toBe(200);
+      expect(inboxResponse.json()).toMatchObject({ ok: true, status: "ready", stopped: 9 });
+      expect(inboxResponse.json().matched[0]).toMatchObject({
+        recipientId: firstRecipient.id,
+        type: "replied",
+        from: `Buyer <${firstRecipient.email}>`
+      });
+      expect(fakeImap.commands.some((command) => /UID SEARCH FROM "buyer@atlas\.example" SINCE /i.test(command))).toBe(true);
+      expect(fakeImap.commands.some((command) => /^UID SEARCH SINCE /i.test(command))).toBe(false);
+    } finally {
+      await fakeImap.close();
+    }
+
     const stopResponse = await server.inject({
       method: "POST",
       url: `/api/outreach/campaigns/${campaignId}/stop`,
@@ -317,6 +505,7 @@ function createFakeRuntime() {
   };
   return {
     requests,
+    failOnceTriggered: false as boolean,
     async getLatest() {
       return {};
     },
@@ -378,7 +567,7 @@ function createFakeRuntime() {
     async dispose() {
       return undefined;
     }
-  } satisfies RuntimeAdapter & { requests: HermesReplyRequest[] };
+  } satisfies RuntimeAdapter & { requests: HermesReplyRequest[]; failOnceTriggered: boolean };
 }
 
 function fakeComputerControlStatus() {
@@ -404,4 +593,66 @@ function multipartPayload(boundary: string, fileName: string, contentType: strin
     `--${boundary}--`,
     ""
   ].join("\r\n"));
+}
+
+async function createFakeImapServer(input: { replyFrom: string; subject: string }): Promise<{
+  port: number;
+  commands: string[];
+  close: () => Promise<void>;
+}> {
+  const commands: string[] = [];
+  const server = net.createServer((socket) => {
+    let buffer = "";
+    socket.setEncoding("utf8");
+    socket.write("* OK fake imap ready\r\n");
+    socket.on("data", (chunk) => {
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const match = line.match(/^(\S+)\s+(.+)$/);
+        if (!match) continue;
+        const [, tag, command] = match;
+        commands.push(command);
+        if (/^LOGIN /i.test(command)) {
+          socket.write(`${tag} OK LOGIN completed\r\n`);
+        } else if (/^SELECT INBOX$/i.test(command)) {
+          socket.write(`* 1 EXISTS\r\n${tag} OK SELECT completed\r\n`);
+        } else if (/^UID SEARCH FROM /i.test(command)) {
+          socket.write(`* SEARCH 42\r\n${tag} OK SEARCH completed\r\n`);
+        } else if (/^UID FETCH /i.test(command)) {
+          const headers = [
+            `From: Buyer <${input.replyFrom}>`,
+            `Subject: ${input.subject}`,
+            "Date: Wed, 17 Jun 2026 10:00:00 +0000",
+            "",
+            ""
+          ].join("\r\n");
+          socket.write(`* 1 FETCH (UID 42 BODY[HEADER.FIELDS (FROM SUBJECT DATE)] {${Buffer.byteLength(headers)}}\r\n${headers})\r\n${tag} OK FETCH completed\r\n`);
+        } else if (/^LOGOUT$/i.test(command)) {
+          socket.write(`* BYE fake imap closing\r\n${tag} OK LOGOUT completed\r\n`);
+          socket.end();
+        } else {
+          socket.write(`${tag} BAD unsupported command\r\n`);
+        }
+      }
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Fake IMAP server did not expose a TCP port.");
+  return {
+    port: address.port,
+    commands,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    })
+  };
 }

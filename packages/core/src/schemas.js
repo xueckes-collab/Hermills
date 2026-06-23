@@ -203,6 +203,179 @@ export const UsageEstimateSchema = z.object({
     totalTokens: z.number().int().nonnegative().default(0),
     estimatedCostUsd: z.number().nonnegative().optional()
 }).strict();
+export const OutreachCustomerTypeSchema = z.enum([
+    "importer",
+    "distributor",
+    "brand-owner",
+    "manufacturer",
+    "contractor",
+    "competitor",
+    "oem-odm",
+    "other",
+    "unknown"
+]);
+export const OutreachFitLevelSchema = z.enum(["high", "medium", "low", "cautious", "unknown"]);
+export const OutreachSignalStrengthSchema = z.enum(["strong", "medium", "weak", "none", "unknown"]);
+export const OutreachDevelopmentAngleSchema = z.enum([
+    "general-supply",
+    "product-line-extension",
+    "new-product-development",
+    "private-label-oem",
+    "project-specification",
+    "certification-compliance",
+    "material-complement",
+    "backup-capacity",
+    "channel-partnership",
+    "other"
+]);
+export const OutreachReplyOutcomeSchema = z.enum([
+    "no-reply",
+    "positive",
+    "rejection",
+    "referral",
+    "neutral",
+    "bounce",
+    "unsubscribe",
+    "unknown"
+]);
+export const OutreachRiskLevelSchema = z.enum(["low", "medium", "high", "unknown"]);
+export const OutreachPerformanceLevelSchema = z.enum(["healthy", "watch", "poor", "unknown"]);
+export const OutreachFirstLineTypeSchema = z.enum([
+    "customer-observation",
+    "business-type",
+    "trigger-event",
+    "generic",
+    "unknown"
+]);
+export const OutreachExpectedReplyRateSchema = z.object({
+    minPercent: z.number().int().min(0).max(100).default(0),
+    maxPercent: z.number().int().min(0).max(100).default(0),
+    rationale: z.string().trim().max(600).default("")
+}).strict();
+export const OutreachDisallowedAngleSchema = z.object({
+    angle: OutreachDevelopmentAngleSchema.optional(),
+    label: z.string().trim().max(160).default(""),
+    reason: z.string().trim().max(600).default("")
+}).strict();
+export const OutreachLeadFitScoreSchema = z.object({
+    customerType: OutreachCustomerTypeSchema.default("unknown"),
+    fit: OutreachFitLevelSchema.default("unknown"),
+    score: z.number().int().min(0).max(100).default(0),
+    purchaseOrCooperationSignal: OutreachSignalStrengthSchema.default("unknown"),
+    recommendedAngles: z.array(OutreachDevelopmentAngleSchema).max(6).default([]),
+    primaryAngle: OutreachDevelopmentAngleSchema.optional(),
+    disallowedAngles: z.array(OutreachDisallowedAngleSchema).max(8).default([]),
+    recommendedApproach: z.string().trim().max(1000).default(""),
+    notRecommendedApproach: z.string().trim().max(1000).default(""),
+    expectedReplyRate: OutreachExpectedReplyRateSchema.default({}),
+    risks: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    rationale: z.string().trim().max(2000).default(""),
+    scoredAt: z.string().datetime().optional()
+}).strict();
+export const OutreachEvidenceLockItemSchema = z.object({
+    id: z.string().trim().min(1).max(120),
+    statement: z.string().trim().min(1).max(1000),
+    source: z.enum(["lead", "website", "company-profile", "material", "model", "user"]).default("lead"),
+    sourceUrl: z.string().trim().max(1000).optional(),
+    evidenceId: z.string().min(1).optional(),
+    reason: z.string().trim().max(600).default("")
+}).strict();
+export const OutreachEvidenceLockSchema = z.object({
+    status: z.enum(["unlocked", "locked", "needs-review"]).default("unlocked"),
+    usableFacts: z.array(OutreachEvidenceLockItemSchema).max(30).default([]),
+    unsupportedInferences: z.array(OutreachEvidenceLockItemSchema).max(20).default([]),
+    riskyAssumptions: z.array(OutreachEvidenceLockItemSchema).max(20).default([]),
+    mustNotSay: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    summary: z.string().trim().max(1200).default(""),
+    lockedAt: z.string().datetime().optional()
+}).strict();
+export const OutreachValueMatchSchema = z.object({
+    ourProduct: z.string().trim().max(240).default(""),
+    customerProductLine: z.string().trim().max(240).default(""),
+    customerConcern: z.string().trim().max(800).default(""),
+    specificValue: z.string().trim().max(1000).default(""),
+    proofPoints: z.array(z.string().trim().min(1).max(500)).max(12).default([]),
+    firstEmailPoint: z.string().trim().max(800).default(""),
+    cta: z.string().trim().max(500).default(""),
+    assetIds: z.array(z.string().min(1)).max(12).default([]),
+    confidenceScore: z.number().int().min(0).max(100).default(0),
+    rationale: z.string().trim().max(1200).default("")
+}).strict();
+export const OutreachSendOutcomeSchema = z.object({
+    status: z.enum(["not-sent", "queued", "sent", "delivered", "opened", "clicked", "replied", "bounced", "failed", "unsubscribed"]).default("not-sent"),
+    messageId: z.string().trim().max(240).optional(),
+    senderAccountId: z.string().min(1).optional(),
+    senderEmail: OptionalTrimmedString(320),
+    senderDomain: OptionalTrimmedString(240),
+    sentAt: z.string().datetime().optional(),
+    deliveredAt: z.string().datetime().optional(),
+    openedAt: z.string().datetime().optional(),
+    clickedAt: z.string().datetime().optional(),
+    repliedAt: z.string().datetime().optional(),
+    bouncedAt: z.string().datetime().optional(),
+    unsubscribedAt: z.string().datetime().optional(),
+    bounced: z.boolean().default(false),
+    opened: z.boolean().default(false),
+    clicked: z.boolean().default(false),
+    replied: z.boolean().default(false),
+    spamFolderRisk: OutreachRiskLevelSchema.default("unknown"),
+    senderMailboxHealth: OutreachPerformanceLevelSchema.default("unknown"),
+    senderDomainHealth: OutreachPerformanceLevelSchema.default("unknown"),
+    subjectMarketingRisk: OutreachRiskLevelSchema.default("unknown"),
+    abnormalSendFrequency: z.boolean().default(false),
+    notes: z.string().trim().max(1200).default("")
+}).strict();
+export const OutreachLearningSignalSchema = z.object({
+    customerType: OutreachCustomerTypeSchema.default("unknown"),
+    customerCountry: z.string().trim().max(120).default(""),
+    customerIndustry: z.string().trim().max(160).default(""),
+    developmentAngle: OutreachDevelopmentAngleSchema.optional(),
+    subject: z.string().trim().max(240).default(""),
+    cta: z.string().trim().max(500).default(""),
+    emailWordCount: z.number().int().nonnegative().max(5000).default(0),
+    firstLineType: OutreachFirstLineTypeSchema.default("unknown"),
+    valuePoint: z.string().trim().max(500).default(""),
+    hadAttachment: z.boolean().default(false),
+    sentAt: z.string().datetime().optional(),
+    replyStep: z.number().int().min(0).max(9).optional(),
+    replyOutcome: OutreachReplyOutcomeSchema.default("unknown"),
+    replyContent: z.string().trim().max(8000).default(""),
+    userEditedFields: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+    userChangeSummary: z.string().trim().max(1200).default(""),
+    userMarkedGood: z.boolean().default(false),
+    userAdopted: z.boolean().default(false),
+    nextOptimization: z.string().trim().max(1200).default(""),
+    recordedAt: z.string().datetime().optional()
+}).strict();
+export const OutreachCampaignDeliverabilityStatsSchema = z.object({
+    attempted: z.number().int().nonnegative().default(0),
+    sent: z.number().int().nonnegative().default(0),
+    delivered: z.number().int().nonnegative().default(0),
+    opened: z.number().int().nonnegative().default(0),
+    clicked: z.number().int().nonnegative().default(0),
+    replied: z.number().int().nonnegative().default(0),
+    bounced: z.number().int().nonnegative().default(0),
+    unsubscribed: z.number().int().nonnegative().default(0),
+    highSpamRisk: z.number().int().nonnegative().default(0),
+    mailboxIssues: z.number().int().nonnegative().default(0),
+    domainIssues: z.number().int().nonnegative().default(0),
+    abnormalFrequency: z.number().int().nonnegative().default(0)
+}).strict();
+export const OutreachCampaignLearningSummarySchema = z.object({
+    sampleSize: z.number().int().nonnegative().default(0),
+    responsiveCustomerTypes: z.array(OutreachCustomerTypeSchema).max(12).default([]),
+    responsiveCountries: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+    responsiveIndustries: z.array(z.string().trim().min(1).max(160)).max(20).default([]),
+    effectiveAngles: z.array(OutreachDevelopmentAngleSchema).max(12).default([]),
+    effectiveSubjects: z.array(z.string().trim().min(1).max(240)).max(20).default([]),
+    effectiveCtas: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
+    effectiveValuePoints: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
+    weakSignals: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    riskyPhrases: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    userKeptPatterns: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    userRemovedPatterns: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    updatedAt: z.string().datetime().optional()
+}).strict();
 export const OutreachLeadSchema = z.object({
     id: z.string().min(1),
     profileId: z.string().min(1).optional(),
@@ -214,7 +387,7 @@ export const OutreachLeadSchema = z.object({
     contactTitle: OptionalTrimmedString(160),
     email: OptionalTrimmedString(320),
     need: z.string().trim().max(2000).default(""),
-    notes: z.string().trim().max(4000).default(""),
+    notes: z.string().trim().max(20000).default(""),
     tags: z.array(z.string().trim().min(1).max(60)).max(24).default([]),
     source: z.string().trim().min(1).max(64).default("manual"),
     status: z.enum(["new", "email_drafted", "followup_drafted", "email_sent", "contacted", "reply_received", "followup_due"]).default("new"),
@@ -222,10 +395,132 @@ export const OutreachLeadSchema = z.object({
     replyStatus: z.enum(["not_checked", "checking", "no_reply", "reply_received", "bounced", "unsubscribed"]).default("not_checked"),
     statusColor: z.enum(["slate", "blue", "amber", "green", "rose", "violet"]).default("slate"),
     currentRound: z.number().int().min(0).max(9).default(0),
+    leadFitScore: OutreachLeadFitScoreSchema.default({}),
+    evidenceLock: OutreachEvidenceLockSchema.default({}),
+    valueMatch: OutreachValueMatchSchema.default({}),
+    sendOutcome: OutreachSendOutcomeSchema.default({}),
+    learningSignal: OutreachLearningSignalSchema.default({}),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
 }).strict();
 export const OutreachDraftStatusSchema = z.enum(["draft", "sent", "failed"]);
+export const OutreachGenerationModeSchema = z.enum(["lite", "deep"]);
+export const OutreachEvidenceLevelSchema = z.enum(["verified", "inferred", "generic", "prohibited"]);
+export const OutreachEvidenceItemSchema = z.object({
+    id: z.string().min(1),
+    level: OutreachEvidenceLevelSchema,
+    label: z.string().trim().min(1).max(120),
+    value: z.string().trim().min(1).max(800),
+    source: z.enum(["lead", "website", "company-profile", "material", "model", "user"]).default("lead"),
+    sourceUrl: z.string().trim().max(1000).optional(),
+    snippet: z.string().trim().max(1000).default(""),
+    usedInEmail: z.boolean().default(false)
+}).strict();
+export const OutreachEvidenceMapSchema = z.object({
+    status: z.enum(["success", "need_more_data"]).default("success"),
+    minimumDataAvailable: z.boolean().default(false),
+    verifiedFacts: z.array(OutreachEvidenceItemSchema).max(24).default([]),
+    inferredInsights: z.array(OutreachEvidenceItemSchema).max(24).default([]),
+    genericContext: z.array(OutreachEvidenceItemSchema).max(12).default([]),
+    prohibitedClaims: z.array(OutreachEvidenceItemSchema).max(12).default([]),
+    missingFields: z.array(z.string().trim().min(1).max(120)).max(12).default([]),
+    createdAt: z.string().datetime().optional()
+}).strict();
+export const OutreachCtaAssetTypeSchema = z.enum([
+    "catalog",
+    "sample_options",
+    "spec_comparison",
+    "moq_leadtime_sheet",
+    "case_study",
+    "certification_pack",
+    "packaging_options",
+    "quote_range",
+    "custom"
+]);
+export const OutreachCtaAssetSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    name: z.string().trim().min(1).max(160),
+    type: OutreachCtaAssetTypeSchema.default("custom"),
+    description: z.string().trim().max(1000).default(""),
+    assetText: z.string().trim().max(8000).default(""),
+    materialId: z.string().min(1).optional(),
+    url: z.string().trim().max(1000).optional(),
+    enabled: z.boolean().default(true),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+}).strict();
+export const OutreachBuyerPersonaSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    name: z.string().trim().min(1).max(160),
+    companyType: z.string().trim().max(160).default(""),
+    buyerRoles: z.array(z.string().trim().min(1).max(160)).max(10).default([]),
+    painPoints: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    successMetrics: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    objections: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    triggerEvents: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    evidenceNotes: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
+    enabled: z.boolean().default(true),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+}).strict();
+export const OutreachUspCandidateSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    category: z.string().trim().max(80).default("Strategic value"),
+    headline: z.string().trim().min(1).max(180),
+    buyerAngle: z.string().trim().max(800).default(""),
+    proof: z.string().trim().max(800).default(""),
+    proofLevel: z.enum(["verified", "profile-derived", "needs-proof"]).default("needs-proof"),
+    assetIds: z.array(z.string().min(1)).max(12).default([]),
+    enabled: z.boolean().default(true),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+}).strict();
+export const OutreachGoldenExampleSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    title: z.string().trim().min(1).max(180),
+    industry: z.string().trim().max(160).default(""),
+    buyerType: z.string().trim().max(160).default(""),
+    productLine: z.string().trim().max(180).default(""),
+    market: z.string().trim().max(120).default(""),
+    subject: z.string().trim().min(1).max(240),
+    body: z.string().trim().min(1).max(12000),
+    tags: z.array(z.string().trim().min(1).max(80)).max(16).default([]),
+    sourceDraftId: z.string().min(1).optional(),
+    qualityScore: z.number().int().min(0).max(100).optional(),
+    enabled: z.boolean().default(true),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime()
+}).strict();
+export const OutreachStrategyMatchSchema = z.object({
+    personaId: z.string().min(1).optional(),
+    uspId: z.string().min(1).optional(),
+    ctaAssetId: z.string().min(1).optional(),
+    buyerPain: z.string().trim().max(800).default(""),
+    buyerImplication: z.string().trim().max(800).default(""),
+    selectedUsp: z.string().trim().max(300).default(""),
+    microOffer: z.string().trim().max(300).default(""),
+    rationale: z.string().trim().max(1200).default(""),
+    confidenceScore: z.number().int().min(0).max(100).default(0),
+    evidenceIds: z.array(z.string().min(1)).max(12).default([]),
+    warnings: z.array(z.string().trim().min(1).max(300)).max(12).default([])
+}).strict();
+export const OutreachSendRiskIssueSchema = z.object({
+    id: z.string().trim().min(1).max(80),
+    severity: z.enum(["info", "warning", "block"]),
+    message: z.string().trim().min(1).max(500),
+    blocking: z.boolean().default(false)
+}).strict();
+export const OutreachSendRiskReviewSchema = z.object({
+    score: z.number().int().min(0).max(100),
+    passed: z.boolean(),
+    level: z.enum(["pass", "warning", "blocked"]),
+    issues: z.array(OutreachSendRiskIssueSchema).max(20).default([]),
+    checkedAt: z.string().datetime()
+}).strict();
 export const OutreachEmailQualityCheckSchema = z.object({
     id: z.enum(["buyerReason", "humanTone", "personalized", "nextStep", "twoSecondRead"]),
     label: z.string().trim().min(1).max(120),
@@ -243,6 +538,27 @@ export const OutreachEmailQualityReviewSchema = z.object({
     rewriteHints: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
     reviewedAt: z.string().datetime()
 }).strict();
+export const CustomerResearchAngleSchema = z.object({
+    name: z.string().trim().min(1).max(160),
+    whyItFits: z.string().trim().max(800).default(""),
+    buyerConcern: z.string().trim().max(600).default(""),
+    evidence: z.array(z.string().trim().min(1).max(500)).max(6).default([]),
+    claimsToAvoid: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
+    riskLevel: z.enum(["low", "medium", "high"]).default("medium")
+}).strict();
+export const CustomerResearchBriefSchema = z.object({
+    fitVerdict: z.enum(["good-fit", "cautious", "poor-fit", "unknown"]).default("unknown"),
+    shouldWrite: z.enum(["yes", "cautious", "no"]).default("cautious"),
+    buyerTypeDetail: z.string().trim().max(500).default(""),
+    purchaseIntentSignal: z.string().trim().max(800).default(""),
+    bestOutreachPath: z.string().trim().max(800).default(""),
+    mainRisk: z.string().trim().max(800).default(""),
+    recommendedContactRoles: z.array(z.string().trim().min(1).max(120)).max(8).default([]),
+    claimsToAvoid: z.array(z.string().trim().min(1).max(300)).max(10).default([]),
+    outreachAngles: z.array(CustomerResearchAngleSchema).max(5).default([]),
+    bestAngle: z.string().trim().max(160).default(""),
+    handoffBrief: z.string().trim().max(3000).default("")
+}).strict();
 export const OutreachDraftSchema = z.object({
     id: z.string().min(1),
     profileId: z.string().min(1).optional(),
@@ -252,11 +568,27 @@ export const OutreachDraftSchema = z.object({
     body: z.string().trim().min(1).max(20000),
     language: z.string().trim().min(1).max(80).default("English"),
     tone: z.string().trim().min(1).max(120).default("professional"),
+    generationMode: OutreachGenerationModeSchema.default("deep"),
     promptSnapshot: z.string().trim().max(30000).default(""),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).max(100).optional(),
     usage: UsageEstimateSchema.optional(),
+    leadFitScore: OutreachLeadFitScoreSchema.default({}),
+    evidenceLock: OutreachEvidenceLockSchema.default({}),
+    valueMatch: OutreachValueMatchSchema.default({}),
     qualityReview: OutreachEmailQualityReviewSchema.optional(),
+    evidenceMap: OutreachEvidenceMapSchema.optional(),
+    strategyMatch: OutreachStrategyMatchSchema.optional(),
+    sendRiskReview: OutreachSendRiskReviewSchema.optional(),
+    writingEngine: z.enum(["legacy-chat", "harness-v2"]).default("legacy-chat"),
+    modelUsed: z.string().trim().min(1).max(120).optional(),
+    rewriteAttempts: z.number().int().min(0).max(5).default(0),
+    evidenceUsed: z.array(OutreachEvidenceItemSchema).max(12).default([]),
+    matchedExampleIds: z.array(z.string().min(1)).max(8).default([]),
+    researchBrief: CustomerResearchBriefSchema.optional(),
+    generationSummary: z.string().trim().max(2000).default(""),
+    sendOutcome: OutreachSendOutcomeSchema.default({}),
+    learningSignal: OutreachLearningSignalSchema.default({}),
     sentAt: z.string().datetime().optional(),
     sendError: z.string().max(1000).optional(),
     createdAt: z.string().datetime(),
@@ -321,7 +653,7 @@ export const OutreachEmailSignatureSchema = z.object({
     logo: OutreachEmailSignatureLogoSchema.optional(),
     updatedAt: z.string().datetime().optional()
 }).strict();
-export const OutreachResearchDepthSchema = z.enum(["quick", "standard", "deep"]);
+export const OutreachResearchDepthSchema = z.enum(["adaptive", "quick", "standard", "deep"]);
 export const DeepResearchSidecarConfigSchema = z.object({
     enabled: z.boolean().default(false),
     url: z.string().trim().url().optional(),
@@ -330,7 +662,7 @@ export const DeepResearchSidecarConfigSchema = z.object({
     apiKey: z.string().trim().min(1).max(4000).optional()
 }).strict();
 export const CustomerResearchSummarySchema = z.object({
-    depth: OutreachResearchDepthSchema.default("standard"),
+    depth: OutreachResearchDepthSchema.default("adaptive"),
     confidenceScore: z.number().int().min(0).max(100).default(0),
     buyerType: z.string().trim().max(160).default(""),
     likelyNeed: z.string().trim().max(800).default(""),
@@ -347,7 +679,7 @@ export const CustomerResearchEvidenceSchema = z.object({
 export const CustomerResearchSnapshotSchema = z.object({
     website: z.string().min(1).max(500),
     companyName: z.string().trim().min(1).max(180),
-    depth: OutreachResearchDepthSchema.default("standard"),
+    depth: OutreachResearchDepthSchema.default("adaptive"),
     confidenceScore: z.number().int().min(0).max(100).default(0),
     buyerType: z.string().trim().max(160).default(""),
     productSignals: z.array(z.string().trim().min(1).max(220)).max(12).default([]),
@@ -360,6 +692,7 @@ export const CustomerResearchSnapshotSchema = z.object({
     description: z.string().trim().max(1000).default(""),
     fetchedUrls: z.array(z.string().min(1).max(1000)).max(12).default([]),
     evidence: z.array(CustomerResearchEvidenceSchema).max(40).default([]),
+    brief: CustomerResearchBriefSchema.optional(),
     textPreview: z.string().trim().max(12000).default(""),
     error: z.string().max(1000).optional(),
     createdAt: z.string().datetime()
@@ -392,7 +725,16 @@ export const EmailSequenceDraftSchema = z.object({
     subject: z.string().trim().min(1).max(240),
     body: z.string().trim().min(1).max(20000),
     status: EmailSequenceDraftStatusSchema.default("draft"),
+    leadFitScore: OutreachLeadFitScoreSchema.default({}),
+    evidenceLock: OutreachEvidenceLockSchema.default({}),
+    valueMatch: OutreachValueMatchSchema.default({}),
     qualityReview: OutreachEmailQualityReviewSchema.optional(),
+    evidenceMap: OutreachEvidenceMapSchema.optional(),
+    strategyMatch: OutreachStrategyMatchSchema.optional(),
+    sendRiskReview: OutreachSendRiskReviewSchema.optional(),
+    researchBrief: CustomerResearchBriefSchema.optional(),
+    sendOutcome: OutreachSendOutcomeSchema.default({}),
+    learningSignal: OutreachLearningSignalSchema.default({}),
     sentAt: z.string().datetime().optional(),
     sendError: z.string().max(1000).optional()
 }).strict();
@@ -405,6 +747,7 @@ export const OutreachWorkflowSchema = z.object({
     email: z.string().min(3).max(320),
     language: z.string().trim().min(1).max(80).default("English"),
     tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
+    generationMode: OutreachGenerationModeSchema.default("deep"),
     research: CustomerResearchSnapshotSchema,
     icps: z.array(GeneratedIcpSchema).max(3).default([]),
     usps: z.array(GeneratedUspSchema).max(6).default([]),
@@ -451,9 +794,12 @@ export const OutreachCampaignSchema = z.object({
     tone: z.string().trim().min(1).max(120).default("professional, warm, concise"),
     providerId: z.string().min(1).optional(),
     model: z.string().min(1).max(100).optional(),
-    researchDepth: OutreachResearchDepthSchema.default("standard"),
+    generationMode: OutreachGenerationModeSchema.default("deep"),
+    researchDepth: OutreachResearchDepthSchema.default("adaptive"),
     rateLimit: OutreachCampaignRateLimitSchema.default({}),
     stats: OutreachCampaignStatsSchema.default({}),
+    deliverabilityStats: OutreachCampaignDeliverabilityStatsSchema.default({}),
+    learningSummary: OutreachCampaignLearningSummarySchema.default({}),
     startedAt: z.string().datetime().optional(),
     pausedAt: z.string().datetime().optional(),
     completedAt: z.string().datetime().optional(),
@@ -474,7 +820,12 @@ export const OutreachCampaignRecipientSchema = z.object({
     contactName: OptionalTrimmedString(160),
     contactTitle: OptionalTrimmedString(160),
     status: OutreachCampaignRecipientStatusSchema.default("pending"),
+    leadFitScore: OutreachLeadFitScoreSchema.default({}),
+    evidenceLock: OutreachEvidenceLockSchema.default({}),
+    valueMatch: OutreachValueMatchSchema.default({}),
     researchSummary: CustomerResearchSummarySchema.optional(),
+    sendOutcome: OutreachSendOutcomeSchema.default({}),
+    learningSignal: OutreachLearningSignalSchema.default({}),
     approvedAt: z.string().datetime().optional(),
     queuedAt: z.string().datetime().optional(),
     sentAt: z.string().datetime().optional(),
@@ -524,6 +875,11 @@ export const OutreachFeedbackSchema = z.object({
     rating: z.number().int().min(1).max(5),
     category: z.enum(["good", "too-generic", "wrong-context", "too-long", "not-my-company", "other"]).default("other"),
     comment: z.string().trim().max(2000).default(""),
+    learningSignal: OutreachLearningSignalSchema.default({}),
+    userEditedFields: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+    keptPhrases: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    removedPhrases: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
+    nextOptimization: z.string().trim().max(1200).default(""),
     status: z.enum(["new", "valuable", "archived"]).default("new"),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
@@ -572,7 +928,7 @@ export const JobRunRecordSchema = z.object({
     model: z.string().min(1).max(100).optional(),
     providerId: z.string().min(1).optional()
 }).strict();
-export const ChannelKindSchema = z.enum(["telegram", "discord", "slack", "whatsapp", "matrix", "feishu", "wechat", "wecom"]);
+export const ChannelKindSchema = z.enum(["telegram", "discord", "slack", "whatsapp", "matrix", "feishu", "wechat", "wecom", "dingtalk", "qq"]);
 export const ChannelStatusSchema = z.enum(["disabled", "needs-setup", "connected", "failed"]);
 export const ChannelRecordSchema = z.object({
     id: z.string().min(1),
@@ -589,6 +945,77 @@ export const ChannelRecordSchema = z.object({
     lastError: z.string().max(1000).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime()
+}).strict();
+export const ChatControlActionSchema = z.enum([
+    "help",
+    "status",
+    "generate-outreach-draft",
+    "list-drafts",
+    "review-draft",
+    "rewrite-draft",
+    "send-draft",
+    "check-inbox",
+    "unknown"
+]);
+export const ChatControlCommandStatusSchema = z.enum([
+    "queued",
+    "running",
+    "needs-approval",
+    "completed",
+    "failed",
+    "rejected"
+]);
+export const ChatControlBindingStatusSchema = z.enum([
+    "pending",
+    "linked",
+    "testing",
+    "connected",
+    "failed",
+    "expired"
+]);
+export const ChatControlCommandSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    channelId: z.string().min(1).optional(),
+    platform: ChannelKindSchema,
+    conversationId: z.string().trim().min(1).max(240),
+    senderId: z.string().trim().min(1).max(240),
+    senderDisplayName: z.string().trim().max(160).default(""),
+    rawText: z.string().trim().min(1).max(4000),
+    action: ChatControlActionSchema.default("unknown"),
+    status: ChatControlCommandStatusSchema.default("queued"),
+    payload: z.record(z.unknown()).default({}),
+    resultText: z.string().trim().max(8000).default(""),
+    error: z.string().trim().max(1000).optional(),
+    requiresApproval: z.boolean().default(false),
+    approvalCode: z.string().trim().max(20).optional(),
+    relatedCommandId: z.string().min(1).optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    completedAt: z.string().datetime().optional()
+}).strict();
+export const ChatControlBindingSessionSchema = z.object({
+    id: z.string().min(1),
+    profileId: z.string().min(1).optional(),
+    platform: ChannelKindSchema,
+    channelId: z.string().min(1).optional(),
+    status: ChatControlBindingStatusSchema.default("pending"),
+    bindingCode: z.string().trim().min(6).max(80),
+    bindingUrl: z.string().trim().max(2000).default(""),
+    qrPayload: z.string().trim().max(2000).default(""),
+    relayUrl: z.string().trim().max(1000).optional(),
+    linkedAccount: z.object({
+        externalUserId: z.string().trim().max(240).default(""),
+        displayName: z.string().trim().max(160).default(""),
+        conversationId: z.string().trim().max(240).default("")
+    }).default({}),
+    testCommandId: z.string().min(1).optional(),
+    resultText: z.string().trim().max(8000).default(""),
+    error: z.string().trim().max(1000).optional(),
+    expiresAt: z.string().datetime(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    completedAt: z.string().datetime().optional()
 }).strict();
 export const LogLevelSchema = z.enum(["debug", "info", "warn", "error", "done"]);
 export const LogSourceSchema = z.enum(["server", "job", "channel", "gateway", "install"]);

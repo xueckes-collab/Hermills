@@ -47,7 +47,7 @@ describe("Hermills local API", () => {
         usps: [],
         initialEmail: {
           subject: "Contractor lighting options",
-          body: "Hi, I saw this buyer imports work lights for contractor channels.\nWe can share two LED work light options with MOQ and lead time side by side.\nWould a short comparison help?"
+          body: "Hi, I saw this buyer imports work lights for contractor channels, so supplier reliability likely affects project availability.\nWe can share two LED work light options with MOQ and lead time side by side.\nIf useful, I can send an A/B comparison: fast sampling or repeat supply. Which fits better?"
         },
         followUps: []
       });
@@ -86,6 +86,99 @@ describe("Hermills local API", () => {
       shouldShowFirstDeploy: true,
       runtimeRecoverable: false
     });
+  });
+
+  it("imports batch lead files that only contain email and website columns", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/import",
+      headers,
+      payload: {
+        csvText: [
+          "email,website,contactName",
+          "sales@spcflooringstore.com,https://spcflooringstore.com/,Sales team",
+          "buyer@lionsfloor.example,https://lionsfloor.example,Buyer team"
+        ].join("\n")
+      }
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().imported).toHaveLength(2);
+    expect(response.json().skipped).toHaveLength(0);
+    expect(response.json().imported[0]).toMatchObject({
+      companyName: "Spcflooringstore",
+      email: "sales@spcflooringstore.com",
+      website: "https://spcflooringstore.com/"
+    });
+  });
+
+  it("cleans batch lead websites and emails while skipping invalid rows", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/import",
+      headers,
+      payload: {
+        csvText: [
+          "company,email,website,country",
+          "SPC Store,SALES@SPCFLOORINGSTORE.COM,spcflooringstore.com,US",
+          "Bad Mail,not-an-email,https://bad-mail.example,US",
+          "Bad Website,buyer@bad.example,not a website,US"
+        ].join("\n")
+      }
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().imported).toHaveLength(1);
+    expect(response.json().imported[0]).toMatchObject({
+      companyName: "SPC Store",
+      email: "sales@spcflooringstore.com",
+      website: "https://spcflooringstore.com/"
+    });
+    expect(response.json().skipped).toEqual([
+      { row: 3, reason: "Invalid email." },
+      { row: 4, reason: "Invalid website." }
+    ]);
+  });
+
+  it("keeps cloud memory optional when Supabase is not configured", async () => {
+    const previousEnv = {
+      url: process.env.SUPABASE_URL,
+      key: process.env.SUPABASE_ANON_KEY,
+      required: process.env.HERMILLS_CLOUD_REQUIRED
+    };
+    const restoreEnv = () => {
+      if (previousEnv.url === undefined) delete process.env.SUPABASE_URL;
+      else process.env.SUPABASE_URL = previousEnv.url;
+      if (previousEnv.key === undefined) delete process.env.SUPABASE_ANON_KEY;
+      else process.env.SUPABASE_ANON_KEY = previousEnv.key;
+      if (previousEnv.required === undefined) delete process.env.HERMILLS_CLOUD_REQUIRED;
+      else process.env.HERMILLS_CLOUD_REQUIRED = previousEnv.required;
+    };
+    try {
+      delete process.env.SUPABASE_URL;
+      delete process.env.SUPABASE_ANON_KEY;
+      delete process.env.HERMILLS_CLOUD_REQUIRED;
+      await server.close();
+      server = await createServer({ baseDir, desktopToken: "test-token", runtimeService: runtime, deepResearch: { enabled: false } });
+      const statusResponse = await server.inject({ method: "GET", url: "/api/cloud/status", headers });
+      expect(statusResponse.statusCode).toBe(200);
+      expect(statusResponse.json()).toMatchObject({
+        configured: false,
+        authenticated: false,
+        syncQueued: 0
+      });
+
+      const loginResponse = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers,
+        payload: { email: "buyer@example.com", password: "secret123" }
+      });
+      expect(loginResponse.statusCode).toBe(503);
+      expect(loginResponse.json().error.message).toContain("Supabase is not configured");
+    } finally {
+      restoreEnv();
+    }
   });
 
   it("marks first deploy hidden only after install completes with a running gateway", async () => {
@@ -401,8 +494,8 @@ describe("Hermills local API", () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
       return JSON.stringify({
-        subject: "LED work light supply",
-        body: "Hello Taylor, I saw your team handles industrial lighting. We make LED work lights with CE certification. Would it make sense to send details?"
+        subject: "LED work light options",
+        body: "Hello Taylor, I noticed Bright LLC handles industrial lighting, so proof and lead time may matter before adding work-light options.\nWe make CE-backed LED work lights and can share a compact MOQ/lead-time comparison.\nIf useful, I can send two options: A for fast sampling, B for repeat supply. Which fits better?"
       });
     };
 
@@ -414,12 +507,75 @@ describe("Hermills local API", () => {
       shippingTerms: ["FOB Ningbo"]
     } });
 
+    const personaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/personas",
+      headers,
+      payload: {
+        name: "Industrial lighting importer",
+        companyType: "Contractor-channel distributors",
+        painPoints: ["Needs proof and lead-time clarity before adding new lighting SKUs"],
+        triggerEvents: ["Seasonal stock planning"],
+        evidenceNotes: ["Certifications", "MOQ", "Repeat supply reliability"]
+      }
+    });
+    expect(personaResponse.statusCode, personaResponse.body).toBe(200);
+    const uspResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/usps",
+      headers,
+      payload: {
+        category: "Operational",
+        headline: "CE-backed work lights with lead-time clarity",
+        buyerAngle: "Helps distributors compare sample-ready work-light options without a long catalog review.",
+        proof: "CE certification and FOB Ningbo shipping terms are in the company profile.",
+        proofLevel: "profile-derived"
+      }
+    });
+    expect(uspResponse.statusCode, uspResponse.body).toBe(200);
+    const ctaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/cta-assets",
+      headers,
+      payload: {
+        name: "MOQ and lead-time comparison",
+        type: "moq_leadtime_sheet",
+        description: "A small side-by-side option sheet for fast sampling or repeat supply.",
+        assetText: "Includes MOQ, lead time, CE status, FOB terms, and two recommended options."
+      }
+    });
+    expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
+    const goldenResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/golden-examples",
+      headers,
+      payload: {
+        title: "Industrial lighting importer first email",
+        industry: "industrial lighting",
+        buyerType: "distributor",
+        productLine: "LED work light",
+        subject: "Work light comparison",
+        body: "Hi Taylor, your contractor-channel lighting range suggests proof and replenishment timing may matter before trialing another work-light supplier.\nWe can share two CE-backed LED work light options with MOQ and lead time side by side.\nWould a fast-sample option or repeat-supply comparison be easier first?",
+        tags: ["industrial lighting", "lead time"],
+        qualityScore: 95
+      }
+    });
+    expect(goldenResponse.statusCode, goldenResponse.body).toBe(200);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/products")
+        ? "<html><body><h1>Industrial lighting products</h1><p>Bright LLC reviews LED work lights for contractor and warehouse channels.</p></body></html>"
+        : "<html><head><title>Bright LLC - Industrial Lighting Distributor</title><meta name=\"description\" content=\"Bright LLC distributes industrial lighting and work lights.\"></head><body><a href=\"/products\">Products</a><p>We import work lights and compare supplier proof before repeat supply.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+
     const importResponse = await server.inject({
       method: "POST",
       url: "/api/outreach/leads/import",
       headers,
       payload: {
-        csvText: "公司,email,联系人,国家,需求\nBright LLC,taylor@example.com,Taylor,US,industrial lighting\n,missing@example.com,,,"
+        csvText: "公司,email,联系人,国家,网站,需求\nBright LLC,taylor@example.com,Taylor,US,https://bright.example,industrial lighting\n,missing@example.com,,,,"
       }
     });
     expect(importResponse.statusCode).toBe(200);
@@ -447,14 +603,35 @@ describe("Hermills local API", () => {
     expect(draftResponse.statusCode).toBe(200);
     expect(draftResponse.json()).toMatchObject({
       leadId,
-      subject: "LED work light supply",
+      subject: "LED work light options",
       status: "draft",
-      qualityReview: { passed: true }
+      qualityReview: { passed: true },
+      generationMode: "deep",
+      writingEngine: "harness-v2",
+      model: "hermes-agent",
+      modelUsed: "hermes-agent",
+      matchedExampleIds: [goldenResponse.json().id],
+      strategyMatch: {
+        personaId: personaResponse.json().id,
+        uspId: uspResponse.json().id,
+        ctaAssetId: ctaResponse.json().id
+      },
+      sendRiskReview: { passed: true, level: "warning" }
     });
+    expect(draftResponse.json().evidenceMap.verifiedFacts.map((item: { label: string }) => item.label)).toContain("Lead company");
+    expect(draftResponse.json().evidenceMap.verifiedFacts.some((item: { source: string }) => item.source === "website")).toBe(true);
+    expect(draftResponse.json().sendRiskReview.issues.map((issue: { id: string }) => issue.id)).toContain("unsubscribe_missing");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
     expect(runtimeContent).toContain("Bright LLC");
     expect(runtimeContent).toContain("Eckes Export");
     expect(runtimeContent).toContain("Return JSON only");
+    expect(runtimeContent).toContain("--- Outreach OS evidence and asset map ---");
+    expect(runtimeContent).toContain("--- Golden email examples ---");
+    expect(runtimeContent).toContain("Industrial lighting importer first email");
+    expect(runtimeContent).toContain("--- Customer website research ---");
+    expect(runtimeContent).toContain("Research depth: adaptive");
+    expect(runtimeContent).toContain("Bright LLC distributes industrial lighting and work lights");
+    expect(runtimeContent).toContain("Backed by asset: MOQ and lead-time comparison");
 
     const draftedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
     expect(draftedStatsResponse.statusCode).toBe(200);
@@ -497,6 +674,96 @@ describe("Hermills local API", () => {
     expect(deleteManyResponse.json()).toEqual({ deleted: 1, missing: [] });
     const deletedStatsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads/stats", headers });
     expect(deletedStatsResponse.json()).toMatchObject({ total: 0 });
+  });
+
+  it("manages local Outreach OS persona, USP, CTA, and golden email assets", async () => {
+    const personaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/personas",
+      headers,
+      payload: {
+        name: "Flooring importer",
+        companyType: "SPC/LVT distributors",
+        painPoints: ["Needs stable samples"],
+        triggerEvents: ["New catalog planning"],
+        evidenceNotes: ["Certifications"]
+      }
+    });
+    expect(personaResponse.statusCode, personaResponse.body).toBe(200);
+    expect(personaResponse.json()).toMatchObject({ name: "Flooring importer", enabled: true });
+
+    const updatedPersonaResponse = await server.inject({
+      method: "PUT",
+      url: `/api/outreach/personas/${personaResponse.json().id}`,
+      headers,
+      payload: { painPoints: ["Needs stable samples", "Needs proof before trial order"] }
+    });
+    expect(updatedPersonaResponse.statusCode, updatedPersonaResponse.body).toBe(200);
+    expect(updatedPersonaResponse.json().painPoints).toContain("Needs proof before trial order");
+
+    const uspResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/usps",
+      headers,
+      payload: {
+        category: "Trust-building",
+        headline: "Proof-backed SPC flooring options",
+        buyerAngle: "Lets buyers compare sample-ready SPC options before committing warehouse space.",
+        proof: "Catalog and certification pack available.",
+        proofLevel: "verified"
+      }
+    });
+    expect(uspResponse.statusCode, uspResponse.body).toBe(200);
+
+    const ctaResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/cta-assets",
+      headers,
+      payload: {
+        name: "Certification pack",
+        type: "certification_pack",
+        description: "Current certificates and test reports.",
+        assetText: "CE, SGS, and product test report links."
+      }
+    });
+    expect(ctaResponse.statusCode, ctaResponse.body).toBe(200);
+
+    const goldenResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/golden-examples",
+      headers,
+      payload: {
+        title: "SPC importer first email",
+        industry: "flooring",
+        buyerType: "importer",
+        productLine: "SPC flooring",
+        market: "US",
+        subject: "SPC sample options",
+        body: "Hi Taylor, your SPC/LVT catalog suggests buyers may compare proof, samples, and lead time before adding a backup supplier.\nWe can send two sample-ready SPC options with certification notes and MOQ side by side.\nWould a small spec pack or an MOQ/lead-time table be easier first?",
+        tags: ["warm", "proof pack"],
+        qualityScore: 94
+      }
+    });
+    expect(goldenResponse.statusCode, goldenResponse.body).toBe(200);
+    expect(goldenResponse.json()).toMatchObject({ title: "SPC importer first email", enabled: true, qualityScore: 94 });
+
+    const goldenListResponse = await server.inject({ method: "GET", url: "/api/outreach/golden-examples", headers });
+    expect(goldenListResponse.statusCode, goldenListResponse.body).toBe(200);
+    expect(goldenListResponse.json()).toEqual([expect.objectContaining({ subject: "SPC sample options" })]);
+
+    const listResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
+    expect(listResponse.statusCode, listResponse.body).toBe(200);
+    expect(listResponse.json()).toEqual([expect.objectContaining({ name: "Certification pack", type: "certification_pack" })]);
+
+    const deleteResponse = await server.inject({ method: "DELETE", url: `/api/outreach/cta-assets/${ctaResponse.json().id}`, headers });
+    expect(deleteResponse.statusCode).toBe(204);
+    const deletedListResponse = await server.inject({ method: "GET", url: "/api/outreach/cta-assets", headers });
+    expect(deletedListResponse.json()).toEqual([]);
+
+    const deleteGoldenResponse = await server.inject({ method: "DELETE", url: `/api/outreach/golden-examples/${goldenResponse.json().id}`, headers });
+    expect(deleteGoldenResponse.statusCode).toBe(204);
+    const deletedGoldenListResponse = await server.inject({ method: "GET", url: "/api/outreach/golden-examples", headers });
+    expect(deletedGoldenListResponse.json()).toEqual([]);
   });
 
   it("defaults normal Tencent and Alibaba sender accounts to authorization-code SMTP settings", async () => {
@@ -665,8 +932,8 @@ describe("Hermills local API", () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
       return JSON.stringify({
-        subject: "Work light sourcing",
-        body: "Hello, I saw your team sources work lights. Would it help if I sent a concise option list?"
+        subject: "Work light option check?",
+        body: "Hi Unconfirmed Buyer team,\n\nI noticed Unconfirmed Buyer is reviewing work light options, so a small spec comparison may be easier than a broad catalog.\n\nEckes Export can share 2-3 LED work light options with MOQ and lead-time notes for a quick first check.\n\nWould that side-by-side table be useful before samples?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
       });
     };
     await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
@@ -722,7 +989,7 @@ describe("Hermills local API", () => {
     expect(sendResponse.json().error.message).toContain("Confirm the sender mailbox");
   });
 
-  it("auto researches a customer website before generating an outreach draft", async () => {
+  it("auto researches a customer website before generating a fast outreach draft", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const href = String(url);
       const html = href.includes("/about")
@@ -733,8 +1000,8 @@ describe("Hermills local API", () => {
     runtime.createHermesReply = async (request: HermesReplyRequest) => {
       runtime.requests.push(request);
       return JSON.stringify({
-        subject: "Work light supply",
-        body: "Hello, I saw Preview Buyer imports industrial lighting. We can support work light supply. Would you like details?"
+        subject: "Work light options",
+        body: "Hi Preview Buyer team,\n\nI saw Preview Buyer imports and distributes work lights for industrial lighting channels, so a quick benchmark may save review time.\n\nEckes Export can share 2-3 LED work light options with MOQ and lead-time notes.\n\nWould a side-by-side table for fast sampling or repeat supply be useful?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
       });
     };
     await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
@@ -756,17 +1023,78 @@ describe("Hermills local API", () => {
     });
 
     expect(draftResponse.statusCode).toBe(200);
-    expect(draftResponse.json()).toMatchObject({ subject: "Work light supply", status: "draft", qualityReview: { passed: true } });
+    expect(draftResponse.json()).toMatchObject({
+      subject: "Work light options",
+      status: "draft",
+      generationMode: "deep",
+      qualityReview: { passed: true },
+      researchBrief: { fitVerdict: "good-fit", shouldWrite: "yes" }
+    });
+    expect(draftResponse.json().body).toContain("side-by-side table");
     const runtimeContent = runtime.requests.at(-1)?.messages.at(-1)?.content ?? "";
-    expect(runtimeContent).toContain("--- Customer website research ---");
+    expect(runtimeContent).toContain("Write one first cold outreach email draft.");
+    expect(runtimeContent).toContain("--- Buyer evidence ---");
     expect(runtimeContent).toContain("Preview Buyer imports and distributes work lights");
-    expect(runtimeContent).toContain("industrial lighting distributor");
+    expect(runtimeContent).toContain("Industrial Lighting Distributor");
     const leadsResponse = await server.inject({ method: "GET", url: "/api/outreach/leads?q=Preview", headers });
     expect(leadsResponse.json()[0]).toMatchObject({
       email: "buyer@preview-buyer.example",
       website: "https://preview-buyer.example/",
-      tags: ["auto-researched"]
+      tags: ["auto-researched", "fast-draft"]
     });
+    const workflowsResponse = await server.inject({ method: "GET", url: "/api/outreach/workflows?q=Preview", headers });
+    expect(workflowsResponse.json()).toEqual([]);
+  });
+
+  it("auto rewrites low-quality single drafts before saving them", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const href = String(url);
+      const html = href.includes("/products")
+        ? "<html><body><h1>Safety work lights</h1><p>Importer-ready LED work lights for contractor and rental channels.</p></body></html>"
+        : "<html><head><title>Quality Buyer - Contractor Lighting Importer</title><meta name=\"description\" content=\"Quality Buyer imports LED work lights for contractor and rental channels.\"></head><body><a href=\"/products\">Products</a><p>We distribute LED work lights and portable jobsite lighting.</p></body></html>";
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    });
+    let call = 0;
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      call += 1;
+      if (call === 1) {
+        return JSON.stringify({
+          subject: "Quick question",
+          body: "Hello, I would like to learn whether your team handles this product category."
+        });
+      }
+      return JSON.stringify({
+        subject: "Work light spec comparison?",
+        body: "Hi Quality Buyer team,\n\nI noticed your LED work light and portable jobsite lighting range for contractor and rental channels. When buyers compare those lines, MOQ, lead time, and basic compliance proof usually decide whether a second source is worth testing.\n\nEckes Export can share 2-3 matched work light options with CE proof, MOQ, and lead-time notes for a quick side-by-side check.\n\nWould that comparison table be useful before samples?\n\nBest regards,\nEckes Export\nhttps://eckes-export.example"
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["LED work light"],
+      certifications: ["CE"]
+    } });
+
+    const draftResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/drafts/auto",
+      headers,
+      payload: {
+        website: "quality-buyer.example",
+        email: "buyer@quality-buyer.example",
+        language: "English",
+        tone: "short"
+      }
+    });
+
+    expect(draftResponse.statusCode, draftResponse.body).toBe(200);
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(draftResponse.json().body).toContain("contractor and rental channels");
+    expect(draftResponse.json().body).not.toContain("whether your team handles this product category");
+    expect(draftResponse.json().qualityReview.score).toBeGreaterThanOrEqual(85);
+    expect(draftResponse.json().qualityReview.passed).toBe(true);
+    expect(draftResponse.json().rewriteAttempts).toBeGreaterThanOrEqual(1);
   });
 
   it("uses the deep research sidecar for deep workflows and only sends website and email", async () => {
@@ -815,6 +1143,7 @@ describe("Hermills local API", () => {
       confidenceScore: 91,
       buyerType: "Importer / distributor",
       industry: "Industrial lighting distribution",
+      brief: { fitVerdict: "good-fit", shouldWrite: "yes" },
       evidence: [{ label: "Buyer channel", sourceUrl: "https://deep-buyer.example/about" }]
     });
     expect(response.json().research.error).toBeUndefined();
@@ -910,7 +1239,7 @@ describe("Hermills local API", () => {
       if (prompt.includes("Rewrite this B2B cold email")) {
         return JSON.stringify({
           subject: "Contractor work light options",
-          body: "Hi, I saw Repair Buyer imports work lights for contractor channels.\nOur LED work light options can help compare reliable supply without a full catalog.\nWould it help if I sent 2-3 matched options with MOQ and lead time?"
+          body: "Hi, I saw Repair Buyer imports work lights for contractor channels, so supplier reliability likely affects contractor availability.\nOur LED work light options can help compare reliable supply without a full catalog.\nIf useful, I can send 2-3 matched options with MOQ and lead time. Which fits better?"
         });
       }
       return JSON.stringify({
@@ -946,12 +1275,130 @@ describe("Hermills local API", () => {
     expect(runtime.requests).toHaveLength(2);
     expect(runtime.requests[0]?.messages[0]?.content).toContain("Private outreach brief");
     expect(runtime.requests[1]?.messages[0]?.content).toContain("QA failures");
+    expect(runtime.requests[1]?.messages[0]?.content).toContain("A/B choices");
     expect(workflowResponse.json().initialEmail).toMatchObject({
       subject: "Contractor work light options",
       qualityReview: { passed: true }
     });
     expect(workflowResponse.json().initialEmail.body).not.toContain("Dear Sir/Madam");
     expect(workflowResponse.json().initialEmail.body).not.toContain("high quality and competitive price");
+  });
+
+  it("blocks robotic keyword CTAs and shallow SPC emails before storing them", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      [
+        "<html><head><title>Europine - SPC Flooring Distributor</title>",
+        "<meta name=\"description\" content=\"Europine runs quick-ship, TruckLoad, and Container Direct programs for Fortika SPC flooring.\"></head>",
+        "<body><p>Fortika SPC 5mm and 7.5mm ranges support flooring distributors, retailers, and container-direct orders.</p></body></html>"
+      ].join(""),
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Fortika SPC option sheet",
+          body: "Hi, Europine's TruckLoad and Container Direct programs for Fortika SPC suggest quick-ship inventory and container timing both matter.\nAnyway Flooring can map 5mm and 7.5mm SPC alternates with proof notes, MOQ, and lead time side by side.\nWould a 2-3 option sheet for matched specs be useful this week?"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "SPC fit check for your quick-ship model",
+          body: "Saw Europine's focus on quick-ship and reliable supply for SPC luxury vinyl. That's exactly where lead time consistency makes or breaks a distributor's margin.\n\nIf you're comparing SPC suppliers, I can send a simple table with MOQ and lead times for 2-3 options matching your Fortika 5mm or 7.5mm specs. No samples needed—just data to see if we align.\n\nReply 'SPC table' and I'll email it within 24 hours."
+        },
+        followUps: []
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Anyway Flooring",
+      website: "https://anywayflooring.com",
+      mainProducts: ["SPC", "LVT"]
+    } });
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "europine.example",
+        email: "info@europine.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(runtime.requests.slice(1).some((request) => request.messages[0]?.content.includes("Reply 'SPC table'"))).toBe(true);
+    expect(workflowResponse.json().initialEmail).toMatchObject({
+      subject: "Fortika SPC option sheet",
+      qualityReview: { passed: true }
+    });
+    expect(workflowResponse.json().initialEmail.body).not.toContain("No samples needed");
+    expect(workflowResponse.json().initialEmail.body).not.toContain("Reply 'SPC table'");
+  });
+
+  it("rejects domain-as-evidence wording and compare-fit fallback copy", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      [
+        "<html><head><title>Luxury Vinyl Plank Flooring | Europine.Com</title>",
+        "<meta name=\"description\" content=\"Europine runs quick-ship, TruckLoad, and Container Direct programs for Fortika SPC flooring.\"></head>",
+        "<body><p>Fortika SPC 5mm and 7.5mm ranges support flooring distributors, retailers, and container-direct orders.</p></body></html>"
+      ].join(""),
+      { status: 200, headers: { "content-type": "text/html" } }
+    ));
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Fortika SPC option sheet",
+          body: "Hi, Europine's TruckLoad and Container Direct programs for Fortika SPC suggest quick-ship inventory and container timing both matter.\nAnyway Flooring can map 5mm and 7.5mm SPC alternates with proof notes, MOQ, and lead time side by side.\nWould a 2-3 option sheet for matched specs be useful this week?"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "SPC fit check",
+          body: "Hi, I noticed Luxury Vinyl Plank Flooring works around europine.Com, so proof and timing may matter before adding another option.\nSPC fit check gives your team a simpler way to compare fit. It keeps the first step low-risk by offering only the few details needed to judge supplier fit.\nI can send two options: A for fast sampling, B for repeat supply, with a small MOQ and lead-time comparison for 2-3 options. Which fits better?"
+        },
+        followUps: []
+      });
+    };
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Anyway Flooring",
+      website: "https://anywayflooring.com",
+      mainProducts: ["SPC", "LVT"]
+    } });
+
+    const workflowResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/workflows/auto",
+      headers,
+      payload: {
+        website: "europine.example",
+        email: "info@europine.example",
+        language: "English",
+        tone: "warm and concise"
+      }
+    });
+
+    expect(workflowResponse.statusCode, workflowResponse.body).toBe(200);
+    expect(runtime.requests.length).toBeGreaterThanOrEqual(2);
+    expect(runtime.requests.slice(1).some((request) => request.messages[0]?.content.includes("works around europine.Com"))).toBe(true);
+    const email = workflowResponse.json().initialEmail;
+    expect(email).toMatchObject({
+      subject: "Fortika SPC option sheet",
+      qualityReview: { passed: true }
+    });
+    expect(email.body).toContain("TruckLoad");
+    expect(email.body).toContain("Container Direct");
+    expect(email.body).not.toContain("works around");
+    expect(email.body).not.toContain("compare fit");
   });
 
   it("builds a full outreach workflow with ICPs, USPs, and nine follow-ups", async () => {
@@ -987,7 +1434,7 @@ describe("Hermills local API", () => {
         ],
         initialEmail: {
           subject: "Rugged work light options",
-          body: "Hi, I saw Atlas Buyer serves contractor channels. If rugged work lights are still in your sourcing plan, I can send two sample-ready options with MOQ and lead time side by side. Would option A for fast sampling or option B for repeat supply be more useful?"
+          body: "Hi, I saw Atlas Buyer serves contractor channels, so rugged work-light availability likely affects jobsite stock planning.\nIf rugged work lights are still in your sourcing plan, I can send two sample-ready options with MOQ and lead time side by side.\nWould option A for fast sampling or option B for repeat supply be more useful?"
         },
         followUps: Array.from({ length: 9 }, (_, index) => ({
           step: index + 1,

@@ -133,6 +133,72 @@ export type AppState = {
   runtimeRecoverable: boolean;
 };
 
+export type CloudUser = {
+  id: string;
+  email?: string;
+  fullName?: string;
+};
+
+export type CloudAccountProfile = {
+  userId: string;
+  email: string;
+  displayName: string;
+  nickname: string;
+  status: 'active' | 'disabled';
+  emailVerified: boolean;
+  termsAcceptedAt?: string;
+  lastLoginAt?: string;
+  lastSeenAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isAdmin?: boolean;
+};
+
+export type CloudStatus = {
+  configured: boolean;
+  authenticated: boolean;
+  required: boolean;
+  user?: CloudUser;
+  account?: CloudAccountProfile;
+  expiresAt?: string;
+  cloudUrl?: string;
+  lastSyncAt?: string;
+  syncQueued: number;
+  learningPackVersion?: string;
+  learningRulesUpdatedAt?: string;
+  message: string;
+  lastSyncError?: string;
+};
+
+export type CloudLearningPack = {
+  version: string;
+  generatedAt: string;
+  userPreferences: {
+    preferredTone?: string;
+    preferredCta?: string;
+    preferredEmailLength?: string;
+    avoidPhrases: string[];
+    commonEdits: string[];
+  };
+  companyRules: string[];
+  customerRules: string[];
+  globalRules: Array<{
+    ruleType: string;
+    condition: Record<string, unknown>;
+    recommendation: string;
+    confidence: number;
+    evidenceCount: number;
+  }>;
+};
+
+export type CloudLearningRuleSummary = {
+  ok: true;
+  generatedAt: string;
+  scanned: { redactedEvents: number; legacyEvents: number };
+  candidates: number;
+  upserted: number;
+};
+
 export type InstallEvent = {
   jobId: string;
   level: "info" | "warn" | "error" | "done";
@@ -287,7 +353,7 @@ export type JobRunRecord = {
 export type ChannelRecord = {
   id: string;
   profileId?: string;
-  kind: "telegram" | "discord" | "slack" | "whatsapp" | "matrix" | "feishu" | "wechat" | "wecom";
+  kind: "telegram" | "discord" | "slack" | "whatsapp" | "matrix" | "feishu" | "wechat" | "wecom" | "dingtalk" | "qq";
   label: string;
   enabled: boolean;
   status: "disabled" | "needs-setup" | "connected" | "failed";
@@ -298,6 +364,60 @@ export type ChannelRecord = {
   lastError?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ChatControlCommand = {
+  id: string;
+  profileId?: string;
+  channelId?: string;
+  platform: ChannelRecord["kind"];
+  conversationId: string;
+  senderId: string;
+  senderDisplayName: string;
+  rawText: string;
+  action: "help" | "status" | "generate-outreach-draft" | "list-drafts" | "review-draft" | "rewrite-draft" | "send-draft" | "check-inbox" | "unknown";
+  status: "queued" | "running" | "needs-approval" | "completed" | "failed" | "rejected";
+  payload: Record<string, unknown>;
+  resultText: string;
+  error?: string;
+  requiresApproval: boolean;
+  approvalCode?: string;
+  relatedCommandId?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
+export type ChatControlBindingSession = {
+  id: string;
+  profileId?: string;
+  platform: ChannelRecord["kind"];
+  channelId?: string;
+  status: "pending" | "linked" | "testing" | "connected" | "failed" | "expired";
+  bindingCode: string;
+  bindingUrl: string;
+  qrPayload: string;
+  relayUrl?: string;
+  linkedAccount: {
+    externalUserId: string;
+    displayName: string;
+    conversationId: string;
+  };
+  testCommandId?: string;
+  resultText: string;
+  error?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+
+export type ChatControlCloudPollResult = {
+  ok: boolean;
+  pulled: number;
+  executed: number;
+  failed: number;
+  results: Array<{ id: string; ok: boolean; resultText?: string; error?: string }>;
 };
 
 export type LogEntry = {
@@ -442,6 +562,11 @@ export type OutreachLead = {
   replyStatus: OutreachLeadReplyStatus;
   statusColor: OutreachLeadStatusColor;
   currentRound: number;
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   createdAt: string;
   updatedAt: string;
 };
@@ -475,6 +600,208 @@ export type OutreachLeadStats = {
   followupDue: number;
 };
 
+export type OutreachGenerationMode = "lite" | "deep";
+export type OutreachEvidenceLevel = "verified" | "inferred" | "generic" | "prohibited";
+export type OutreachCustomerType = "importer" | "distributor" | "brand-owner" | "manufacturer" | "contractor" | "competitor" | "oem-odm" | "other" | "unknown";
+export type OutreachDevelopmentAngle =
+  | "general-supply"
+  | "product-line-extension"
+  | "new-product-development"
+  | "private-label-oem"
+  | "project-specification"
+  | "certification-compliance"
+  | "material-complement"
+  | "backup-capacity"
+  | "channel-partnership"
+  | "other";
+export type OutreachReplyOutcome = "no-reply" | "positive" | "rejection" | "referral" | "neutral" | "bounce" | "unsubscribe" | "unknown";
+export type OutreachLeadFitScore = {
+  customerType: OutreachCustomerType;
+  fit: "high" | "medium" | "low" | "cautious" | "unknown";
+  score: number;
+  purchaseOrCooperationSignal: "strong" | "medium" | "weak" | "none" | "unknown";
+  recommendedAngles: OutreachDevelopmentAngle[];
+  primaryAngle?: OutreachDevelopmentAngle;
+  disallowedAngles: Array<{ angle?: OutreachDevelopmentAngle; label: string; reason: string }>;
+  recommendedApproach: string;
+  notRecommendedApproach: string;
+  expectedReplyRate: { minPercent: number; maxPercent: number; rationale: string };
+  risks: string[];
+  rationale: string;
+  scoredAt?: string;
+};
+export type OutreachEvidenceLockItem = {
+  id: string;
+  statement: string;
+  source: "lead" | "website" | "company-profile" | "material" | "model" | "user";
+  sourceUrl?: string;
+  evidenceId?: string;
+  reason: string;
+};
+export type OutreachEvidenceLock = {
+  status: "unlocked" | "locked" | "needs-review";
+  usableFacts: OutreachEvidenceLockItem[];
+  unsupportedInferences: OutreachEvidenceLockItem[];
+  riskyAssumptions: OutreachEvidenceLockItem[];
+  mustNotSay: string[];
+  summary: string;
+  lockedAt?: string;
+};
+export type OutreachValueMatch = {
+  ourProduct: string;
+  customerProductLine: string;
+  customerConcern: string;
+  specificValue: string;
+  proofPoints: string[];
+  firstEmailPoint: string;
+  cta: string;
+  assetIds: string[];
+  confidenceScore: number;
+  rationale: string;
+};
+export type OutreachSendOutcome = {
+  status: "not-sent" | "queued" | "sent" | "delivered" | "opened" | "clicked" | "replied" | "bounced" | "failed" | "unsubscribed";
+  messageId?: string;
+  senderAccountId?: string;
+  senderEmail?: string;
+  senderDomain?: string;
+  sentAt?: string;
+  repliedAt?: string;
+  bouncedAt?: string;
+  unsubscribedAt?: string;
+  bounced: boolean;
+  opened: boolean;
+  clicked: boolean;
+  replied: boolean;
+  notes: string;
+};
+export type OutreachLearningSignal = {
+  customerType: OutreachCustomerType;
+  customerCountry: string;
+  customerIndustry: string;
+  developmentAngle?: OutreachDevelopmentAngle;
+  subject: string;
+  cta: string;
+  emailWordCount: number;
+  firstLineType: "customer-observation" | "business-type" | "trigger-event" | "generic" | "unknown";
+  valuePoint: string;
+  hadAttachment: boolean;
+  sentAt?: string;
+  replyStep?: number;
+  replyOutcome: OutreachReplyOutcome;
+  replyContent: string;
+  userEditedFields: string[];
+  userChangeSummary: string;
+  userMarkedGood: boolean;
+  userAdopted: boolean;
+  nextOptimization: string;
+  recordedAt?: string;
+};
+
+export type OutreachEvidenceItem = {
+  id: string;
+  level: OutreachEvidenceLevel;
+  label: string;
+  value: string;
+  source: "lead" | "website" | "company-profile" | "material" | "model" | "user";
+  sourceUrl?: string;
+  snippet: string;
+  usedInEmail: boolean;
+};
+
+export type OutreachEvidenceMap = {
+  status: "success" | "need_more_data";
+  minimumDataAvailable: boolean;
+  verifiedFacts: OutreachEvidenceItem[];
+  inferredInsights: OutreachEvidenceItem[];
+  genericContext: OutreachEvidenceItem[];
+  prohibitedClaims: OutreachEvidenceItem[];
+  missingFields: string[];
+  createdAt?: string;
+};
+
+export type OutreachCtaAssetType =
+  | "catalog"
+  | "sample_options"
+  | "spec_comparison"
+  | "moq_leadtime_sheet"
+  | "case_study"
+  | "certification_pack"
+  | "packaging_options"
+  | "quote_range"
+  | "custom";
+
+export type OutreachCtaAsset = {
+  id: string;
+  profileId?: string;
+  name: string;
+  type: OutreachCtaAssetType;
+  description: string;
+  assetText: string;
+  materialId?: string;
+  url?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachBuyerPersona = {
+  id: string;
+  profileId?: string;
+  name: string;
+  companyType: string;
+  buyerRoles: string[];
+  painPoints: string[];
+  successMetrics: string[];
+  objections: string[];
+  triggerEvents: string[];
+  evidenceNotes: string[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachUspCandidate = {
+  id: string;
+  profileId?: string;
+  category: string;
+  headline: string;
+  buyerAngle: string;
+  proof: string;
+  proofLevel: "verified" | "profile-derived" | "needs-proof";
+  assetIds: string[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachStrategyMatch = {
+  personaId?: string;
+  uspId?: string;
+  ctaAssetId?: string;
+  buyerPain: string;
+  buyerImplication: string;
+  selectedUsp: string;
+  microOffer: string;
+  rationale: string;
+  confidenceScore: number;
+  evidenceIds: string[];
+  warnings: string[];
+};
+
+export type OutreachSendRiskReview = {
+  score: number;
+  passed: boolean;
+  level: "pass" | "warning" | "blocked";
+  issues: Array<{
+    id: string;
+    severity: "info" | "warning" | "block";
+    message: string;
+    blocking: boolean;
+  }>;
+  checkedAt: string;
+};
+
 export type OutreachDraft = {
   id: string;
   profileId?: string;
@@ -484,13 +811,47 @@ export type OutreachDraft = {
   body: string;
   language: string;
   tone: string;
+  generationMode: OutreachGenerationMode;
   promptSnapshot: string;
   providerId?: string;
   model?: string;
   usage?: ChatMessage["usage"];
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   qualityReview?: OutreachEmailQualityReview;
+  evidenceMap?: OutreachEvidenceMap;
+  strategyMatch?: OutreachStrategyMatch;
+  sendRiskReview?: OutreachSendRiskReview;
+  writingEngine?: "legacy-chat" | "harness-v2";
+  modelUsed?: string;
+  rewriteAttempts?: number;
+  evidenceUsed?: OutreachEvidenceItem[];
+  matchedExampleIds?: string[];
+  researchBrief?: CustomerResearchBrief;
+  generationSummary?: string;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   sentAt?: string;
   sendError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OutreachGoldenExample = {
+  id: string;
+  profileId?: string;
+  title: string;
+  industry: string;
+  buyerType: string;
+  productLine: string;
+  market: string;
+  subject: string;
+  body: string;
+  tags: string[];
+  sourceDraftId?: string;
+  qualityScore?: number;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -576,7 +937,7 @@ export type OutreachEmailSignature = {
   updatedAt?: string;
 };
 
-export type OutreachResearchDepth = "quick" | "standard" | "deep";
+export type OutreachResearchDepth = "adaptive" | "quick" | "standard" | "deep";
 
 export type CustomerResearchSummary = {
   depth: OutreachResearchDepth;
@@ -595,6 +956,29 @@ export type CustomerResearchEvidence = {
   snippet: string;
 };
 
+export type CustomerResearchAngle = {
+  name: string;
+  whyItFits: string;
+  buyerConcern: string;
+  evidence: string[];
+  claimsToAvoid: string[];
+  riskLevel: "low" | "medium" | "high";
+};
+
+export type CustomerResearchBrief = {
+  fitVerdict: "good-fit" | "cautious" | "poor-fit" | "unknown";
+  shouldWrite: "yes" | "cautious" | "no";
+  buyerTypeDetail: string;
+  purchaseIntentSignal: string;
+  bestOutreachPath: string;
+  mainRisk: string;
+  recommendedContactRoles: string[];
+  claimsToAvoid: string[];
+  outreachAngles: CustomerResearchAngle[];
+  bestAngle: string;
+  handoffBrief: string;
+};
+
 export type CustomerResearchSnapshot = {
   website: string;
   companyName: string;
@@ -611,6 +995,7 @@ export type CustomerResearchSnapshot = {
   description: string;
   fetchedUrls: string[];
   evidence: CustomerResearchEvidence[];
+  brief?: CustomerResearchBrief;
   textPreview: string;
   error?: string;
   createdAt: string;
@@ -645,7 +1030,16 @@ export type EmailSequenceDraft = {
   subject: string;
   body: string;
   status: "draft" | "sent" | "failed";
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   qualityReview?: OutreachEmailQualityReview;
+  evidenceMap?: OutreachEvidenceMap;
+  strategyMatch?: OutreachStrategyMatch;
+  sendRiskReview?: OutreachSendRiskReview;
+  researchBrief?: CustomerResearchBrief;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   sentAt?: string;
   sendError?: string;
 };
@@ -659,6 +1053,7 @@ export type OutreachWorkflow = {
   email: string;
   language: string;
   tone: string;
+  generationMode: OutreachGenerationMode;
   research: CustomerResearchSnapshot;
   icps: GeneratedIcp[];
   usps: GeneratedUsp[];
@@ -710,6 +1105,37 @@ export type OutreachCampaignStats = {
   stopped: number;
 };
 
+export type OutreachCampaignDeliverabilityStats = {
+  attempted: number;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  unsubscribed: number;
+  highSpamRisk: number;
+  mailboxIssues: number;
+  domainIssues: number;
+  abnormalFrequency: number;
+};
+
+export type OutreachCampaignLearningSummary = {
+  sampleSize: number;
+  responsiveCustomerTypes: OutreachCustomerType[];
+  responsiveCountries: string[];
+  responsiveIndustries: string[];
+  effectiveAngles: OutreachDevelopmentAngle[];
+  effectiveSubjects: string[];
+  effectiveCtas: string[];
+  effectiveValuePoints: string[];
+  weakSignals: string[];
+  riskyPhrases: string[];
+  userKeptPatterns: string[];
+  userRemovedPatterns: string[];
+  updatedAt?: string;
+};
+
 export type OutreachCampaignRecipient = {
   id: string;
   profileId: string;
@@ -723,7 +1149,12 @@ export type OutreachCampaignRecipient = {
   contactName?: string;
   contactTitle?: string;
   status: OutreachCampaignRecipientStatus;
+  leadFitScore?: OutreachLeadFitScore;
+  evidenceLock?: OutreachEvidenceLock;
+  valueMatch?: OutreachValueMatch;
   researchSummary?: CustomerResearchSummary;
+  sendOutcome?: OutreachSendOutcome;
+  learningSignal?: OutreachLearningSignal;
   approvedAt?: string;
   queuedAt?: string;
   sentAt?: string;
@@ -752,9 +1183,12 @@ export type OutreachCampaign = {
   tone: string;
   providerId?: string;
   model?: string;
+  generationMode: OutreachGenerationMode;
   researchDepth: OutreachResearchDepth;
   rateLimit: OutreachCampaignRateLimit;
   stats: OutreachCampaignStats;
+  deliverabilityStats?: OutreachCampaignDeliverabilityStats;
+  learningSummary?: OutreachCampaignLearningSummary;
   recipients: OutreachCampaignRecipient[];
   startedAt?: string;
   pausedAt?: string;
@@ -882,11 +1316,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(parseErrorMessage(text) || `${res.status} ${res.statusText}`);
+    const message = parseErrorMessage(text) || `${res.status} ${res.statusText}`;
+    throw new Error(`Request failed ${path}: ${message}`);
   }
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+async function blobRequest(path: string): Promise<Blob> {
+  const desktopConfig = await window.hermillsDesktop?.getConfig?.();
+  const baseUrl = desktopConfig?.apiBaseUrl || import.meta.env.VITE_HERMILLS_API_BASE_URL || "http://127.0.0.1:47321";
+  const token = desktopConfig?.desktopToken || import.meta.env.VITE_HERMILLS_DESKTOP_TOKEN;
+  const headers = new Headers();
+  if (token) headers.set("x-hermills-token", token);
+  const res = await fetch(`${baseUrl}${path}`, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const message = parseErrorMessage(text) || `${res.status} ${res.statusText}`;
+    throw new Error(`Request failed ${path}: ${message}`);
+  }
+  return res.blob();
 }
 
 function parseErrorMessage(text: string): string {
@@ -995,6 +1445,72 @@ function onboardingProviderPayload(provider: OnboardingClientUpdate["provider"],
 export const api = {
   async appState(): Promise<AppState> {
     return request<AppState>("/api/app-state");
+  },
+  async cloudStatus(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/cloud/status");
+  },
+  async cloudMe(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/me");
+  },
+  async cloudSignup(input: { email: string; password?: string; fullName?: string; nickname?: string; termsAccepted?: boolean }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async cloudLogin(input: { email: string; password: string }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async cloudLogout(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/logout", { method: "POST", body: "{}" });
+  },
+  async cloudAcceptTerms(): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/accept-terms", { method: "POST", body: "{}" });
+  },
+  async cloudPasswordReset(email: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>("/api/auth/password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+  },
+  async cloudResendSignupConfirmation(email: string): Promise<{ ok: boolean }> {
+    return request<{ ok: boolean }>("/api/auth/resend-signup-confirmation", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+  },
+  async cloudVerifySignupCode(input: { email: string; token: string }): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/auth/verify-signup-code", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async adminUsers(): Promise<CloudAccountProfile[]> {
+    return request<CloudAccountProfile[]>("/api/admin/users");
+  },
+  async updateAdminUserStatus(userId: string, status: 'active' | 'disabled'): Promise<CloudAccountProfile> {
+    return request<CloudAccountProfile>(`/api/admin/users/${encodeURIComponent(userId)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+  },
+  async cloudSync(force = false): Promise<CloudStatus> {
+    return request<CloudStatus>("/api/cloud/sync", {
+      method: "POST",
+      body: JSON.stringify({ force })
+    });
+  },
+  async summarizeCloudLearningRules(input: { profileId?: string; windowDays?: number; minEvidence?: number; dryRun?: boolean; forceSync?: boolean } = {}): Promise<CloudLearningRuleSummary> {
+    return request<CloudLearningRuleSummary>("/api/cloud/learning-rules/summarize", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  async learningPack(): Promise<CloudLearningPack> {
+    return request<CloudLearningPack>("/api/learning-pack");
   },
   async onboarding(): Promise<OnboardingState> {
     return mapOnboarding(await request<RawOnboardingState>("/api/onboarding"));
@@ -1221,6 +1737,45 @@ export const api = {
   async deleteChannel(id: string): Promise<void> {
     await request<void>(`/api/channels/${id}`, { method: "DELETE" });
   },
+  async chatControlBindings(query: { platform?: ChannelRecord["kind"] } = {}): Promise<ChatControlBindingSession[]> {
+    const params = new URLSearchParams();
+    if (query.platform) params.set("kind", query.platform);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<ChatControlBindingSession[]>(`/api/chat-control/bindings${suffix}`);
+  },
+  async createChatControlBinding(input: { platform: ChannelRecord["kind"]; label?: string }): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>("/api/chat-control/bindings", { method: "POST", body: JSON.stringify(input) });
+  },
+  async chatControlBinding(id: string): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>(`/api/chat-control/bindings/${id}`);
+  },
+  async testChatControlBinding(id: string): Promise<ChatControlBindingSession> {
+    return request<ChatControlBindingSession>(`/api/chat-control/bindings/${id}/test`, { method: "POST", body: "{}" });
+  },
+  async pollChatControlCloudCommands(): Promise<ChatControlCloudPollResult> {
+    return request<ChatControlCloudPollResult>("/api/chat-control/cloud/poll", { method: "POST", body: "{}" });
+  },
+  async chatControlCommands(query: { status?: ChatControlCommand["status"]; limit?: number } = {}): Promise<ChatControlCommand[]> {
+    const params = new URLSearchParams();
+    if (query.status) params.set("status", query.status);
+    if (query.limit) params.set("limit", String(query.limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<ChatControlCommand[]>(`/api/chat-control/commands${suffix}`);
+  },
+  async createChatControlCommand(input: {
+    channelId?: string;
+    platform?: ChannelRecord["kind"];
+    conversationId?: string;
+    senderId?: string;
+    senderDisplayName?: string;
+    rawText: string;
+    executeNow?: boolean;
+  }): Promise<ChatControlCommand> {
+    return request<ChatControlCommand>("/api/chat-control/commands", { method: "POST", body: JSON.stringify(input) });
+  },
+  async runChatControlCommand(id: string): Promise<ChatControlCommand> {
+    return request<ChatControlCommand>(`/api/chat-control/commands/${id}/run`, { method: "POST", body: "{}" });
+  },
   async logs(query: { source?: LogEntry["source"]; level?: LogEntry["level"]; q?: string; limit?: number } = {}): Promise<LogEntry[]> {
     const params = new URLSearchParams();
     if (query.source) params.set("source", query.source);
@@ -1322,6 +1877,58 @@ export const api = {
       body: JSON.stringify({ ids })
     });
   },
+  async outreachBuyerPersonas(): Promise<OutreachBuyerPersona[]> {
+    return request<OutreachBuyerPersona[]>("/api/outreach/personas");
+  },
+  async saveOutreachBuyerPersona(input: Omit<Partial<OutreachBuyerPersona>, "createdAt" | "updatedAt"> & { name: string; id?: string }): Promise<OutreachBuyerPersona> {
+    const { id, ...payload } = input;
+    return request<OutreachBuyerPersona>(id ? `/api/outreach/personas/${id}` : "/api/outreach/personas", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachBuyerPersona(id: string): Promise<void> {
+    await request<void>(`/api/outreach/personas/${id}`, { method: "DELETE" });
+  },
+  async outreachUsps(): Promise<OutreachUspCandidate[]> {
+    return request<OutreachUspCandidate[]>("/api/outreach/usps");
+  },
+  async saveOutreachUsp(input: Omit<Partial<OutreachUspCandidate>, "createdAt" | "updatedAt"> & { headline: string; id?: string }): Promise<OutreachUspCandidate> {
+    const { id, ...payload } = input;
+    return request<OutreachUspCandidate>(id ? `/api/outreach/usps/${id}` : "/api/outreach/usps", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachUsp(id: string): Promise<void> {
+    await request<void>(`/api/outreach/usps/${id}`, { method: "DELETE" });
+  },
+  async outreachCtaAssets(): Promise<OutreachCtaAsset[]> {
+    return request<OutreachCtaAsset[]>("/api/outreach/cta-assets");
+  },
+  async saveOutreachCtaAsset(input: Omit<Partial<OutreachCtaAsset>, "createdAt" | "updatedAt"> & { name: string; id?: string }): Promise<OutreachCtaAsset> {
+    const { id, ...payload } = input;
+    return request<OutreachCtaAsset>(id ? `/api/outreach/cta-assets/${id}` : "/api/outreach/cta-assets", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachCtaAsset(id: string): Promise<void> {
+    await request<void>(`/api/outreach/cta-assets/${id}`, { method: "DELETE" });
+  },
+  async outreachGoldenExamples(): Promise<OutreachGoldenExample[]> {
+    return request<OutreachGoldenExample[]>("/api/outreach/golden-examples");
+  },
+  async saveOutreachGoldenExample(input: Omit<Partial<OutreachGoldenExample>, "createdAt" | "updatedAt"> & { title: string; subject: string; body: string; id?: string }): Promise<OutreachGoldenExample> {
+    const { id, ...payload } = input;
+    return request<OutreachGoldenExample>(id ? `/api/outreach/golden-examples/${id}` : "/api/outreach/golden-examples", {
+      method: id ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+  },
+  async deleteOutreachGoldenExample(id: string): Promise<void> {
+    await request<void>(`/api/outreach/golden-examples/${id}`, { method: "DELETE" });
+  },
   async outreachEmailSignature(): Promise<OutreachEmailSignature> {
     return request<OutreachEmailSignature>("/api/outreach/email-signature");
   },
@@ -1344,6 +1951,7 @@ export const api = {
     lead?: OutreachLeadInput;
     language?: string;
     tone?: string;
+    generationMode?: OutreachGenerationMode;
     providerId?: string;
     model?: string;
   }): Promise<OutreachDraft> {
@@ -1356,6 +1964,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachDraft> {
     return request<OutreachDraft>("/api/outreach/drafts/auto", { method: "POST", body: JSON.stringify(input) });
@@ -1367,6 +1976,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
   }): Promise<OutreachWorkflow> {
     return request<OutreachWorkflow>("/api/outreach/workflows/auto", { method: "POST", body: JSON.stringify(input) });
@@ -1392,6 +2002,7 @@ export const api = {
     tone?: string;
     providerId?: string;
     model?: string;
+    generationMode?: OutreachGenerationMode;
     researchDepth?: OutreachResearchDepth;
     rateLimit?: Partial<OutreachCampaignRateLimit>;
   }): Promise<OutreachCampaign> {
@@ -1399,6 +2010,15 @@ export const api = {
   },
   async generateOutreachCampaign(id: string): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate`, { method: "POST", body: "{}" });
+  },
+  async startOutreachCampaignGeneration(id: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate/start`, { method: "POST", body: "{}" });
+  },
+  async retryOutreachCampaignRecipient(campaignId: string, recipientId: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/retry`, { method: "POST", body: "{}" });
+  },
+  async exportOutreachCampaignCsv(id: string): Promise<Blob> {
+    return blobRequest(`/api/outreach/campaigns/${id}/export.csv`);
   },
   async approveOutreachCampaignRecipient(campaignId: string, recipientId: string, input: { subject?: string; body?: string } = {}): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/approve`, {
@@ -1569,14 +2189,7 @@ export const api = {
     return request<Material>(`/api/materials/${id}/copy`, { method: "POST", body: JSON.stringify(input) });
   },
   async downloadMaterial(id: string): Promise<Blob> {
-    const desktopConfig = await window.hermillsDesktop?.getConfig?.();
-    const baseUrl = desktopConfig?.apiBaseUrl || "http://127.0.0.1:47321";
-    const token = desktopConfig?.desktopToken;
-    const headers = new Headers();
-    if (token) headers.set("x-hermills-token", token);
-    const res = await fetch(`${baseUrl}/api/materials/${id}/download`, { headers });
-    if (!res.ok) throw new Error(await res.text().catch(() => `${res.status} ${res.statusText}`));
-    return res.blob();
+    return blobRequest(`/api/materials/${id}/download`);
   },
   async deleteMaterial(id: string): Promise<void> {
     await request<void>(`/api/materials/${id}`, { method: "DELETE" });
@@ -1599,6 +2212,24 @@ export const fallback = {
     shouldShowFirstDeploy: true,
     runtimeRecoverable: false
   } satisfies AppState,
+  cloudStatus: {
+    configured: false,
+    authenticated: false,
+    required: false,
+    syncQueued: 0,
+    message: "云端未配置"
+  } satisfies CloudStatus,
+  learningPack: {
+    version: "local-default",
+    generatedAt: "",
+    userPreferences: {
+      avoidPhrases: [],
+      commonEdits: []
+    },
+    companyRules: [],
+    customerRules: [],
+    globalRules: []
+  } satisfies CloudLearningPack,
   companyProfile: {
     version: 1,
     name: "",

@@ -5,6 +5,8 @@ import type {
   CapabilitySchema,
   ChatMessageSchema,
   ChatSessionSchema,
+  ChatControlBindingSessionSchema,
+  ChatControlCommandSchema,
   ChannelRecordSchema,
   CompanyMaterialCategorySchema,
   CompanyProfileSchema,
@@ -15,24 +17,45 @@ import type {
   MaterialRecordSchema,
   MaterialScopeSchema,
   DeepResearchSidecarConfigSchema,
+  CustomerResearchBriefSchema,
   CustomerResearchEvidenceSchema,
   CustomerResearchSummarySchema,
   CustomerResearchSnapshotSchema,
   EmailSequenceDraftSchema,
   GeneratedIcpSchema,
   GeneratedUspSchema,
+  OutreachBuyerPersonaSchema,
+  OutreachCampaignDeliverabilityStatsSchema,
+  OutreachCampaignLearningSummarySchema,
+  OutreachCtaAssetSchema,
+  OutreachCustomerTypeSchema,
+  OutreachDevelopmentAngleSchema,
   OutreachEmailQualityReviewSchema,
   OutreachEmailSignatureSchema,
+  OutreachEvidenceItemSchema,
+  OutreachEvidenceLockSchema,
+  OutreachEvidenceMapSchema,
+  OutreachFitLevelSchema,
+  OutreachGenerationModeSchema,
+  OutreachLeadFitScoreSchema,
+  OutreachLearningSignalSchema,
   OutreachResearchDepthSchema,
+  OutreachSendOutcomeSchema,
+  OutreachSendRiskReviewSchema,
   OutreachSendChannelSchema,
   OutreachSenderApiCredentialSchema,
+  OutreachSignalStrengthSchema,
+  OutreachStrategyMatchSchema,
+  OutreachValueMatchSchema,
   OutreachCampaignRecipientSchema,
   OutreachCampaignSchema,
   OutreachDraftSchema,
   OutreachFeedbackSchema,
   OutreachFollowUpJobSchema,
+  OutreachGoldenExampleSchema,
   OutreachLeadSchema,
   OutreachSenderAccountSchema,
+  OutreachUspCandidateSchema,
   OutreachWorkflowSchema,
   ProviderCredentialSchema,
   RuntimeStatusSchema
@@ -50,6 +73,8 @@ export type MaterialRecord = z.infer<typeof MaterialRecordSchema>;
 export type RuntimeStatus = z.infer<typeof RuntimeStatusSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatSession = z.infer<typeof ChatSessionSchema>;
+export type ChatControlBindingSession = z.infer<typeof ChatControlBindingSessionSchema>;
+export type ChatControlCommand = z.infer<typeof ChatControlCommandSchema>;
 export type JobRecord = z.infer<typeof JobRecordSchema>;
 export type JobRunRecord = z.infer<typeof JobRunRecordSchema>;
 export type ChannelRecord = z.infer<typeof ChannelRecordSchema>;
@@ -57,10 +82,29 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
 export type OutreachLead = z.infer<typeof OutreachLeadSchema>;
 export type OutreachDraft = z.infer<typeof OutreachDraftSchema>;
 export type OutreachSenderAccount = z.infer<typeof OutreachSenderAccountSchema>;
+export type OutreachGenerationMode = z.infer<typeof OutreachGenerationModeSchema>;
+export type OutreachCustomerType = z.infer<typeof OutreachCustomerTypeSchema>;
+export type OutreachFitLevel = z.infer<typeof OutreachFitLevelSchema>;
+export type OutreachSignalStrength = z.infer<typeof OutreachSignalStrengthSchema>;
+export type OutreachDevelopmentAngle = z.infer<typeof OutreachDevelopmentAngleSchema>;
+export type OutreachLeadFitScore = z.infer<typeof OutreachLeadFitScoreSchema>;
+export type OutreachEvidenceItem = z.infer<typeof OutreachEvidenceItemSchema>;
+export type OutreachEvidenceMap = z.infer<typeof OutreachEvidenceMapSchema>;
+export type OutreachEvidenceLock = z.infer<typeof OutreachEvidenceLockSchema>;
+export type OutreachValueMatch = z.infer<typeof OutreachValueMatchSchema>;
+export type OutreachSendOutcome = z.infer<typeof OutreachSendOutcomeSchema>;
+export type OutreachLearningSignal = z.infer<typeof OutreachLearningSignalSchema>;
+export type OutreachBuyerPersona = z.infer<typeof OutreachBuyerPersonaSchema>;
+export type OutreachUspCandidate = z.infer<typeof OutreachUspCandidateSchema>;
+export type OutreachCtaAsset = z.infer<typeof OutreachCtaAssetSchema>;
+export type OutreachGoldenExample = z.infer<typeof OutreachGoldenExampleSchema>;
+export type OutreachStrategyMatch = z.infer<typeof OutreachStrategyMatchSchema>;
+export type OutreachSendRiskReview = z.infer<typeof OutreachSendRiskReviewSchema>;
 export type OutreachResearchDepth = z.infer<typeof OutreachResearchDepthSchema>;
 export type OutreachSendChannel = z.infer<typeof OutreachSendChannelSchema>;
 export type OutreachSenderApiCredential = z.infer<typeof OutreachSenderApiCredentialSchema>;
 export type DeepResearchSidecarConfig = z.infer<typeof DeepResearchSidecarConfigSchema>;
+export type CustomerResearchBrief = z.infer<typeof CustomerResearchBriefSchema>;
 export type CustomerResearchEvidence = z.infer<typeof CustomerResearchEvidenceSchema>;
 export type CustomerResearchSummary = z.infer<typeof CustomerResearchSummarySchema>;
 export type CustomerResearchSnapshot = z.infer<typeof CustomerResearchSnapshotSchema>;
@@ -72,6 +116,8 @@ export type OutreachEmailSignature = z.infer<typeof OutreachEmailSignatureSchema
 export type OutreachWorkflow = z.infer<typeof OutreachWorkflowSchema>;
 export type OutreachCampaign = z.infer<typeof OutreachCampaignSchema>;
 export type OutreachCampaignRecipient = z.infer<typeof OutreachCampaignRecipientSchema>;
+export type OutreachCampaignDeliverabilityStats = z.infer<typeof OutreachCampaignDeliverabilityStatsSchema>;
+export type OutreachCampaignLearningSummary = z.infer<typeof OutreachCampaignLearningSummarySchema>;
 export type OutreachFollowUpJob = z.infer<typeof OutreachFollowUpJobSchema>;
 export type OutreachFeedback = z.infer<typeof OutreachFeedbackSchema>;
 
