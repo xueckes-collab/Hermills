@@ -65,6 +65,24 @@ describe("Hermills cloud account MVP", () => {
     expect(calls.some((call) => call.url.includes("/rest/v1/event_logs"))).toBe(false);
   });
 
+  it("keeps account login disabled by default even when Supabase is configured", async () => {
+    const service = new HermillsCloudService({
+      baseDir: await mkdtemp(path.join(os.tmpdir(), "hermills-cloud-account-")),
+      env: {
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_ANON_KEY: "anon-key",
+        HERMILLS_CLOUD_REQUIRED: "1"
+      } as NodeJS.ProcessEnv
+    });
+
+    await expect(service.status()).resolves.toMatchObject({
+      configured: true,
+      required: false,
+      authenticated: false,
+      message: "Account login is disabled. Hermills is running in local mode."
+    });
+  });
+
   it("verifies signup with the numeric email code inside Hermills", async () => {
     const calls: Array<{ url: string; body?: unknown; method?: string }> = [];
     const service = new HermillsCloudService({

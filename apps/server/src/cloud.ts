@@ -232,7 +232,7 @@ export class HermillsCloudService {
     this.config = {
       url: env.SUPABASE_URL?.replace(/\/+$/, "") ?? "",
       anonKey: env.SUPABASE_ANON_KEY ?? "",
-      required: env.HERMILLS_CLOUD_REQUIRED !== "0"
+      required: env.HERMILLS_ACCOUNT_LOGIN_ENABLED === "1" && env.HERMILLS_CLOUD_REQUIRED !== "0"
     };
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.authStore = new CloudAuthStore(options.baseDir);
@@ -281,7 +281,11 @@ export class HermillsCloudService {
       learningRulesUpdatedAt: sync.learningRulesUpdatedAt,
       message: accountDisabled
         ? "这个 Hermills 账号已被管理员停用。"
-        : session?.accessToken ? "Hermills Cloud is connected." : "Sign in to enable cloud memory and Learning Pack."
+        : session?.accessToken
+          ? "Hermills Cloud is connected."
+          : this.config.required
+            ? "Sign in to enable cloud memory and Learning Pack."
+            : "Account login is disabled. Hermills is running in local mode."
     };
   }
 

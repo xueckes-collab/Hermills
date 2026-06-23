@@ -33,8 +33,11 @@ Hermills server reads these values:
 ```env
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-public-anon-key
-HERMILLS_CLOUD_REQUIRED=1
+HERMILLS_CLOUD_REQUIRED=0
+HERMILLS_ACCOUNT_LOGIN_ENABLED=0
 ```
+
+Hermills currently ships with account login disabled. To turn the login gate back on after production SMTP is reliable, set both `HERMILLS_ACCOUNT_LOGIN_ENABLED=1` and `HERMILLS_CLOUD_REQUIRED=1`.
 
 For Windows releases, copy `build/hermills-cloud.example.json` to `build/hermills-cloud.json` and fill in the public Supabase URL and anon key before packaging. Do not commit the real file.
 

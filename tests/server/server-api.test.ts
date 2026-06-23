@@ -88,6 +88,58 @@ describe("Hermills local API", () => {
     });
   });
 
+  it("imports batch lead files that only contain email and website columns", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/import",
+      headers,
+      payload: {
+        csvText: [
+          "email,website,contactName",
+          "sales@spcflooringstore.com,https://spcflooringstore.com/,Sales team",
+          "buyer@lionsfloor.example,https://lionsfloor.example,Buyer team"
+        ].join("\n")
+      }
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().imported).toHaveLength(2);
+    expect(response.json().skipped).toHaveLength(0);
+    expect(response.json().imported[0]).toMatchObject({
+      companyName: "Spcflooringstore",
+      email: "sales@spcflooringstore.com",
+      website: "https://spcflooringstore.com/"
+    });
+  });
+
+  it("cleans batch lead websites and emails while skipping invalid rows", async () => {
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/outreach/leads/import",
+      headers,
+      payload: {
+        csvText: [
+          "company,email,website,country",
+          "SPC Store,SALES@SPCFLOORINGSTORE.COM,spcflooringstore.com,US",
+          "Bad Mail,not-an-email,https://bad-mail.example,US",
+          "Bad Website,buyer@bad.example,not a website,US"
+        ].join("\n")
+      }
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().imported).toHaveLength(1);
+    expect(response.json().imported[0]).toMatchObject({
+      companyName: "SPC Store",
+      email: "sales@spcflooringstore.com",
+      website: "https://spcflooringstore.com/"
+    });
+    expect(response.json().skipped).toEqual([
+      { row: 3, reason: "Invalid email." },
+      { row: 4, reason: "Invalid website." }
+    ]);
+  });
+
   it("keeps cloud memory optional when Supabase is not configured", async () => {
     const previousEnv = {
       url: process.env.SUPABASE_URL,

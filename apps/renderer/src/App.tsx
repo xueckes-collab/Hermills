@@ -424,6 +424,15 @@ export function getChatSessionDefaults(agent: Agent | undefined, provider: Provi
   return { agentId: agent?.id, model: agent?.model }
 }
 
+function campaignExportFilename(campaign: OutreachCampaign): string {
+  const slug = (campaign.name || campaign.id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `outreach-campaign-${slug || campaign.id}.csv`
+}
+
 function sessionHasReadyProvider(session: ChatSession | undefined, providers: Provider[]): boolean {
   return Boolean(session?.providerId && providers.some((provider) => provider.id === session.providerId && provider.status === 'connected'))
 }
@@ -3522,6 +3531,44 @@ function DevelopmentLetterPage({
     }
   }
 
+  async function retryCampaignRecipient(recipient: OutreachCampaignRecipient) {
+    if (!selectedCampaign) return
+    setBusy(`campaignRetry:${recipient.id}`)
+    setError('')
+    setNotice('')
+    try {
+      const campaign = await api.retryOutreachCampaignRecipient(selectedCampaign.id, recipient.id)
+      replaceCampaign(campaign)
+      setSelectedCampaignRecipientId(recipient.id)
+      setNotice(`${recipient.companyName} 已重新生成开发信。`)
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function exportCampaignCsv() {
+    if (!selectedCampaign) return
+    setBusy('campaignExport')
+    setError('')
+    setNotice('')
+    try {
+      const blob = await api.exportOutreachCampaignCsv(selectedCampaign.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = campaignExportFilename(selectedCampaign)
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setNotice('已导出批量开发信结果 CSV。')
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function startCampaign() {
     if (!selectedCampaign) return
     const sender = selectedSender ?? await saveSender()
@@ -3824,6 +3871,7 @@ function DevelopmentLetterPage({
       await importAndGenerateLetterLeads(text)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'fileUpload'))
+    } finally {
       setBusy('')
     }
   }
@@ -4460,7 +4508,7 @@ function DevelopmentLetterPage({
     : cloudStatus.authenticated
       ? { className: 'ready', label: cloudStatus.learningRulesUpdatedAt ? '自动学习已更新' : cloudStatus.lastSyncAt ? '自动学习已同步' : '云端大脑已连接' }
       : cloudStatus.configured
-        ? { className: 'warning', label: '云端大脑待登录' }
+        ? { className: 'muted', label: '本地模式' }
         : { className: 'muted', label: '云端大脑未启用' }
   const letterSubtitle = letterView === 'dashboard'
     ? '查看今天要处理的客户、草稿、发送和回复'
@@ -4543,12 +4591,12 @@ function DevelopmentLetterPage({
           <div className="hm-page hm-today-workspace">
             <OutreachStatusBanner
               tone={cloudStatus.authenticated ? 'success' : cloudStatus.configured ? 'warning' : 'info'}
-              title={cloudStatus.authenticated ? '自动学习已开启' : cloudStatus.configured ? '云端大脑待登录' : '本地外联工作台'}
+              title={cloudStatus.authenticated ? '自动学习已开启' : cloudStatus.configured ? '本地模式' : '本地外联工作台'}
               action={<OutreachButton variant="secondary" onClick={() => setLetterView('compose')}>写单封开发信</OutreachButton>}
             >
               {cloudStatus.authenticated
                 ? 'Hermills 会在本地完成写信流程，并持续上传脱敏后的学习数据。'
-                : '你可以先在本地写信、审核和发送；登录后再同步学习数据。'}
+                : '登录系统已临时关闭。你可以先在本地写信、审核和发送。'}
             </OutreachStatusBanner>
 
             <section className="hm-dashboard-stats" aria-label="客户状态统计">
@@ -4979,6 +5027,7 @@ function DevelopmentLetterPage({
                   <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'followUpsSchedule'} aria-busy={busy === 'followUpsSchedule'} loading={busy === 'followUpsSchedule'} onClick={scheduleCampaignFollowUps}>安排跟进</OutreachButton>
                   <OutreachButton variant="secondary" disabled={busy === 'followUpsTick'} aria-busy={busy === 'followUpsTick'} loading={busy === 'followUpsTick'} onClick={runFollowUpTick}>检查跟进</OutreachButton>
                   <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'inboxCheck'} aria-busy={busy === 'inboxCheck'} loading={busy === 'inboxCheck'} onClick={checkCampaignInbox}>检查回复</OutreachButton>
+                  <OutreachButton variant="secondary" disabled={!selectedCampaign || busy === 'campaignExport'} aria-busy={busy === 'campaignExport'} loading={busy === 'campaignExport'} onClick={exportCampaignCsv}>导出 CSV</OutreachButton>
                 </div>
                 {nextFollowUps.length ? (
                   <div className="hm-followup-list">
@@ -5053,14 +5102,24 @@ function DevelopmentLetterPage({
                             <OutreachButton variant="primary" disabled={busy === 'campaignApprove'} loading={busy === 'campaignApprove'} onClick={approveCampaignRecipient}>{copy.devLetter.batch.actions.approve}</OutreachButton>
                             <OutreachButton variant="secondary" disabled={busy === 'assetGoldenFromDraft'} loading={busy === 'assetGoldenFromDraft'} onClick={saveCampaignDraftAsGoldenExample}>保存为好样例</OutreachButton>
                             <OutreachButton variant="secondary" disabled={!campaignDraftSubject.trim() || !campaignDraftBody.trim()} onClick={() => copyEmailDraft(campaignDraftSubject, campaignDraftBody)}>复制草稿</OutreachButton>
+                            {selectedCampaignRecipient.status === 'failed' || selectedCampaignRecipient.status === 'skipped' ? (
+                              <OutreachButton variant="secondary" disabled={busy === `campaignRetry:${selectedCampaignRecipient.id}`} loading={busy === `campaignRetry:${selectedCampaignRecipient.id}`} onClick={() => retryCampaignRecipient(selectedCampaignRecipient)}>重试失败项</OutreachButton>
+                            ) : null}
                             <OutreachButton variant="secondary" disabled={busy === `campaignSkip:${selectedCampaignRecipient.id}`} loading={busy === `campaignSkip:${selectedCampaignRecipient.id}`} onClick={() => skipCampaignRecipient(selectedCampaignRecipient)}>{copy.devLetter.batch.actions.skip}</OutreachButton>
                           </OutreachStickyActionBar>
                         </>
                       ) : (
-                        <OutreachEmptyState
-                          title={campaignGenerationRunning ? '正在逐封生成' : '还没有可审核草稿'}
-                          description={campaignGenerationRunning ? '写好一封会自动显示一封，你不用等整批客户全部完成。' : copy.devLetter.batch.emptyReview}
-                        />
+                        <>
+                          <OutreachEmptyState
+                            title={campaignGenerationRunning ? '正在逐封生成' : '还没有可审核草稿'}
+                            description={campaignGenerationRunning ? '写好一封会自动显示一封，你不用等整批客户全部完成。' : copy.devLetter.batch.emptyReview}
+                          />
+                          {selectedCampaignRecipient?.status === 'failed' || selectedCampaignRecipient?.status === 'skipped' ? (
+                            <OutreachStickyActionBar>
+                              <OutreachButton variant="primary" disabled={busy === `campaignRetry:${selectedCampaignRecipient.id}`} loading={busy === `campaignRetry:${selectedCampaignRecipient.id}`} onClick={() => retryCampaignRecipient(selectedCampaignRecipient)}>重试失败项</OutreachButton>
+                            </OutreachStickyActionBar>
+                          ) : null}
+                        </>
                       )}
                     </div>
                   </div>

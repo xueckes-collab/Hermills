@@ -9,11 +9,14 @@ Set these before packaging a cloud-enabled build:
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-supabase-anon-key
-HERMILLS_CLOUD_REQUIRED=1
+HERMILLS_CLOUD_REQUIRED=0
+HERMILLS_ACCOUNT_LOGIN_ENABLED=0
 HERMILLS_CHAT_RELAY_URL=https://your-chat-relay.example.com
 ```
 
-Use `HERMILLS_CLOUD_REQUIRED=0` for local/offline builds that should never block on login.
+Use `HERMILLS_ACCOUNT_LOGIN_ENABLED=0` for local/offline builds that should never block on login. Account login is disabled by default until production SMTP and OTP delivery are stable.
+
+To re-enable the login gate later, set both `HERMILLS_ACCOUNT_LOGIN_ENABLED=1` and `HERMILLS_CLOUD_REQUIRED=1`.
 
 For Windows releases, copy `build/hermills-cloud.example.json` to `build/hermills-cloud.json` and fill in the public Supabase URL, anon key, and chat relay URL before packaging. `electron-builder` includes `build/hermills-cloud.json` as an app resource. Do not commit the real file.
 
@@ -51,7 +54,7 @@ The first sync pass uploads:
 
 If Supabase is not configured, Hermills keeps running locally. The cloud status endpoint returns `configured: false`; writing emails and managing customers still works.
 
-If Supabase is configured and `HERMILLS_CLOUD_REQUIRED` is not `0`, the renderer shows the login gate before the workspace. After login, Hermills auto-syncs once and the user can manually sync from the outreach sidebar.
+If Supabase is configured while `HERMILLS_ACCOUNT_LOGIN_ENABLED=0`, Hermills still opens the local workspace and shows cloud learning as local mode. If Supabase is configured and both `HERMILLS_ACCOUNT_LOGIN_ENABLED=1` and `HERMILLS_CLOUD_REQUIRED=1`, the renderer shows the login gate before the workspace. After login, Hermills auto-syncs once and the user can manually sync from the outreach sidebar.
 
 ## Chat-Control Relay
 

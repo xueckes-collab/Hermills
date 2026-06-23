@@ -316,7 +316,8 @@ function loadCloudConfigEnv() {
       const config = JSON.parse(readFileSync(filePath, "utf8"));
       process.env.SUPABASE_URL ||= stringConfigValue(config.supabaseUrl ?? config.SUPABASE_URL);
       process.env.SUPABASE_ANON_KEY ||= stringConfigValue(config.supabaseAnonKey ?? config.SUPABASE_ANON_KEY);
-      process.env.HERMILLS_CLOUD_REQUIRED ||= stringConfigValue(config.cloudRequired ?? config.HERMILLS_CLOUD_REQUIRED) ?? "1";
+      process.env.HERMILLS_CLOUD_REQUIRED ||= stringConfigValue(config.cloudRequired ?? config.HERMILLS_CLOUD_REQUIRED) ?? "0";
+      process.env.HERMILLS_ACCOUNT_LOGIN_ENABLED ||= stringConfigValue(config.accountLoginEnabled ?? config.HERMILLS_ACCOUNT_LOGIN_ENABLED) ?? "0";
       process.env.HERMILLS_CHAT_RELAY_URL ||= stringConfigValue(config.chatRelayUrl ?? config.HERMILLS_CHAT_RELAY_URL);
       return;
     } catch (error) {

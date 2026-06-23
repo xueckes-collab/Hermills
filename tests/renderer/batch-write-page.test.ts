@@ -36,6 +36,26 @@ describe("batch write page redesign contract", () => {
     expect(batchView).toContain("selectedCampaignRecipient?.draft");
   });
 
+  it("always releases the file-generate busy state after selecting a batch file", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const handler = sourceWindow(appSource, "async function importLetterFileAndGenerate", 1200);
+
+    expect(handler).toContain("finally");
+    expect(handler).toContain("setBusy('')");
+  });
+
+  it("exposes batch export and failed-recipient retry actions", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const apiSource = await readFile(projectFile("apps/renderer/src/api.ts"), "utf8");
+    const batchView = sourceWindow(appSource, "{letterView === 'automation' ? (", 19000);
+
+    expect(apiSource).toContain("retryOutreachCampaignRecipient");
+    expect(apiSource).toContain("exportOutreachCampaignCsv");
+    expect(batchView).toContain("导出 CSV");
+    expect(batchView).toContain("重试失败项");
+    expect(batchView).toContain("retryCampaignRecipient");
+  });
+
   it("styles the batch page with stable setup and review workspaces", async () => {
     const stylesSource = await readFile(projectFile("apps/renderer/src/styles.css"), "utf8");
 

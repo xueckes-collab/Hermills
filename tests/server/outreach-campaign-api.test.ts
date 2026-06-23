@@ -131,6 +131,86 @@ describe("outreach campaign API", () => {
     expect(runtime.requests.every((request) => request.messages[0]?.content.includes("Outreach OS evidence and asset map"))).toBe(true);
     expect(mailMock.sendMail).not.toHaveBeenCalled();
 
+    const exportResponse = await server.inject({
+      method: "GET",
+      url: `/api/outreach/campaigns/${campaignId}/export.csv`,
+      headers
+    });
+    expect(exportResponse.statusCode, exportResponse.body).toBe(200);
+    expect(exportResponse.headers["content-type"]).toContain("text/csv");
+    expect(exportResponse.headers["content-disposition"]).toContain("outreach-campaign-june-outreach");
+    expect(exportResponse.body).toContain("companyName,email,website,status,qualityScore,subject,body,evidenceUrls,error");
+    expect(exportResponse.body).toContain("Atlas Buyer");
+    expect(exportResponse.body).toContain("Work light options");
+    expect(exportResponse.body).toContain("https://atlas.example");
+
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Retry work light options",
+          body: "Hi Retry Buyer team,\n\nYour contractor lighting channel suggests sample timing and replenishment proof may matter before trialing another work-light option.\nWe can prepare two CE-backed work light options with MOQ and lead time side by side.\nWould a sample-ready comparison be useful first?\n\nBest regards\nEckes Export"
+        });
+      }
+      if (prompt.includes("Fail Once Buyer") && !runtime.failOnceTriggered) {
+        runtime.failOnceTriggered = true;
+        throw new Error("temporary research generation failure");
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Retry work light options",
+          body: "Hi Retry Buyer team,\n\nYour contractor lighting channel suggests sample timing and replenishment proof may matter before trialing another work-light option.\nWe can prepare two CE-backed work light options with MOQ and lead time side by side.\nWould a sample-ready comparison be useful first?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
+    const failOnceLead = await createLead("Fail Once Buyer", "https://fail-once.example", "buyer@fail-once.example");
+    const failCampaignResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/campaigns",
+      headers,
+      payload: { name: "Retry campaign", leadIds: [failOnceLead.id], language: "English", tone: "warm", researchDepth: "deep" }
+    });
+    expect(failCampaignResponse.statusCode, failCampaignResponse.body).toBe(200);
+    const failCampaignId = failCampaignResponse.json().id;
+    const failedGeneration = await server.inject({ method: "POST", url: `/api/outreach/campaigns/${failCampaignId}/generate`, headers });
+    expect(failedGeneration.statusCode, failedGeneration.body).toBe(200);
+    const failedRecipient = failedGeneration.json().recipients[0];
+    expect(failedRecipient.status).toBe("failed");
+    expect(failedRecipient.sendError).toContain("temporary research generation failure");
+    const retryResponse = await server.inject({
+      method: "POST",
+      url: `/api/outreach/campaigns/${failCampaignId}/recipients/${failedRecipient.id}/retry`,
+      headers
+    });
+    expect(retryResponse.statusCode, retryResponse.body).toBe(200);
+    expect(retryResponse.json().recipients[0]).toMatchObject({ status: "generated" });
+    expect(retryResponse.json().recipients[0].sendError).toBeUndefined();
+    expect(retryResponse.json().recipients[0].draft.subject).toBe("Retry work light options");
+
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      const prompt = request.messages.map((message) => message.content).join("\n");
+      if (prompt.includes("Rewrite this B2B cold email")) {
+        return JSON.stringify({
+          subject: "Contractor work light options",
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
+        });
+      }
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Contractor work light options",
+          body: "Hi Atlas Buyer team,\n\nYour contractor lighting channel means jobsite availability and fast sample checks can matter before adding another work-light option.\nWe can prepare two sample-ready LED work light options with MOQ and lead time side by side.\nWould a fast-sampling comparison or a repeat-supply comparison be more useful?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
+
     const senderResponse = await server.inject({
       method: "POST",
       url: "/api/outreach/sender-accounts",
@@ -377,6 +457,7 @@ function createFakeRuntime() {
   };
   return {
     requests,
+    failOnceTriggered: false as boolean,
     async getLatest() {
       return {};
     },
@@ -438,7 +519,7 @@ function createFakeRuntime() {
     async dispose() {
       return undefined;
     }
-  } satisfies RuntimeAdapter & { requests: HermesReplyRequest[] };
+  } satisfies RuntimeAdapter & { requests: HermesReplyRequest[]; failOnceTriggered: boolean };
 }
 
 function fakeComputerControlStatus() {

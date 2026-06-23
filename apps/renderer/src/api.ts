@@ -1324,6 +1324,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function blobRequest(path: string): Promise<Blob> {
+  const desktopConfig = await window.hermillsDesktop?.getConfig?.();
+  const baseUrl = desktopConfig?.apiBaseUrl || import.meta.env.VITE_HERMILLS_API_BASE_URL || "http://127.0.0.1:47321";
+  const token = desktopConfig?.desktopToken || import.meta.env.VITE_HERMILLS_DESKTOP_TOKEN;
+  const headers = new Headers();
+  if (token) headers.set("x-hermills-token", token);
+  const res = await fetch(`${baseUrl}${path}`, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    const message = parseErrorMessage(text) || `${res.status} ${res.statusText}`;
+    throw new Error(`Request failed ${path}: ${message}`);
+  }
+  return res.blob();
+}
+
 function parseErrorMessage(text: string): string {
   if (!text) return "";
   try {
@@ -1999,6 +2014,12 @@ export const api = {
   async startOutreachCampaignGeneration(id: string): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${id}/generate/start`, { method: "POST", body: "{}" });
   },
+  async retryOutreachCampaignRecipient(campaignId: string, recipientId: string): Promise<OutreachCampaign> {
+    return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/retry`, { method: "POST", body: "{}" });
+  },
+  async exportOutreachCampaignCsv(id: string): Promise<Blob> {
+    return blobRequest(`/api/outreach/campaigns/${id}/export.csv`);
+  },
   async approveOutreachCampaignRecipient(campaignId: string, recipientId: string, input: { subject?: string; body?: string } = {}): Promise<OutreachCampaign> {
     return request<OutreachCampaign>(`/api/outreach/campaigns/${campaignId}/recipients/${recipientId}/approve`, {
       method: "POST",
@@ -2168,14 +2189,7 @@ export const api = {
     return request<Material>(`/api/materials/${id}/copy`, { method: "POST", body: JSON.stringify(input) });
   },
   async downloadMaterial(id: string): Promise<Blob> {
-    const desktopConfig = await window.hermillsDesktop?.getConfig?.();
-    const baseUrl = desktopConfig?.apiBaseUrl || "http://127.0.0.1:47321";
-    const token = desktopConfig?.desktopToken;
-    const headers = new Headers();
-    if (token) headers.set("x-hermills-token", token);
-    const res = await fetch(`${baseUrl}/api/materials/${id}/download`, { headers });
-    if (!res.ok) throw new Error(await res.text().catch(() => `${res.status} ${res.statusText}`));
-    return res.blob();
+    return blobRequest(`/api/materials/${id}/download`);
   },
   async deleteMaterial(id: string): Promise<void> {
     await request<void>(`/api/materials/${id}`, { method: "DELETE" });

@@ -1,6 +1,7 @@
 {
   "supabaseUrl": "https://your-project.supabase.co",
   "supabaseAnonKey": "your-public-anon-key",
-  "cloudRequired": "1",
+  "cloudRequired": "0",
+  "accountLoginEnabled": "0",
   "chatRelayUrl": "https://your-chat-relay.example.com"
 }

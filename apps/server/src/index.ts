@@ -1847,6 +1847,15 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
     await assertActiveProfile(campaign.profileId);
     return campaign;
   });
+  server.get("/api/outreach/campaigns/:id/export.csv", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const campaign = await outreachCampaigns.requireWithRecipients(id, outreachDrafts);
+    await assertActiveProfile(campaign.profileId);
+    const csv = exportOutreachCampaignCsv(campaign);
+    reply.header("Content-Type", "text/csv; charset=utf-8");
+    reply.header("Content-Disposition", `attachment; filename="outreach-campaign-${safeDownloadName(campaign.name).toLowerCase()}.csv"`);
+    return reply.send(csv);
+  });
   server.post("/api/outreach/campaigns/:id/generate", async (request) => {
     const { id } = request.params as { id: string };
     const campaign = await outreachCampaigns.require(id);
@@ -1915,6 +1924,28 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
       drafts: outreachDrafts,
       workflows: outreachWorkflows,
       campaigns: outreachCampaigns
+    });
+  });
+  server.post("/api/outreach/campaigns/:id/recipients/:recipientId/retry", async (request) => {
+    const { id, recipientId } = request.params as { id: string; recipientId: string };
+    const campaign = await outreachCampaigns.require(id);
+    await assertActiveProfile(campaign.profileId);
+    return retryOutreachCampaignRecipient({
+      campaignId: id,
+      recipientId,
+      runtime,
+      providers,
+      companyProfile,
+      materials,
+      emailSignature: outreachEmailSignature,
+      assets: outreachAssets,
+      leads: outreachLeads,
+      drafts: outreachDrafts,
+      workflows: outreachWorkflows,
+      campaigns: outreachCampaigns,
+      deepResearch,
+      customerResearchCache,
+      cloud
     });
   });
   server.post("/api/outreach/campaigns/:id/recipients/:recipientId/skip", async (request) => {
@@ -3829,6 +3860,24 @@ class OutreachLeadRepository {
         skipped.push({ row: index + 1, reason: "Missing company name." });
         continue;
       }
+      const rawEmail = typeof input.email === "string" ? input.email : undefined;
+      const email = normalizeImportedEmail(rawEmail);
+      if (rawEmail && !email) {
+        skipped.push({ row: index + 1, reason: "Invalid email." });
+        continue;
+      }
+      const rawWebsite = typeof input.website === "string" ? input.website : undefined;
+      const website = normalizeImportedWebsite(rawWebsite);
+      if (rawWebsite && !website) {
+        skipped.push({ row: index + 1, reason: "Invalid website." });
+        continue;
+      }
+      if (!email && !website) {
+        skipped.push({ row: index + 1, reason: "Missing website and email." });
+        continue;
+      }
+      input.email = email;
+      input.website = website;
       imported.push(await this.create({ ...OutreachLeadInputBody.parse(input), profileId }));
     }
     return { imported, skipped };
@@ -5021,11 +5070,38 @@ function csvValue(headers: string[], row: string[], aliases: string[]): string |
   return value || undefined;
 }
 
+function normalizeImportedEmail(value?: string): string | undefined {
+  const email = value?.trim().toLowerCase() ?? "";
+  if (!email) return undefined;
+  return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email) ? email : undefined;
+}
+
+function normalizeImportedWebsite(value?: string): string | undefined {
+  const website = value?.trim() ?? "";
+  if (!website) return undefined;
+  if (/\s/.test(website)) return undefined;
+  try {
+    return normalizeWebsiteUrl(website).toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function inferCompanyNameFromImport(website?: string): string {
+  const value = website?.trim() ?? "";
+  if (!value) return "";
+  const withoutProtocol = value.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+  const host = (withoutProtocol.split(/[/?#]/)[0] || withoutProtocol).trim();
+  const name = host.split(".")[0] || host;
+  return name.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()).slice(0, 180);
+}
+
 function leadInputFromCsv(headers: string[], row: string[]): z.input<typeof OutreachLeadInputBody> {
   const tags = csvValue(headers, row, ["tags", "tag", "标签"])?.split(/[;,，、]/).map((tag) => tag.trim()).filter(Boolean) ?? [];
+  const website = csvValue(headers, row, ["website", "url", "site", "官网", "网站", "网址"]);
   return {
-    companyName: csvValue(headers, row, ["company", "company name", "companyName", "公司", "公司名", "客户公司", "客户公司名"]) ?? "",
-    website: csvValue(headers, row, ["website", "url", "site", "官网", "网站", "网址"]),
+    companyName: csvValue(headers, row, ["company", "company name", "companyName", "公司", "公司名", "客户公司", "客户公司名"]) ?? inferCompanyNameFromImport(website),
+    website,
     country: csvValue(headers, row, ["country", "market", "region", "国家", "市场", "地区"]),
     industry: csvValue(headers, row, ["industry", "sector", "行业"]),
     contactName: csvValue(headers, row, ["contact", "contact name", "contactName", "name", "联系人", "客户姓名", "姓名"]),
@@ -8904,12 +8980,19 @@ async function generateOutreachCampaignWorkflows(input: {
   deepResearch?: DeepResearchClient;
   customerResearchCache?: CustomerResearchCacheRepository;
   cloud?: HermillsCloudService;
+  recipientIds?: string[];
 }): Promise<OutreachCampaignWithRecipients> {
   const campaign = await input.campaigns.require(input.campaignId);
   if (campaign.status === "stopped") throw new ClientInputError("Stopped campaigns cannot generate new drafts.");
   await input.campaigns.updateCampaign(campaign.id, { status: "generating" });
   const detail = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
-  const recipients = detail.recipients.filter((recipient) => ["pending", "failed"].includes(recipient.status) && !recipient.workflowId && !recipient.initialDraftId);
+  const onlyRecipientIds = input.recipientIds?.length ? new Set(input.recipientIds) : undefined;
+  const recipients = detail.recipients.filter((recipient) =>
+    (!onlyRecipientIds || onlyRecipientIds.has(recipient.id))
+    && ["pending", "failed"].includes(recipient.status)
+    && !recipient.workflowId
+    && !recipient.initialDraftId
+  );
   const researchCache = new Map<string, Promise<CustomerResearchResult>>();
   const getResearch = (website: string) => {
     const normalized = normalizeWebsiteUrl(website);
@@ -8980,6 +9063,86 @@ async function generateOutreachCampaignWorkflows(input: {
   const refreshed = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
   await input.campaigns.updateCampaign(campaign.id, { status: nextCampaignStatus(refreshed) });
   return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+}
+
+function exportOutreachCampaignCsv(campaign: OutreachCampaignWithRecipients): string {
+  const headers = ["companyName", "email", "website", "status", "qualityScore", "subject", "body", "evidenceUrls", "error"];
+  const rows = campaign.recipients.map((recipient) => {
+    const draft = recipient.draft;
+    const evidenceUrls = [
+      ...(draft?.evidenceUsed ?? []).map((item) => item.sourceUrl),
+      ...(draft?.evidenceMap?.verifiedFacts ?? []).map((item) => item.sourceUrl)
+    ].filter(Boolean);
+    return [
+      recipient.companyName,
+      recipient.email,
+      recipient.website,
+      recipient.status,
+      draft?.qualityReview?.score ?? "",
+      draft?.subject ?? "",
+      draft?.body ?? "",
+      Array.from(new Set(evidenceUrls)).join(" | "),
+      recipient.sendError ?? draft?.sendError ?? ""
+    ].map(csvExportCell).join(",");
+  });
+  return [`${headers.join(",")}`, ...rows].join("\n");
+}
+
+function csvExportCell(value: unknown): string {
+  const text = String(value ?? "").replace(/\r?\n/g, "\n").trim();
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+async function retryOutreachCampaignRecipient(input: {
+  campaignId: string;
+  recipientId: string;
+  runtime: RuntimeAdapter;
+  providers: ProviderRepository;
+  companyProfile: CompanyProfileRepository;
+  materials: MaterialRepository;
+  emailSignature: OutreachEmailSignatureRepository;
+  assets: OutreachAssetRepository;
+  leads: OutreachLeadRepository;
+  drafts: OutreachDraftRepository;
+  workflows: OutreachWorkflowRepository;
+  campaigns: OutreachCampaignRepository;
+  deepResearch?: DeepResearchClient;
+  customerResearchCache?: CustomerResearchCacheRepository;
+  cloud?: HermillsCloudService;
+}): Promise<OutreachCampaignWithRecipients> {
+  const detail = await input.campaigns.requireWithRecipients(input.campaignId, input.drafts);
+  const recipient = detail.recipients.find((item) => item.id === input.recipientId);
+  if (!recipient) throw new ClientInputError(`Campaign recipient not found: ${input.recipientId}`);
+  if (["sent", "sending", "replied", "bounced", "unsubscribed", "stopped"].includes(recipient.status)) {
+    throw new ClientInputError("This recipient cannot be retried anymore.");
+  }
+  await input.campaigns.updateRecipient(recipient.id, {
+    status: "pending",
+    workflowId: undefined,
+    initialDraftId: undefined,
+    approvedAt: undefined,
+    queuedAt: undefined,
+    skippedAt: undefined,
+    sendError: undefined,
+    stopReason: undefined
+  });
+  return generateOutreachCampaignWorkflows({
+    campaignId: input.campaignId,
+    runtime: input.runtime,
+    providers: input.providers,
+    companyProfile: input.companyProfile,
+    materials: input.materials,
+    emailSignature: input.emailSignature,
+    assets: input.assets,
+    leads: input.leads,
+    drafts: input.drafts,
+    workflows: input.workflows,
+    campaigns: input.campaigns,
+    deepResearch: input.deepResearch,
+    customerResearchCache: input.customerResearchCache,
+    cloud: input.cloud,
+    recipientIds: [recipient.id]
+  });
 }
 
 async function mapWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {

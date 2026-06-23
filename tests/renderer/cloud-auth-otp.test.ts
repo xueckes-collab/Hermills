@@ -16,6 +16,14 @@ function sourceWindow(source: string, token: string, length = 2400): string {
 }
 
 describe("cloud auth email OTP UI contract", () => {
+  it("does not describe unauthenticated cloud state as a login requirement in the workspace shell", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const sidebarStatus = sourceWindow(appSource, "const cloudSidebarStatus", 900);
+
+    expect(sidebarStatus).not.toContain("云端大脑待登录");
+    expect(sidebarStatus).toContain("本地模式");
+  });
+
   it("keeps signup passwordless and sends a 6-digit email OTP before verification", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const signupSubmit = sourceWindow(appSource, "if (mode === 'signup')", 3200);
