@@ -60,6 +60,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { api, fallback } from './api.js'
 import type { Agent, AgentInput, AnalyticsSummary, ChatControlBindingSession, ChatControlCommand, ChatMessage, ChatSession, ChannelRecord, CloudStatus, CompanyMaterialCategory, CompanyProfile, ComputerControlStatus, CustomerResearchBrief, EmailSequenceDraft, InstallEvent, Material, MaterialPreview, OutreachBuyerPersona, OutreachCampaign, OutreachCampaignRecipient, OutreachCtaAsset, OutreachDraft, OutreachEmailQualityReview, OutreachEmailSignature, OutreachEvidenceItem, OutreachEvidenceLock, OutreachFollowUpJob, OutreachGoldenExample, OutreachLead, OutreachLeadFitScore, OutreachLeadInput, OutreachLearningSignal, OutreachResearchDepth, OutreachSendRiskReview, OutreachSenderAccount, OutreachStrategyMatch, OutreachUspCandidate, OutreachValueMatch, OutreachWorkflow, ProfileState, Provider, RuntimeStatus, RuntimeUpdateCheck, UsageSummary } from './api.js'
 import { getUiCopy, normalizeUiLanguage } from './i18n.js'
+import { letterRowsToCsv } from './outreach-import.js'
 import {
   OutreachBadge,
   OutreachButton,
@@ -2416,38 +2417,6 @@ function letterLeadStatusLabel(lead: OutreachLead) {
   return '新客户'
 }
 
-function domainCompanyName(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return 'Imported customer'
-  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '').replace(/^www\./i, '')
-  const host = withoutProtocol.split(/[/?#]/)[0] || withoutProtocol
-  const domain = host.split('@').pop() || host
-  const name = domain.split('.')[0] || domain
-  return name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Imported customer'
-}
-
-function csvEscape(value: string) {
-  const normalized = value.replace(/\r?\n/g, ' ').trim()
-  return /[",\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized
-}
-
-function letterRowsToCsv(input: string) {
-  const raw = input.trim()
-  if (!raw) return ''
-  const firstLine = raw.split(/\r?\n/)[0]?.toLowerCase() ?? ''
-  if (/company|公司|email|邮箱|website|网站/.test(firstLine)) return raw
-  const rows = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  const converted = rows.map((line) => {
-    const cells = line.split(/[\t,，]+/).map((item) => item.trim()).filter(Boolean)
-    const email = cells.find((item) => /@/.test(item)) ?? ''
-    const website = cells.find((item) => /^https?:\/\//i.test(item) || /\.[a-z]{2,}(\/|$)/i.test(item)) ?? ''
-    const contactName = cells.find((item) => item !== email && item !== website) ?? ''
-    const companyName = domainCompanyName(website || email)
-    return [companyName, email, website, contactName].map(csvEscape).join(',')
-  })
-  return ['company,email,website,contactName', ...converted].join('\n')
-}
-
 function letterGenerationSteps(mode: LetterGenerationMode) {
   if (mode === 'campaign') {
     return [
@@ -2868,7 +2837,11 @@ function DevelopmentLetterPage({
   ))
   const campaignQualityPassed = Boolean(campaignQualityReview?.passed && !campaignDraftChanged)
   const singleGenerationRunning = busy === 'generate' || busy === 'auto'
-  const campaignGenerationRunning = busy === 'campaignGenerate' || busy === 'letterImportGenerate' || busy === 'letterFileGenerate'
+  const campaignGenerationRunning = busy === 'campaignGenerate'
+    || busy === 'letterImportGenerate'
+    || busy === 'letterFileGenerate'
+    || selectedCampaign?.status === 'generating'
+    || Boolean(selectedCampaign?.recipients.some((recipient) => recipient.status === 'researching'))
   const singleGenerationCompletedAt = generationMode === 'campaign' ? '' : generationCompletedAt
   const campaignGenerationCompletedAt = generationMode === 'campaign' ? generationCompletedAt : ''
   const hasVisibleSingleDraft = Boolean(activeDraftId || draftSubject.trim() || draftBody.trim() || workflow || singleGenerationRunning)
@@ -3254,6 +3227,17 @@ function DevelopmentLetterPage({
     return api.outreachCampaign(campaignId)
   }
 
+  async function watchCampaignGeneration(campaignId: string, completeNotice: (campaign: OutreachCampaign) => string) {
+    try {
+      const campaign = await pollCampaignGeneration(campaignId)
+      replaceCampaign(campaign)
+      setGenerationCompletedAt(new Date().toISOString())
+      setNotice(completeNotice(campaign))
+    } catch (err) {
+      setError(humanizeErrorMessage(err, copy, 'message'))
+    }
+  }
+
   async function refreshCampaignFollowUps(campaignId = selectedCampaign?.id) {
     if (!campaignId) {
       setFollowUps([])
@@ -3475,12 +3459,9 @@ function DevelopmentLetterPage({
     setNotice('')
     try {
       const started = await api.startOutreachCampaignGeneration(selectedCampaign.id)
-      replaceCampaign(started)
+      replaceCampaign({ ...started, status: 'generating' })
       setNotice('批量生成已开始，写好一封会自动显示一封。')
-      const campaign = await pollCampaignGeneration(selectedCampaign.id)
-      replaceCampaign(campaign)
-      setGenerationCompletedAt(new Date().toISOString())
-      setNotice(copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
+      void watchCampaignGeneration(selectedCampaign.id, (campaign) => copy.devLetter.batch.status.generated(campaign.stats.generated + campaign.stats.approved + campaign.stats.sent))
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'message'))
     } finally {
@@ -3818,12 +3799,9 @@ function DevelopmentLetterPage({
       setBulkImportText('')
       setLetterView('automation')
       const started = await api.startOutreachCampaignGeneration(created.id)
-      replaceCampaign(started)
+      replaceCampaign({ ...started, status: 'generating' })
       setNotice(`已导入 ${result.imported.length} 个客户，正在逐封生成，写好一封会自动显示一封。`)
-      const generated = await pollCampaignGeneration(created.id)
-      replaceCampaign(generated)
-      setGenerationCompletedAt(new Date().toISOString())
-      setNotice(`已导入 ${result.imported.length} 个客户，并为 ${ready.length} 个客户逐个生成开发信。`)
+      void watchCampaignGeneration(created.id, (campaign) => `已导入 ${result.imported.length} 个客户，并为 ${campaign.stats.generated + campaign.stats.approved + campaign.stats.sent} 个客户逐个生成开发信。`)
     } catch (err) {
       setError(humanizeErrorMessage(err, copy, 'fileUpload'))
     } finally {

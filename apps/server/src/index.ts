@@ -1843,6 +1843,9 @@ export async function createServer(options: ServerOptions = {}): Promise<Fastify
   });
   server.get("/api/outreach/campaigns/:id", async (request) => {
     const { id } = request.params as { id: string };
+    const existing = await outreachCampaigns.require(id);
+    await assertActiveProfile(existing.profileId);
+    await expireStaleCampaignRecipients(id, outreachCampaigns, outreachDrafts);
     const campaign = await outreachCampaigns.requireWithRecipients(id, outreachDrafts);
     await assertActiveProfile(campaign.profileId);
     return campaign;
@@ -5466,6 +5469,28 @@ function parseOptionalPositiveInteger(value: string | undefined): number | undef
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function campaignRecipientTimeoutMs(): number {
+  return Math.min(parseOptionalPositiveInteger(process.env.HERMILLS_CAMPAIGN_RECIPIENT_TIMEOUT_MS) ?? 60_000, 10 * 60_000);
+}
+
+function campaignRecipientConcurrency(depth: OutreachResearchDepth): number {
+  return Math.min(parseOptionalPositiveInteger(process.env.HERMILLS_CAMPAIGN_RECIPIENT_CONCURRENCY) ?? researchConcurrency(depth), 12);
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), Math.max(1, timeoutMs));
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function normalizeDeepResearchResult(website: string, payload: DeepResearchCompanyResponse): CustomerResearchResult {
   const normalizedWebsite = normalizeWebsiteUrl(payload.website || payload.websiteUrl || payload.website_url || website);
   const sources = normalizeDeepResearchSources(payload.sources ?? []);
@@ -8987,9 +9012,10 @@ async function generateOutreachCampaignWorkflows(input: {
   await input.campaigns.updateCampaign(campaign.id, { status: "generating" });
   const detail = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
   const onlyRecipientIds = input.recipientIds?.length ? new Set(input.recipientIds) : undefined;
+  const recipientTimeoutMs = campaignRecipientTimeoutMs();
   const recipients = detail.recipients.filter((recipient) =>
     (!onlyRecipientIds || onlyRecipientIds.has(recipient.id))
-    && ["pending", "failed"].includes(recipient.status)
+    && (["pending", "failed"].includes(recipient.status) || isStaleResearchingRecipient(recipient, recipientTimeoutMs))
     && !recipient.workflowId
     && !recipient.initialDraftId
   );
@@ -9008,13 +9034,23 @@ async function generateOutreachCampaignWorkflows(input: {
     researchCache.set(key, next);
     return next;
   };
-  await mapWithConcurrency(recipients, researchConcurrency(campaign.researchDepth), async (recipient) => {
+  await mapWithConcurrency(recipients, campaignRecipientConcurrency(campaign.researchDepth), async (recipient) => {
     await input.campaigns.updateRecipient(recipient.id, { status: "researching", sendError: undefined });
+    const startedAt = Date.now();
+    const remainingTimeoutMs = () => Math.max(1, recipientTimeoutMs - (Date.now() - startedAt));
     try {
-      const lead = await input.leads.require(recipient.leadId);
+      const lead = await withTimeout(
+        input.leads.require(recipient.leadId),
+        remainingTimeoutMs(),
+        `Timed out while loading ${recipient.companyName} for batch generation after ${recipientTimeoutMs} ms.`
+      );
       if (lead.profileId !== campaign.profileId) throw new ClientInputError(`Lead belongs to another profile: ${lead.companyName}`);
-      const research = await getResearch(recipient.website);
-      const workflow = await generateOutreachWorkflow({
+      const research = await withTimeout(
+        getResearch(recipient.website),
+        remainingTimeoutMs(),
+        `Timed out while researching ${recipient.companyName} for batch generation after ${recipientTimeoutMs} ms.`
+      );
+      const workflow = await withTimeout(generateOutreachWorkflow({
         body: {
           website: recipient.website,
           email: recipient.email,
@@ -9041,7 +9077,7 @@ async function generateOutreachCampaignWorkflows(input: {
         cloud: input.cloud,
         research,
         researchDepth: campaign.researchDepth
-      });
+      }), remainingTimeoutMs(), `Timed out while writing ${recipient.companyName} for batch generation after ${recipientTimeoutMs} ms.`);
       await input.campaigns.updateRecipient(recipient.id, {
         status: "generated",
         workflowId: workflow.id,
@@ -9063,6 +9099,31 @@ async function generateOutreachCampaignWorkflows(input: {
   const refreshed = await input.campaigns.requireWithRecipients(campaign.id, input.drafts);
   await input.campaigns.updateCampaign(campaign.id, { status: nextCampaignStatus(refreshed) });
   return input.campaigns.requireWithRecipients(campaign.id, input.drafts);
+}
+
+function isStaleResearchingRecipient(recipient: OutreachCampaignRecipient, timeoutMs: number): boolean {
+  if (recipient.status !== "researching") return false;
+  const updatedAt = Date.parse(recipient.updatedAt);
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt > timeoutMs;
+}
+
+async function expireStaleCampaignRecipients(
+  campaignId: string,
+  campaigns: OutreachCampaignRepository,
+  drafts: OutreachDraftRepository
+): Promise<void> {
+  const detail = await campaigns.requireWithRecipients(campaignId, drafts);
+  const timeoutMs = campaignRecipientTimeoutMs();
+  const staleRecipients = detail.recipients.filter((recipient) => isStaleResearchingRecipient(recipient, timeoutMs));
+  if (!staleRecipients.length) return;
+  for (const recipient of staleRecipients) {
+    await campaigns.updateRecipient(recipient.id, {
+      status: "failed",
+      sendError: `Timed out while generating ${recipient.companyName} for batch generation after ${timeoutMs} ms.`
+    });
+  }
+  const refreshed = await campaigns.requireWithRecipients(campaignId, drafts);
+  await campaigns.updateCampaign(campaignId, { status: nextCampaignStatus(refreshed) });
 }
 
 function exportOutreachCampaignCsv(campaign: OutreachCampaignWithRecipients): string {
@@ -12504,12 +12565,39 @@ async function writePrivateFile(filePath: string, body: Buffer | string): Promis
   await chmod(filePath, 0o600).catch(() => undefined);
 }
 
+const privateJsonWriteLocks = new Map<string, Promise<void>>();
+
 async function writePrivateJson(filePath: string, value: unknown): Promise<void> {
+  const previous = privateJsonWriteLocks.get(filePath) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(() => writePrivateJsonUnlocked(filePath, value));
+  privateJsonWriteLocks.set(filePath, next);
+  try {
+    await next;
+  } finally {
+    if (privateJsonWriteLocks.get(filePath) === next) privateJsonWriteLocks.delete(filePath);
+  }
+}
+
+async function writePrivateJsonUnlocked(filePath: string, value: unknown): Promise<void> {
   await ensurePrivateDirectory(path.dirname(filePath));
   const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(tmpPath, filePath);
+  await renameWithWindowsRetry(tmpPath, filePath);
   await chmod(filePath, 0o600).catch(() => undefined);
+}
+
+async function renameWithWindowsRetry(from: string, to: string): Promise<void> {
+  const retryable = new Set(["EBUSY", "EPERM"]);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (!retryable.has(code ?? "") || attempt === 5) throw error;
+      await delay(40 * (attempt + 1));
+    }
+  }
 }
 
 function formatLimit(value: number): string {

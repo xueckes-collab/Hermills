@@ -44,6 +44,14 @@ describe("batch write page redesign contract", () => {
     expect(handler).toContain("setBusy('')");
   });
 
+  it("starts batch import generation in the background after the campaign is queued", async () => {
+    const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
+    const handler = sourceWindow(appSource, "async function importAndGenerateLetterLeads", 1700);
+
+    expect(handler).toContain("void watchCampaignGeneration(created.id");
+    expect(handler).not.toContain("const generated = await pollCampaignGeneration(created.id)");
+  });
+
   it("exposes batch export and failed-recipient retry actions", async () => {
     const appSource = await readFile(projectFile("apps/renderer/src/App.tsx"), "utf8");
     const apiSource = await readFile(projectFile("apps/renderer/src/api.ts"), "utf8");

@@ -41,6 +41,54 @@ describe("outreach campaign API", () => {
   afterEach(async () => {
     await server.close();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("marks slow batch recipients as failed instead of leaving them researching forever", async () => {
+    vi.stubEnv("HERMILLS_CAMPAIGN_RECIPIENT_TIMEOUT_MS", "25");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return new Response(`<html><body>Slow buyer page for ${String(url)}.</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    });
+    runtime.createHermesReply = async (request: HermesReplyRequest) => {
+      runtime.requests.push(request);
+      return JSON.stringify({
+        icps: [],
+        usps: [],
+        initialEmail: {
+          subject: "Slow buyer options",
+          body: "Hi Slow Buyer team,\n\nYour page suggests a relevant sourcing check.\nWe can share a concise comparison with MOQ and lead time.\nWould a short table help?\n\nBest regards\nEckes Export"
+        },
+        followUps: []
+      });
+    };
+
+    const lead = await createLead("Slow Buyer", "https://slow.example", "buyer@slow.example");
+    await server.inject({ method: "PUT", url: "/api/company/profile", headers, payload: {
+      name: "Eckes Export",
+      website: "https://eckes-export.example",
+      mainProducts: ["SPC flooring"],
+      certifications: ["CE"]
+    } });
+    const createResponse = await server.inject({
+      method: "POST",
+      url: "/api/outreach/campaigns",
+      headers,
+      payload: { name: "Slow campaign", leadIds: [lead.id], language: "English", tone: "warm", researchDepth: "quick" }
+    });
+    expect(createResponse.statusCode, createResponse.body).toBe(200);
+
+    const generateResponse = await server.inject({ method: "POST", url: `/api/outreach/campaigns/${createResponse.json().id}/generate`, headers });
+
+    expect(generateResponse.statusCode, generateResponse.body).toBe(200);
+    expect(generateResponse.json().status).toBe("failed");
+    expect(generateResponse.json().stats).toMatchObject({ failed: 1, generated: 0 });
+    expect(generateResponse.json().recipients[0]).toMatchObject({ status: "failed" });
+    expect(generateResponse.json().recipients[0].sendError).toContain("Timed out");
+    expect(runtime.requests).toHaveLength(0);
   });
 
   it("creates a batch campaign, generates reviewed drafts, and sends only approved first emails", async () => {
