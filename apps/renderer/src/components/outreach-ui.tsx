@@ -113,13 +113,17 @@ export function OutreachButton({
   type = "button",
   ...props
 }: OutreachButtonProps) {
+  const busy = Boolean(loading || props["aria-busy"]);
+
   return (
     <button
-      aria-busy={loading || props["aria-busy"] ? true : undefined}
+      {...props}
+      aria-busy={busy ? true : undefined}
       className={cx("outreach-button", variant, loading && "loading", className)}
+      data-feedback="button"
+      data-loading={busy ? true : undefined}
       disabled={disabled || loading}
       type={type}
-      {...props}
     >
       {loading ? <span className="outreach-button-spinner" aria-hidden="true" /> : null}
       <span className="outreach-button-label">{children}</span>

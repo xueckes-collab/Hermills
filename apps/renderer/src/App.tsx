@@ -4714,6 +4714,7 @@ function DevelopmentLetterPage({
                 </OutreachStatusBanner>
                 <div className="hm-single-result-grid">
                   <OutreachCard title="生成过程" description="这里显示可审核的工作步骤，不展示模型内部私密推理链。" icon={<Brain size={18} />}>
+                    {singleGenerationRunning ? <div className="hm-operation-progress" role="progressbar" aria-label="正在生成开发信" /> : null}
                     <OutreachTimeline steps={singleWriteTimelineSteps} />
                   </OutreachCard>
                   <div className="hm-single-review-panel">
@@ -5044,6 +5045,7 @@ function DevelopmentLetterPage({
                 icon={<Eye size={18} />}
                 actions={selectedCampaign ? <OutreachBadge tone="purple">{selectedCampaign.stats.generated} 待审核</OutreachBadge> : null}
               >
+                {campaignGenerationRunning ? <div className="hm-operation-progress" role="progressbar" aria-label="正在批量生成开发信" /> : null}
                 <OutreachTimeline steps={campaignTimelineSteps} />
                 {selectedCampaign ? (
                   <div className="hm-batch-review-workspace">

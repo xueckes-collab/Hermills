@@ -92,6 +92,11 @@
   --radius-lg: 22px;
   --shadow: 0 18px 44px rgba(47, 39, 26, 0.08);
   --shadow-soft: 0 12px 30px rgba(47, 39, 26, 0.06);
+  --motion-duration-fast: 120ms;
+  --motion-duration-standard: 180ms;
+  --motion-duration-slow: 900ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -148,6 +153,144 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+button[data-feedback="button"],
+[data-slot="button"][data-feedback="button"],
+.outreach-button[data-feedback="button"] {
+  position: relative;
+  isolation: isolate;
+  transform-origin: center;
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-standard) var(--motion-ease-standard),
+    background-color var(--motion-duration-standard) var(--motion-ease-standard),
+    border-color var(--motion-duration-standard) var(--motion-ease-standard),
+    color var(--motion-duration-standard) var(--motion-ease-standard),
+    opacity var(--motion-duration-standard) var(--motion-ease-standard);
+}
+
+button[data-feedback="button"]:focus-visible,
+[data-slot="button"][data-feedback="button"]:focus-visible,
+.outreach-button[data-feedback="button"]:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
+button[data-feedback="button"]:not(:disabled):not([aria-busy="true"]):hover,
+[data-slot="button"][data-feedback="button"]:not(:disabled):not([aria-busy="true"]):hover,
+.outreach-button[data-feedback="button"]:not(:disabled):not([aria-busy="true"]):hover {
+  transform: translateY(-1px);
+}
+
+button[data-feedback="button"]:not(:disabled):active,
+[data-slot="button"][data-feedback="button"]:not(:disabled):active,
+.outreach-button[data-feedback="button"]:not(:disabled):active {
+  transform: translateY(1px) scale(0.992);
+}
+
+button[data-feedback="button"]:disabled,
+[data-slot="button"][data-feedback="button"]:disabled,
+.outreach-button[data-feedback="button"]:disabled {
+  cursor: not-allowed;
+  transform: none;
+}
+
+[aria-busy="true"][data-feedback="button"],
+[data-loading="true"][data-feedback="button"] {
+  overflow: hidden;
+  cursor: progress;
+}
+
+[aria-busy="true"][data-feedback="button"]::after,
+[data-loading="true"][data-feedback="button"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.24) 38%, transparent 72%);
+  transform: translateX(-110%);
+  animation: hm-motion-button-sheen var(--motion-duration-slow) var(--motion-ease-emphasis) infinite;
+  pointer-events: none;
+}
+
+button:not([data-feedback="button"]) {
+  transition:
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-standard) var(--motion-ease-standard),
+    background-color var(--motion-duration-standard) var(--motion-ease-standard),
+    border-color var(--motion-duration-standard) var(--motion-ease-standard),
+    color var(--motion-duration-standard) var(--motion-ease-standard),
+    opacity var(--motion-duration-standard) var(--motion-ease-standard);
+}
+
+button:not([data-feedback="button"]):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
+button:not(:disabled):not([aria-busy="true"]):not([data-feedback="button"]):active {
+  transform: translateY(1px) scale(0.992);
+}
+
+button:not([data-feedback="button"])[aria-busy="true"],
+button:not([data-feedback="button"])[data-loading="true"] {
+  cursor: progress;
+}
+
+.hm-operation-progress {
+  position: relative;
+  min-height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--hm-border-active);
+  border-radius: 999px;
+  background: #e8f2ff;
+}
+
+.hm-operation-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--hm-blue), #14b8a6);
+  animation: hm-motion-progress 1.12s var(--motion-ease-emphasis) infinite;
+}
+
+@keyframes hm-motion-button-sheen {
+  to {
+    transform: translateX(110%);
+  }
+}
+
+@keyframes hm-motion-progress {
+  0% {
+    transform: translateX(-115%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  button[data-feedback="button"]:not(:disabled):hover,
+  [data-slot="button"][data-feedback="button"]:not(:disabled):hover,
+  .outreach-button[data-feedback="button"]:not(:disabled):hover,
+  button[data-feedback="button"]:not(:disabled):active,
+  [data-slot="button"][data-feedback="button"]:not(:disabled):active,
+  .outreach-button[data-feedback="button"]:not(:disabled):active {
+    transform: none;
+  }
 }
 
 .hm-outreach-shell {
